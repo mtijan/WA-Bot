@@ -1,0 +1,16 @@
+<domain> {
+    encode gzip zstd
+
+    root * /opt/wa-bot/frontend/dist
+    file_server
+
+    handle /api/* {
+        reverse_proxy 127.0.0.1:3001
+    }
+
+    handle /health* {
+        reverse_proxy 127.0.0.1:3001
+    }
+
+    try_files {path} /index.html
+}

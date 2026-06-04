@@ -1,0 +1,4 @@
+Name,Phone,Email,Company,Position,Notes,Tags,Var1,Var2,Var3
+John Doe,9.19877E+11,john@example.com,ABC Corp,Manager,Important client,"VIP,Client",Value1,Value2,Value3
+Jane Smith,9.19877E+11,jane@example.com,XYZ Ltd,Director,Follow up needed,"Lead,Hot",ValueA,ValueB,ValueC
+Mike Johnson,9.19877E+11,,Tech Solutions,Developer,,Technical,,,

@@ -1,0 +1,60 @@
+# Dependencies
+**/node_modules/
+
+# Build output and generated caches
+frontend/dist/
+backend/dist/
+coverage/
+.cache/
+.vite/
+
+# Local environment secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Runtime data and linked-device credentials
+backend/database.sqlite
+backend/database.sqlite-*
+backend/*.sqlite
+backend/*.sqlite-*
+backend/sessions/
+backend/data/
+backend/backups/
+backend/encrypted_backups/
+backend/restore_drills/
+backend/logs/
+*.log
+
+# WhatsApp/contact exports and user data
+ExportWAContacts_*.csv
+ChatBot-Flow.json
+ListApiLLM.txt
+*.xlsx
+*.xls
+!contacts_sample_template.csv
+
+# QA/runtime output
+qa_tests/screenshots/
+qa_tests/videos/
+qa_tests/reports/
+
+# Local scratch/debug files
+scratch/
+backend/src/scratch_check.js
+backend/src/thoth_raw_metadata.json
+test-kroki.js
+
+# Local agent handoff and generated documentation not needed in GitHub source
+AGENTS.md
+checklist.html
+sdlc_documentation.md
+docs/html/
+docs/images/
+docs/SECURITY_AUDIT.md
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp

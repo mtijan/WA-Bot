@@ -1,0 +1,15 @@
+{
+  "name": "wa-bot-qa-tests",
+  "version": "1.0.0",
+  "description": "Automated QA Test Suite for WA-Bot Pro Chatbot AI",
+  "main": "run_qa.js",
+  "type": "module",
+  "scripts": {
+    "test": "node run_qa.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "puppeteer": "^22.11.0",
+    "sqlite3": "^5.1.7"
+  }
+}

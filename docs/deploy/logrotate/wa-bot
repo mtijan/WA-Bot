@@ -1,0 +1,10 @@
+/var/log/wa-bot/*.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    create 0640 wa-bot wa-bot
+}

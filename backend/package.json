@@ -1,0 +1,34 @@
+{
+  "name": "wa-bot-backend",
+  "version": "1.0.0",
+  "description": "WhatsApp Bot Multi-Account & Bulk Messaging System Backend",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:api": "node src/processes/api.js",
+    "start:sessions": "node src/processes/sessions.js",
+    "start:campaign-worker": "node src/processes/campaign_worker.js",
+    "start:warmer-worker": "node src/processes/warmer_worker.js",
+    "start:worker": "node src/processes/worker.js",
+    "dev": "node src/index.js",
+    "db:migrate": "node scripts/migrate_database.js",
+    "db:migrate:no-backup": "node scripts/migrate_database.js --no-backup",
+    "backup": "node scripts/backup_runtime_data.js",
+    "backup:encrypted": "node scripts/backup_runtime_data_encrypted.js",
+    "restore:drill": "node scripts/restore_drill_encrypted_backup.js",
+    "security:audit": "npm audit --omit=dev",
+    "logs:prune": "node scripts/prune_delivery_logs.js",
+    "logs:prune:apply": "node scripts/prune_delivery_logs.js --apply"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "https-proxy-agent": "^9.0.0",
+    "openai": "^6.39.1",
+    "pino": "^9.1.0",
+    "qrcode": "^1.5.3",
+    "sqlite3": "^5.1.7"
+  }
+}

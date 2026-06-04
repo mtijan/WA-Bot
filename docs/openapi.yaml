@@ -1,0 +1,610 @@
+openapi: 3.0.3
+info:
+  title: WA-Bot Pro Local API
+  version: 2.3.0
+  description: |
+    Machine-readable baseline for the routes mounted by the local Express backend.
+    Rate limiting and restricted CORS origins are enforced by the local backend.
+    Configure WA_BOT_ADMIN_PASSWORD to require admin cookie login for browser access.
+    X-API-Key remains available for trusted server-to-server access when WA_BOT_API_KEY is configured.
+servers:
+  - url: http://localhost:3001/api
+    description: Local development backend
+security:
+  - AdminSession: []
+  - ApiKeyAuth: []
+tags:
+  - name: Auth
+  - name: Sessions
+  - name: Campaigns
+  - name: Contacts
+  - name: Templates
+  - name: Chatbot Flows
+  - name: Auto Replies
+  - name: Warmer
+  - name: Single Message
+  - name: Group Grabber
+  - name: Proxies
+  - name: Chatbot AI
+  - name: Opt Outs
+  - name: Internal Process API
+paths:
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get admin authentication status
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login to the admin dashboard
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Clear the admin session cookie
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /sessions:
+    get:
+      tags: [Sessions]
+      summary: List WhatsApp sessions
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Sessions]
+      summary: Create or initialize a WhatsApp session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+  /sessions/{id}:
+    delete:
+      tags: [Sessions]
+      summary: Delete a session
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /sessions/{id}/proxy:
+    patch:
+      tags: [Sessions]
+      summary: Assign or clear a session proxy
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /campaigns:
+    get:
+      tags: [Campaigns]
+      summary: List bulk campaigns
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Campaigns]
+      summary: Create a bulk campaign
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '202': { $ref: '#/components/responses/Success' }
+  /campaigns/{id}:
+    get:
+      tags: [Campaigns]
+      summary: Get campaign progress and logs
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Campaigns]
+      summary: Delete a campaign
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /contacts:
+    get:
+      tags: [Contacts]
+      summary: List contacts
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Contacts]
+      summary: Create a contact
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /contacts/groups:
+    get:
+      tags: [Contacts]
+      summary: List contact groups
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Contacts]
+      summary: Create a contact group
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /contacts/groups/{id}:
+    put:
+      tags: [Contacts]
+      summary: Update a contact group
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Contacts]
+      summary: Delete a contact group
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /contacts/{id}:
+    put:
+      tags: [Contacts]
+      summary: Update a contact
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Contacts]
+      summary: Delete a contact
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /contacts/bulk:
+    post:
+      tags: [Contacts]
+      summary: Create contacts in bulk
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /contacts/cleanup:
+    post:
+      tags: [Contacts]
+      summary: Remove orphaned contacts
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /contacts/groups/{groupId}/invalid:
+    delete:
+      tags: [Contacts]
+      summary: Delete invalid contacts in a group
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /contacts/groups/{groupId}/verify:
+    post:
+      tags: [Contacts]
+      summary: Verify contacts in a group
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /templates:
+    get:
+      tags: [Templates]
+      summary: List message templates
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Templates]
+      summary: Create a message template
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /templates/{id}:
+    delete:
+      tags: [Templates]
+      summary: Delete a message template
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /chatbot-flows:
+    get:
+      tags: [Chatbot Flows]
+      summary: List chatbot flows
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Chatbot Flows]
+      summary: Create a chatbot flow
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '201': { $ref: '#/components/responses/Success' }
+  /chatbot-flows/export:
+    get:
+      tags: [Chatbot Flows]
+      summary: Export chatbot flows
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /chatbot-flows/import:
+    post:
+      tags: [Chatbot Flows]
+      summary: Import chatbot flows
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /chatbot-flows/{id}:
+    put:
+      tags: [Chatbot Flows]
+      summary: Update a chatbot flow
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Chatbot Flows]
+      summary: Delete a chatbot flow
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /chatbot-flows/{id}/status:
+    patch:
+      tags: [Chatbot Flows]
+      summary: Update chatbot flow status
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /auto-replies:
+    get:
+      tags: [Auto Replies]
+      summary: List auto-reply rules
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /auto-replies/{id}:
+    put:
+      tags: [Auto Replies]
+      summary: Update an auto-reply rule
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Auto Replies]
+      summary: Delete an auto-reply rule
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Auto Replies]
+      summary: Create an auto-reply rule
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /warmer/templates:
+    get:
+      tags: [Warmer]
+      summary: List warmer templates
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /warmer/templates/{id}:
+    delete:
+      tags: [Warmer]
+      summary: Delete a warmer template
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Warmer]
+      summary: Create a warmer template
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /warmer/campaigns:
+    get:
+      tags: [Warmer]
+      summary: List warmer campaigns
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Warmer]
+      summary: Start a warmer campaign
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '201': { $ref: '#/components/responses/Success' }
+  /warmer/campaigns/{id}:
+    delete:
+      tags: [Warmer]
+      summary: Delete a warmer campaign
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /warmer/campaigns/{id}/stop:
+    post:
+      tags: [Warmer]
+      summary: Stop a warmer campaign
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /warmer/campaigns/{id}/logs:
+    get:
+      tags: [Warmer]
+      summary: Get warmer campaign logs
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /single-message/groups/{sessionId}:
+    get:
+      tags: [Single Message]
+      summary: List groups for single-message sending
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /single-message/send:
+    post:
+      tags: [Single Message]
+      summary: Send a single message
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /group-grabber/groups/{sessionId}:
+    get:
+      tags: [Group Grabber]
+      summary: List WhatsApp groups for a session
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /group-grabber/export-participants:
+    post:
+      tags: [Group Grabber]
+      summary: Export group participants as CSV
+      responses:
+        '200':
+          description: CSV export
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+  /group-grabber/invite-link:
+    post:
+      tags: [Group Grabber]
+      summary: Get a group invite link
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /group-grabber/force-sync-contacts:
+    post:
+      tags: [Group Grabber]
+      summary: Force contact synchronization
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /proxies:
+    get:
+      tags: [Proxies]
+      summary: List proxies
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /proxies/{id}:
+    delete:
+      tags: [Proxies]
+      summary: Delete a proxy
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /proxies/{id}/test:
+    post:
+      tags: [Proxies]
+      summary: Test a proxy connection
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /proxies/settings/{key}:
+    get:
+      tags: [Proxies]
+      summary: Get a proxy-related setting
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Proxies]
+      summary: Save a proxy-related setting
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /proxies/offline-db/status:
+    get:
+      tags: [Proxies]
+      summary: Get offline IPLocate database status
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /proxies/offline-db/download:
+    post:
+      tags: [Proxies]
+      summary: Start downloading offline IPLocate databases
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Proxies]
+      summary: Create a proxy
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /chatbot-ai/settings/{sessionId}:
+    get:
+      tags: [Chatbot AI]
+      summary: Get Chatbot AI settings
+      description: The response omits the stored provider key and returns has_api_key metadata.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /chatbot-ai/settings:
+    post:
+      tags: [Chatbot AI]
+      summary: Save Chatbot AI settings
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /chatbot-ai/test:
+    post:
+      tags: [Chatbot AI]
+      summary: Test an AI provider connection
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /opt-outs:
+    get:
+      tags: [Opt Outs]
+      summary: List suppressed recipients
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Opt Outs]
+      summary: Add a recipient to the suppression list
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /opt-outs/{phoneNumber}:
+    delete:
+      tags: [Opt Outs]
+      summary: Remove a recipient from the suppression list
+      parameters:
+        - name: phoneNumber
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/health/live:
+    get:
+      tags: [Internal Process API]
+      summary: Internal process liveness check
+      description: Exposed by non-public internal process roles such as sessions and workers.
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/health/ready:
+    get:
+      tags: [Internal Process API]
+      summary: Internal process readiness check
+      description: Returns role, DB readiness, uptime, and worker/session metrics for monitoring.
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '503': { $ref: '#/components/responses/Error' }
+  /internal/sessions:
+    get:
+      tags: [Internal Process API]
+      summary: List sessions from the session-manager process
+      security:
+        - InternalToken: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /internal/sessions/{id}:
+    get:
+      tags: [Internal Process API]
+      summary: Get a session from the session-manager process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Internal Process API]
+      summary: Delete a session through the session-manager process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/sessions/{id}/init:
+    post:
+      tags: [Internal Process API]
+      summary: Initialize a session through the session-manager process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /internal/sessions/{id}/proxy:
+    patch:
+      tags: [Internal Process API]
+      summary: Assign or clear a session proxy through the session-manager process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+components:
+  securitySchemes:
+    AdminSession:
+      type: apiKey
+      in: cookie
+      name: wa_bot_admin
+      description: HttpOnly admin session cookie issued by /auth/login when WA_BOT_ADMIN_PASSWORD is configured.
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Enabled when WA_BOT_API_KEY is configured on the backend.
+    InternalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: Shared secret for localhost/private internal process control API.
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    Success:
+      description: Successful response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Envelope'
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        status: { type: string, example: success }
+        data: {}
+        message: { type: string }
+    Error:
+      type: object
+      properties:
+        status: { type: string, example: error }
+        message: { type: string }

@@ -1,0 +1,17 @@
+# Ubuntu filesystem hardening checklist for WA-Bot runtime data.
+# Review paths before running on a real VPS.
+
+sudo chown -R wa-bot:wa-bot /opt/wa-bot/backend
+sudo chmod 750 /opt/wa-bot/backend
+
+# Runtime data must be private to the service user.
+sudo chmod 750 /opt/wa-bot/backend/sessions
+sudo chmod 640 /opt/wa-bot/backend/database.sqlite
+
+# Environment file contains secrets. Keep readable by root and service group only.
+sudo chown root:wa-bot /etc/wa-bot/wa-bot.env
+sudo chmod 640 /etc/wa-bot/wa-bot.env
+
+# Logs should not be world-readable.
+sudo chown -R wa-bot:wa-bot /var/log/wa-bot
+sudo chmod 750 /var/log/wa-bot
