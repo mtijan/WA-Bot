@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Smartphone, Trash2, Link, LogOut } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
-const SessionManager = ({ API_URL }) => {
+const SessionManager = () => {
   const [sessions, setSessions] = useState([]);
   const [newSessionId, setNewSessionId] = useState('');
   const [activeQr, setActiveQr] = useState(null);
@@ -16,8 +17,7 @@ const SessionManager = ({ API_URL }) => {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
-      const json = await res.json();
+      const json = await apiRequest('/sessions');
       if (json.status === 'success') {
         setSessions(json.data);
         if (qrSessionId) {
@@ -46,12 +46,10 @@ const SessionManager = ({ API_URL }) => {
     setQrSessionId(newSessionId);
 
     try {
-      const res = await fetch(`${API_URL}/sessions`, {
+      const json = await apiRequest('/sessions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: newSessionId }),
       });
-      const json = await res.json();
       
       if (json.status === 'success') {
         if (json.data && json.data.qr_code) {
@@ -75,10 +73,9 @@ const SessionManager = ({ API_URL }) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus & keluar dari sesi ${sessionId}?`)) return;
 
     try {
-      const res = await fetch(`${API_URL}/sessions/${sessionId}`, {
+      const json = await apiRequest(`/sessions/${sessionId}`, {
         method: 'DELETE',
       });
-      const json = await res.json();
       if (json.status === 'success') {
         if (qrSessionId === sessionId) {
           setActiveQr(null);
