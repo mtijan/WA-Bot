@@ -19,6 +19,8 @@ Use this directory as a starting point, not as copy-paste without review. Replac
 | `logrotate/wa-bot` | Log rotation template for app logs. |
 | `ufw.commands.txt` | Firewall command checklist. |
 | `security_acl.commands.txt` | Filesystem permission checklist for sessions, database, env, and logs. |
+| `BACKUP_SCHEDULE.commands.md` | systemd timer command sheet for encrypted backups and restore drills. |
+| `MONITORING_SETUP.commands.md` | monitoring command sheet for endpoint, process, resource, and backup freshness checks. |
 
 ## Recommended VPS Layout
 
@@ -79,8 +81,9 @@ sudo chmod 640 /etc/wa-bot/wa-bot.env
 
 8. Enable firewall using `ufw.commands.txt`.
 9. Review and apply runtime-data permissions using `security_acl.commands.txt`.
-10. Configure monitoring using `docs/MONITORING.md`.
-11. Run smoke checks:
+10. Schedule encrypted backups using `BACKUP_SCHEDULE.commands.md`.
+11. Configure monitoring using `MONITORING_SETUP.commands.md` and `docs/MONITORING.md`.
+12. Run smoke checks:
 
 ```bash
 curl -fsS http://127.0.0.1:3001/health
@@ -98,3 +101,14 @@ curl -fsS https://<domain>/api/auth/me
 - Use long random secrets for admin session, API key, internal token, secret encryption, and backup encryption.
 - Move encrypted backups off the VPS or to a protected volume.
 - Fill `docs/MONITORING.md` evidence table before marking monitoring complete.
+
+## Current Staging Shortcut
+
+For environment-specific staging notes, keep a local-only `docs/STAGING.md` and do not commit real IP addresses, SSH users, secrets, or provider details. The current verified baseline is HTTP/IP only; do not enable `WA_BOT_COOKIE_SECURE=true` until HTTPS is working.
+
+Recommended staging order from here:
+
+1. Configure domain/TLS with the generic Caddy template.
+2. `BACKUP_SCHEDULE.commands.md`
+3. `MONITORING_SETUP.commands.md`
+4. Browser smoke test and evidence update

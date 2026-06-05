@@ -1,7 +1,7 @@
 # WA-Bot Pro Security Baseline
 
 **Status:** Internal development baseline  
-**Last updated:** 2026-06-04
+**Last updated:** 2026-06-05
 
 ## 1. Scope
 
@@ -18,6 +18,8 @@ This document separates implemented controls from production requirements. It is
 | Admin dashboard authentication | Optional admin login issues an HttpOnly cookie when `WA_BOT_ADMIN_PASSWORD` is configured. | `backend/src/routes/auth.routes.js`, `frontend/src/components/Login.jsx` |
 | Security response headers | Native Express middleware sets baseline headers such as CSP, frame denial, referrer policy, permissions policy, and optional HSTS when secure cookies are enabled. | `backend/src/middleware/security.middleware.js` |
 | Request-size policy | Default JSON/urlencoded body limit is configurable and lower than import endpoints. | `WA_BOT_JSON_BODY_LIMIT`, `WA_BOT_IMPORT_BODY_LIMIT` |
+| Dependency audit baseline | `sqlite3@6.x` remediation was tested and latest backend audit was clean. | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
+| Staging deploy baseline | HTTP/IP staging is verified, but production hardening is pending. | `docs/STAGING.md` |
 
 ## 3. Known Production Gaps
 
@@ -26,8 +28,8 @@ This document separates implemented controls from production requirements. It is
 | Session credentials are not proven encrypted at-rest | Filesystem access may expose linked WhatsApp sessions. | Apply OS ACLs, encryption at-rest, and session rotation procedures. |
 | Existing Chatbot AI keys may predate field encryption | Older SQLite rows may remain plaintext until saved again. | Configure `WA_BOT_SECRET_ENCRYPTION_KEY` and save each AI configuration again. |
 | Sensitive examples may drift into docs or source code | Secrets can be leaked accidentally. | Use placeholders only and scan before release. |
-| Dependency audit has unresolved findings | Known package vulnerabilities can be missed before release. | See `docs/SECURITY_AUDIT.md`; test the `sqlite3@6.x` upgrade path before accepting or fixing the findings. |
-| Filesystem ACL commands are templates only | Incorrect VPS permissions can expose sessions, database, env, or logs. | Review and apply `docs/deploy/security_acl.commands.txt` on the actual VPS. |
+| Staging still lacks production network hardening | HTTP/IP exposure without domain/TLS and provider firewall review is not production-safe. | Add domain/TLS, set secure cookie, restrict CORS, review provider firewall, and record HTTPS smoke evidence. |
+| Filesystem ACL needs final dedicated-user review | Current staging ACL baseline is applied for the `ubuntu` service user, but the production template assumes a dedicated `wa-bot` user. | Migrate service user later or keep documenting the `ubuntu` staging exception; protect env, database, sessions, backups, and logs. |
 | Baileys is an unofficial integration | Account restriction and platform-policy risk remain. | Review WhatsApp policy and evaluate the official Business Platform. |
 
 Implemented backend hardening:
@@ -41,6 +43,7 @@ Implemented backend hardening:
 - Request-size policy controlled by `WA_BOT_JSON_BODY_LIMIT` and `WA_BOT_IMPORT_BODY_LIMIT`; import endpoints can be larger than normal API calls.
 - Masked Chatbot AI key responses with `has_api_key` metadata.
 - Optional AES-256-GCM encryption for newly saved Chatbot AI keys controlled by `WA_BOT_SECRET_ENCRYPTION_KEY`.
+- `sqlite3@6.x` upgrade path has been tested and backend dependency audit is currently clean.
 
 The browser must not embed `WA_BOT_API_KEY` in frontend JavaScript. For public deployment, configure admin login or place the dashboard behind an authenticated reverse proxy. The API key path is suitable for trusted server-to-server access.
 
@@ -48,6 +51,7 @@ The browser must not embed `WA_BOT_API_KEY` in frontend JavaScript. For public d
 
 - Bind the backend to a private interface or protect it behind a reverse proxy.
 - Terminate TLS at the reverse proxy.
+- Set `WA_BOT_COOKIE_SECURE=true` after HTTPS is active.
 - Configure `WA_BOT_ADMIN_PASSWORD` and `WA_BOT_ADMIN_SESSION_SECRET`, or use a stronger authenticated gateway for every `/api/*` route.
 - Configure `WA_BOT_API_KEY` only for trusted server-to-server clients.
 - Configure and verify rate limiting, request size limits, and restricted CORS origins.

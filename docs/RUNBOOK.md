@@ -1,7 +1,7 @@
 # WA-Bot Pro Operations Runbook
 
 **Status:** Internal baseline  
-**Last updated:** 2026-06-04
+**Last updated:** 2026-06-05
 
 ## 1. Local Start
 
@@ -286,7 +286,52 @@ cd /opt/wa-bot/backend
 npm run security:audit
 ```
 
-Review `docs/deploy/security_acl.commands.txt` before applying filesystem ACLs on the actual VPS.
+Review `docs/deploy/security_acl.commands.txt` before migrating to a dedicated `wa-bot` service user. Current staging ACL baseline is applied for the active `ubuntu` service user.
+
+### 9.1 Staging VPS Evidence - 2026-06-05
+
+Staging baseline has been verified on an Ubuntu 24.04.4 VPS. Keep the exact IP/provider details in local-only `docs/STAGING.md`.
+
+Verified inventory:
+
+* App path: `/opt/wa-bot`
+* Env file: `/etc/wa-bot/wa-bot.env`
+* Node.js: `v22.22.3`
+* npm: `10.9.8`
+* Caddy: `v2.11.4`
+* systemd services: `wa-bot-api` and `wa-bot-worker`
+* Public access shape: HTTP over IP only, no domain/TLS yet
+
+Verified checks:
+
+```bash
+curl http://127.0.0.1/health
+curl http://127.0.0.1/api/auth/me
+curl http://127.0.0.1:3001/health/ready
+TOKEN=$(sudo grep '^WA_BOT_INTERNAL_TOKEN=' /etc/wa-bot/wa-bot.env | cut -d= -f2-)
+curl http://127.0.0.1:3002/internal/health/ready -H "X-Internal-Token: $TOKEN"
+```
+
+Observed result: API and worker both returned `status=ready`, database check `ok`, and worker polling flags were active for campaign/warmer worker in the combined worker role.
+
+Additional hardening evidence recorded on 2026-06-05:
+
+* UFW active with default deny incoming and inbound `22/tcp`, `80/tcp`, `443/tcp` only.
+* Public staging `/health` returned `status=healthy` after UFW was enabled.
+* `WA_BOT_BACKUP_ENCRYPTION_KEY`, `WA_BOT_ENCRYPTED_BACKUP_DIR`, and `WA_BOT_RESTORE_DRILL_DIR` are set in `/etc/wa-bot/wa-bot.env` without exposing secret values.
+* Encrypted backup created at `/opt/wa-bot/encrypted_backups/2026-06-05T03-14-35-612Z`.
+* Restore drill succeeded with SQLite table count `18` and did not overwrite live runtime data.
+* `wa-bot-backup.timer` and `wa-bot-restore-drill.timer` are enabled.
+* `wa-bot-healthcheck.timer` is enabled and checks API, worker, Caddy, disk usage, and backup freshness every minute.
+* HTTP smoke check passed for frontend `/` and `/api/auth/me` through local Caddy.
+* `/etc/logrotate.d/wa-bot` is installed for `/var/log/wa-bot/*.log`.
+
+Do not treat this as production-ready. Remaining hardening: domain, HTTPS, `WA_BOT_COOKIE_SECURE=true`, production CORS, provider firewall review, encrypted offsite backup copy, external monitoring alerts, and browser smoke evidence over HTTPS.
+
+For the full staging note, see `docs/STAGING.md`.
+For the next manual hardening commands, see `docs/deploy/STAGING_HARDENING.commands.md`.
+For scheduled encrypted backups, see `docs/deploy/BACKUP_SCHEDULE.commands.md`.
+For monitoring setup commands, see `docs/deploy/MONITORING_SETUP.commands.md`.
 
 ## 10. Monitoring and Alerts
 

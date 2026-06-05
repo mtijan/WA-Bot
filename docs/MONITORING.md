@@ -1,9 +1,11 @@
 # WA-Bot Monitoring & Alert Template
 
-**Status:** Template siap pakai, belum dipasang pada VPS produksi  
-**Last updated:** 2026-06-04
+**Status:** Template siap pakai; local healthcheck aktif di staging, external alerting belum dipasang  
+**Last updated:** 2026-06-05
 
 Dokumen ini menjadi acuan monitoring sebelum deploy publik. Targetnya adalah memastikan proses mati, endpoint tidak ready, disk penuh, sesi WhatsApp putus, campaign macet, dan backup gagal bisa diketahui sebelum berdampak ke pengguna.
+
+For VPS command steps, use `docs/deploy/MONITORING_SETUP.commands.md`.
 
 ## 1. Monitoring Targets
 
@@ -15,8 +17,8 @@ Dokumen ini menjadi acuan monitoring sebelum deploy publik. Targetnya adalah mem
 | Combined worker readiness | `GET http://127.0.0.1:3002/internal/health/ready` | JSON `status=ready` | Worker tidak merespons |
 | Campaign worker readiness | `GET http://127.0.0.1:3003/internal/health/ready` | JSON `status=ready` | Worker granular tidak merespons |
 | Warmer worker readiness | `GET http://127.0.0.1:3004/internal/health/ready` | JSON `status=ready` | Worker granular tidak merespons |
-| Public frontend | `https://<domain>/` | HTTP `200` | HTTP bukan `200` |
-| Public API via reverse proxy | `https://<domain>/api/auth/me` | HTTP `200` | HTTP bukan `200` / reverse proxy rusak |
+| Public frontend | `https://<domain>/` or staging HTTP/IP local evidence | HTTP `200` | HTTP bukan `200` |
+| Public API via reverse proxy | `https://<domain>/api/auth/me` or staging HTTP/IP local evidence | HTTP `200` | HTTP bukan `200` / reverse proxy rusak |
 | Disk usage | OS monitor | `<80%` | `>=80% warning`, `>=90% critical` |
 | RAM usage | OS monitor | stable | sustained `>=85%` |
 | CPU load | OS monitor | stable | sustained high load for 10 minutes |
@@ -31,7 +33,7 @@ Recommended monitors:
 | `wa-bot-api-live` | HTTP(s) | `http://127.0.0.1:3001/health` | 60s | 3 | Local/VPS internal monitor |
 | `wa-bot-api-ready` | HTTP(s) | `http://127.0.0.1:3001/health/ready` | 60s | 3 | Must return 200 |
 | `wa-bot-session-ready` | HTTP(s) | `http://127.0.0.1:3002/internal/health/ready` | 60s | 3 | Use when session manager/combined worker is active |
-| `wa-bot-public-frontend` | HTTP(s) | `https://<domain>/` | 60s | 3 | After VPS/domain setup |
+| `wa-bot-public-frontend` | HTTP(s) | `https://<domain>/` | 60s | 3 | Use staging IP only before domain exists |
 | `wa-bot-public-auth` | HTTP(s) | `https://<domain>/api/auth/me` | 60s | 3 | Confirms reverse proxy path |
 
 Notification channels:
@@ -134,3 +136,24 @@ Recent backup check should verify:
 | Operator | |
 
 Do not mark VPS monitoring as production-complete until this evidence table is filled for the actual VPS.
+
+## 8. Staging Evidence - 2026-06-05
+
+Manual checks on the staging VPS confirmed that the deploy baseline is alive. Keep real IP/provider details in local-only `docs/STAGING.md`, not in public repository docs.
+
+| Check | Result |
+|-------|--------|
+| `GET http://127.0.0.1/health` | `status=healthy` |
+| `GET http://127.0.0.1/api/auth/me` | `status=success`, auth enabled, unauthenticated user |
+| `GET http://127.0.0.1:3001/health/ready` | `status=ready`, role `api`, database `ok` |
+| `GET http://127.0.0.1:3002/internal/health/ready` with `X-Internal-Token` | `status=ready`, role `worker`, database `ok`, campaign/warmer polling active |
+| Public HTTP after UFW | staging public `/health` returned `status=healthy`; exact IP is kept in local-only evidence |
+| UFW | active; only `22/tcp`, `80/tcp`, and `443/tcp` allowed inbound |
+| Backup timer | `wa-bot-backup.timer` enabled; next run `2026-06-06 02:30:00 CST` |
+| Restore drill timer | `wa-bot-restore-drill.timer` enabled; next run `2026-06-07 03:00:00 CST` |
+| Latest restore drill | SQLite table count `18`; live runtime data was not overwritten |
+| Local healthcheck timer | `wa-bot-healthcheck.timer` enabled; checks API, worker, Caddy, disk, and backup freshness every minute |
+| Latest local healthcheck | OK; disk `12%`; latest backup age `0h`; latest backup `/opt/wa-bot/encrypted_backups/2026-06-05T03-14-35-612Z/manifest.json` |
+| HTTP smoke | Frontend `GET http://127.0.0.1/` OK; `GET http://127.0.0.1/api/auth/me` returned auth status JSON |
+
+Monitoring is still **PARTIAL** because external alerting such as Uptime Kuma/Netdata notification has not been installed and tested yet. Next required evidence: public domain HTTPS monitor, external API readiness alert, external worker readiness alert, disk/RAM alert notification, backup freshness alert notification, and test notification. Use `docs/deploy/MONITORING_SETUP.commands.md` as the command checklist.

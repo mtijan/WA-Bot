@@ -49,6 +49,8 @@ test-kroki.js
 AGENTS.md
 checklist.html
 sdlc_documentation.md
+docs/STAGING.md
+docs/deploy/STAGING_HARDENING.commands.md
 docs/html/
 docs/images/
 docs/SECURITY_AUDIT.md

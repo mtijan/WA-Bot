@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Smartphone, Send, Users, FileText, Bot, Network, Phone, BarChart2 } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
-const Dashboard = ({ API_URL }) => {
+const Dashboard = () => {
   const [stats, setStats] = useState({
     activeSessions: 0,
     totalSessions: 0,
@@ -22,8 +23,7 @@ const Dashboard = ({ API_URL }) => {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_URL}/dashboard/stats`);
-      const json = await res.json();
+      const json = await apiRequest('/dashboard/stats');
       if (json.status === 'success') {
         setStats(json.data);
       }

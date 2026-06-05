@@ -1,7 +1,7 @@
 # WA-Bot Codebase Quality Baseline
 
 **Status:** Baseline implemented, migration across all modules still in progress  
-**Last updated:** 2026-06-04
+**Last updated:** 2026-06-05
 
 ## Implemented Baseline
 
@@ -10,7 +10,8 @@
 | Central config | Core runtime/security/admin/internal values are read through `backend/src/config.js`. | `backend/src/config.js` |
 | Structured logger | Pino logger exists for bootstrap/runtime/internal error paths. | `backend/src/logger.js` |
 | Error response helper | Shared helpers exist for consistent success/error JSON envelopes. | `backend/src/utils/http_response.js` |
-| Frontend API client | Central API request helper exists and auth flow uses it. | `frontend/src/apiClient.js` |
+| Frontend API client | Central API request helper exists; auth flow and dashboard stats use it. | `frontend/src/apiClient.js`, `frontend/src/components/Dashboard.jsx` |
+| Auth response helper migration | Admin auth controller uses `sendSuccess` / `sendError`. | `backend/src/controllers/auth.controller.js` |
 
 ## Rules for Future Changes
 
@@ -31,3 +32,14 @@
 | Error response contract is not fully enforced. | Add backend integration tests for common error envelopes. |
 
 Do not mark item 7 as DONE until the remaining work above is migrated and verified.
+
+## Migration Evidence
+
+| Date | Area | Evidence |
+|------|------|----------|
+| 2026-06-05 | Frontend dashboard API calls | `frontend/src/components/Dashboard.jsx` uses `apiRequest('/dashboard/stats')`; `npm run build` passed. |
+| 2026-06-05 | Admin auth responses | `backend/src/controllers/auth.controller.js` uses `sendSuccess` / `sendError`; `node --check .\src\controllers\auth.controller.js` passed. |
+
+## Current Priority Note
+
+As of 2026-06-05, staging VPS baseline is verified with UFW, local backup/restore timers, local healthcheck, logrotate, and HTTP smoke. Continue codebase-quality migration while the remaining production blockers wait on domain/TLS, secure cookie, production CORS, provider firewall review, offsite backup, external alerting, and HTTPS smoke evidence.
