@@ -325,8 +325,11 @@ Additional hardening evidence recorded on 2026-06-05:
 * `wa-bot-healthcheck.timer` is enabled and checks API, worker, Caddy, disk usage, and backup freshness every minute.
 * HTTP smoke check passed for frontend `/` and `/api/auth/me` through local Caddy.
 * `/etc/logrotate.d/wa-bot` is installed for `/var/log/wa-bot/*.log`.
+* Domain HTTPS smoke passed for `/health`, `/api/auth/me`, and frontend `/`.
+* HTTP requests redirect to HTTPS with `308 Permanent Redirect`.
+* `WA_BOT_COOKIE_SECURE=true` and domain-specific `WA_BOT_ALLOWED_ORIGINS` are applied on staging.
 
-Do not treat this as production-ready. Remaining hardening: domain, HTTPS, `WA_BOT_COOKIE_SECURE=true`, production CORS, provider firewall review, encrypted offsite backup copy, external monitoring alerts, and browser smoke evidence over HTTPS.
+Do not treat this as production-ready. Remaining hardening: provider firewall review, encrypted offsite backup copy, external monitoring alerts, and manual browser smoke evidence over HTTPS.
 
 For the full staging note, see `docs/STAGING.md`.
 For the next manual hardening commands, see `docs/deploy/STAGING_HARDENING.commands.md`.

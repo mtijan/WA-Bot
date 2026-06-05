@@ -155,5 +155,8 @@ Manual checks on the staging VPS confirmed that the deploy baseline is alive. Ke
 | Local healthcheck timer | `wa-bot-healthcheck.timer` enabled; checks API, worker, Caddy, disk, and backup freshness every minute |
 | Latest local healthcheck | OK; disk `12%`; latest backup age `0h`; latest backup `/opt/wa-bot/encrypted_backups/2026-06-05T03-14-35-612Z/manifest.json` |
 | HTTP smoke | Frontend `GET http://127.0.0.1/` OK; `GET http://127.0.0.1/api/auth/me` returned auth status JSON |
+| Domain HTTPS smoke | staging domain `/health`, `/api/auth/me`, and frontend `/` returned OK over HTTPS |
+| HTTP redirect | staging domain HTTP returned `308 Permanent Redirect` to HTTPS |
+| Secure cookie/CORS | `WA_BOT_COOKIE_SECURE=true` and domain-specific `WA_BOT_ALLOWED_ORIGINS` applied on staging |
 
-Monitoring is still **PARTIAL** because external alerting such as Uptime Kuma/Netdata notification has not been installed and tested yet. Next required evidence: public domain HTTPS monitor, external API readiness alert, external worker readiness alert, disk/RAM alert notification, backup freshness alert notification, and test notification. Use `docs/deploy/MONITORING_SETUP.commands.md` as the command checklist.
+Monitoring is still **PARTIAL** because external alerting such as Uptime Kuma/Netdata notification has not been installed and tested yet. Next required evidence: external API readiness alert, external worker readiness alert, disk/RAM alert notification, backup freshness alert notification, and test notification. Use `docs/deploy/MONITORING_SETUP.commands.md` as the command checklist.

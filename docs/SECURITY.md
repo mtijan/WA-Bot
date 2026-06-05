@@ -28,7 +28,7 @@ This document separates implemented controls from production requirements. It is
 | Session credentials are not proven encrypted at-rest | Filesystem access may expose linked WhatsApp sessions. | Apply OS ACLs, encryption at-rest, and session rotation procedures. |
 | Existing Chatbot AI keys may predate field encryption | Older SQLite rows may remain plaintext until saved again. | Configure `WA_BOT_SECRET_ENCRYPTION_KEY` and save each AI configuration again. |
 | Sensitive examples may drift into docs or source code | Secrets can be leaked accidentally. | Use placeholders only and scan before release. |
-| Staging still lacks production network hardening | HTTP/IP exposure without domain/TLS and provider firewall review is not production-safe. | Add domain/TLS, set secure cookie, restrict CORS, review provider firewall, and record HTTPS smoke evidence. |
+| Staging still lacks final network hardening evidence | Domain HTTPS, secure cookie, and restricted CORS are active, but provider firewall review is still pending. | Confirm provider firewall allows only SSH, HTTP, and HTTPS inbound; record manual browser smoke evidence. |
 | Filesystem ACL needs final dedicated-user review | Current staging ACL baseline is applied for the `ubuntu` service user, but the production template assumes a dedicated `wa-bot` user. | Migrate service user later or keep documenting the `ubuntu` staging exception; protect env, database, sessions, backups, and logs. |
 | Baileys is an unofficial integration | Account restriction and platform-policy risk remain. | Review WhatsApp policy and evaluate the official Business Platform. |
 
