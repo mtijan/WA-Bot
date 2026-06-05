@@ -44,4 +44,4 @@ Do not mark item 7 as DONE until the remaining work above is migrated and verifi
 
 ## Current Priority Note
 
-As of 2026-06-05, staging VPS baseline is verified with UFW, local backup/restore timers, local healthcheck, logrotate, and HTTP smoke. Continue codebase-quality migration while the remaining production blockers wait on domain/TLS, secure cookie, production CORS, provider firewall review, offsite backup, external alerting, and HTTPS smoke evidence.
+As of 2026-06-05, staging VPS baseline is verified with domain HTTPS, secure cookie/CORS, UFW, local backup/restore timers, local healthcheck, logrotate, HTTP/HTTPS smoke, and auth HTTPS smoke. Continue codebase-quality migration while the remaining production blockers wait on provider firewall review, external alerting, manual browser smoke evidence, and offsite backup later when a storage destination is available.

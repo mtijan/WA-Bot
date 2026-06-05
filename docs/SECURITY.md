@@ -30,6 +30,7 @@ This document separates implemented controls from production requirements. It is
 | Sensitive examples may drift into docs or source code | Secrets can be leaked accidentally. | Use placeholders only and scan before release. |
 | Staging still lacks final network hardening evidence | Domain HTTPS, secure cookie, and restricted CORS are active, but provider firewall review is still pending. | Confirm provider firewall allows only SSH, HTTP, and HTTPS inbound; record manual browser smoke evidence. |
 | Filesystem ACL needs final dedicated-user review | Current staging ACL baseline is applied for the `ubuntu` service user, but the production template assumes a dedicated `wa-bot` user. | Migrate service user later or keep documenting the `ubuntu` staging exception; protect env, database, sessions, backups, and logs. |
+| Offsite backup destination not selected | Local encrypted backups protect against app mistakes, but not VPS loss. | Add offsite/object storage copy when a storage destination is available; keep backup encryption key separate. |
 | Baileys is an unofficial integration | Account restriction and platform-policy risk remain. | Review WhatsApp policy and evaluate the official Business Platform. |
 
 Implemented backend hardening:
@@ -44,6 +45,7 @@ Implemented backend hardening:
 - Masked Chatbot AI key responses with `has_api_key` metadata.
 - Optional AES-256-GCM encryption for newly saved Chatbot AI keys controlled by `WA_BOT_SECRET_ENCRYPTION_KEY`.
 - `sqlite3@6.x` upgrade path has been tested and backend dependency audit is currently clean.
+- Staging placeholder secrets were rotated and auth HTTPS smoke passed without exposing secret values.
 
 The browser must not embed `WA_BOT_API_KEY` in frontend JavaScript. For public deployment, configure admin login or place the dashboard behind an authenticated reverse proxy. The API key path is suitable for trusted server-to-server access.
 

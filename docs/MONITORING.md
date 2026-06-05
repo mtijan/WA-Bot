@@ -158,5 +158,6 @@ Manual checks on the staging VPS confirmed that the deploy baseline is alive. Ke
 | Domain HTTPS smoke | staging domain `/health`, `/api/auth/me`, and frontend `/` returned OK over HTTPS |
 | HTTP redirect | staging domain HTTP returned `308 Permanent Redirect` to HTTPS |
 | Secure cookie/CORS | `WA_BOT_COOKIE_SECURE=true` and domain-specific `WA_BOT_ALLOWED_ORIGINS` applied on staging |
+| Auth HTTPS smoke | Login, Secure cookie, authenticated `/api/auth/me`, and logout passed |
 
 Monitoring is still **PARTIAL** because external alerting such as Uptime Kuma/Netdata notification has not been installed and tested yet. Next required evidence: external API readiness alert, external worker readiness alert, disk/RAM alert notification, backup freshness alert notification, and test notification. Use `docs/deploy/MONITORING_SETUP.commands.md` as the command checklist.

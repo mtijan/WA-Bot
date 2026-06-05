@@ -139,7 +139,9 @@ sudo journalctl -u wa-bot-restore-drill.service -n 80 --no-pager
 
 ## 8. Offsite Copy Requirement
 
-The encrypted backup directory should not be the only copy. Move or sync encrypted backup folders to protected storage outside the VPS.
+The encrypted backup directory should not be the only copy for production. Move or sync encrypted backup folders to protected storage outside the VPS once a storage destination exists.
+
+For the current staging baseline, offsite copy may be explicitly marked as deferred because no offsite storage destination has been selected yet. Keep local encrypted backup and restore drill timers active while this is deferred.
 
 Acceptable next options:
 
@@ -158,4 +160,4 @@ Record these into `docs/STAGING.md`, `docs/MONITORING.md`, and the release check
 * encrypted file count;
 * restore drill log result;
 * SQLite table count from restore drill;
-* offsite copy destination or explicit staging exception.
+* offsite copy destination or explicit staging exception/deferred decision.

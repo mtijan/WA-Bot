@@ -328,8 +328,10 @@ Additional hardening evidence recorded on 2026-06-05:
 * Domain HTTPS smoke passed for `/health`, `/api/auth/me`, and frontend `/`.
 * HTTP requests redirect to HTTPS with `308 Permanent Redirect`.
 * `WA_BOT_COOKIE_SECURE=true` and domain-specific `WA_BOT_ALLOWED_ORIGINS` are applied on staging.
+* Required secret env values were reviewed for placeholders and rotated where needed. Do not print secret values in logs or docs.
+* Admin HTTPS auth smoke passed: login, Secure cookie, authenticated `/api/auth/me`, and logout.
 
-Do not treat this as production-ready. Remaining hardening: provider firewall review, encrypted offsite backup copy, external monitoring alerts, and manual browser smoke evidence over HTTPS.
+Do not treat this as production-ready. Remaining hardening: provider firewall review, external monitoring alerts, manual browser smoke evidence over HTTPS, and encrypted offsite backup copy when storage is available.
 
 For the full staging note, see `docs/STAGING.md`.
 For the next manual hardening commands, see `docs/deploy/STAGING_HARDENING.commands.md`.
