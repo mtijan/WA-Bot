@@ -3,6 +3,8 @@ import path from 'path';
 import https from 'https';
 import { fileURLToPath } from 'url';
 import { dbGet } from '../database.js';
+import { config } from '../config.js';
+import { logger, logError } from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,8 +21,6 @@ let downloadState = {
   error: null
 };
 
-// URL Download Default
-const DEFAULT_API_KEY = '2f066169ff2bd20f3cd4e4c75fd4a155';
 const FILES_TO_DOWNLOAD = [
   {
     name: 'ip-to-country.csv',
@@ -73,7 +73,7 @@ const downloadFile = (url, destPath, fileName) => {
         if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
           const redirectUrl = res.headers.location;
           if (redirectUrl) {
-            console.log(`[Offline DB] Mengikuti redirect ke: ${redirectUrl}`);
+            logger.info({ redirect_url: redirectUrl }, '[Offline DB] Mengikuti redirect.');
             return request(redirectUrl);
           }
         }
@@ -126,14 +126,18 @@ export const startDownload = async () => {
   }
 
   // Ambil API Key dari setting jika ada
-  let apiKey = DEFAULT_API_KEY;
+  let apiKey = config.integrations.iplocateApiKey;
   try {
     const apiKeySetting = await dbGet("SELECT value FROM settings WHERE key = 'iplocate_api_key'");
     if (apiKeySetting && apiKeySetting.value && apiKeySetting.value.trim() !== '') {
       apiKey = apiKeySetting.value.trim();
     }
   } catch (err) {
-    console.error('[Offline DB] Gagal memuat API Key dari database:', err);
+    logError(err, '[Offline DB] Gagal memuat API Key dari database.');
+  }
+
+  if (!apiKey) {
+    return { success: false, message: 'IPLocate API key belum dikonfigurasi.' };
   }
 
   // Set status ke downloading
@@ -162,7 +166,7 @@ export const startDownload = async () => {
         const destPath = path.join(DATA_DIR, file.name);
         const tempPath = destPath + '.tmp';
 
-        console.log(`[Offline DB] Mengunduh ${file.name} dari ${fileUrl}...`);
+        logger.info({ file: file.name }, '[Offline DB] Mengunduh file database.');
         await downloadFile(fileUrl, tempPath, file.name);
 
         // Rename tmp file ke asli setelah sukses
@@ -170,14 +174,14 @@ export const startDownload = async () => {
           fs.unlinkSync(destPath);
         }
         fs.renameSync(tempPath, destPath);
-        console.log(`[Offline DB] Selesai mengunduh ${file.name}`);
+        logger.info({ file: file.name }, '[Offline DB] Selesai mengunduh file database.');
       }
 
       downloadState.status = 'completed';
       downloadState.currentFile = '';
       downloadState.percent = 100;
     } catch (err) {
-      console.error('[Offline DB] Error saat mengunduh database:', err);
+      logError(err, '[Offline DB] Error saat mengunduh database.');
       downloadState.status = 'error';
       downloadState.error = err.message;
     }

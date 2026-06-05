@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, ShieldCheck, Activity, RefreshCw, AlertTriangle, Smartphone, Download, FileText, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
-const ProxyManager = ({ API_URL }) => {
+const ProxyManager = () => {
   const [activeTab, setActiveTab] = useState('pool'); // 'pool' | 'offline-db'
   
   const [proxies, setProxies] = useState([]);
@@ -14,6 +15,7 @@ const ProxyManager = ({ API_URL }) => {
   
   // State untuk API Key IPLocate
   const [iplocateApiKey, setIplocateApiKey] = useState('');
+  const [savedIplocateApiKey, setSavedIplocateApiKey] = useState('');
   const [savingKey, setSavingKey] = useState(false);
 
   // State untuk Offline Database
@@ -42,8 +44,7 @@ const ProxyManager = ({ API_URL }) => {
 
   const fetchProxies = async () => {
     try {
-      const res = await fetch(`${API_URL}/proxies`);
-      const json = await res.json();
+      const json = await apiRequest('/proxies');
       if (json.status === 'success') {
         setProxies(json.data);
       }
@@ -54,8 +55,7 @@ const ProxyManager = ({ API_URL }) => {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
-      const json = await res.json();
+      const json = await apiRequest('/sessions');
       if (json.status === 'success') {
         setSessions(json.data);
       }
@@ -66,10 +66,10 @@ const ProxyManager = ({ API_URL }) => {
 
   const fetchApiKey = async () => {
     try {
-      const res = await fetch(`${API_URL}/proxies/settings/iplocate_api_key`);
-      const json = await res.json();
+      const json = await apiRequest('/proxies/settings/iplocate_api_key');
       if (json.status === 'success') {
-        setIplocateApiKey(json.value || '');
+        setIplocateApiKey('');
+        setSavedIplocateApiKey(json.masked_value || '');
       }
     } catch (err) {
       console.error('Gagal mengambil API Key IPLocate:', err);
@@ -78,8 +78,7 @@ const ProxyManager = ({ API_URL }) => {
 
   const fetchOfflineDbStatus = async () => {
     try {
-      const res = await fetch(`${API_URL}/proxies/offline-db/status`);
-      const json = await res.json();
+      const json = await apiRequest('/proxies/offline-db/status');
       if (json.status === 'success') {
         setOfflineDbStatus(json.data);
         if (json.data.state.status === 'downloading') {
@@ -96,13 +95,13 @@ const ProxyManager = ({ API_URL }) => {
   const handleSaveApiKey = async () => {
     setSavingKey(true);
     try {
-      const res = await fetch(`${API_URL}/proxies/settings/iplocate_api_key`, {
+      const json = await apiRequest('/proxies/settings/iplocate_api_key', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value: iplocateApiKey.trim() })
       });
-      const json = await res.json();
       if (json.status === 'success') {
+        setSavedIplocateApiKey(iplocateApiKey.trim() ? getMaskedApiKey(iplocateApiKey.trim()) : '');
+        setIplocateApiKey('');
         alert('API Key IPLocate berhasil disimpan!');
       } else {
         alert('Gagal menyimpan API Key: ' + json.message);
@@ -119,12 +118,10 @@ const ProxyManager = ({ API_URL }) => {
     if (!name.trim() || !proxyUrl.trim()) return;
 
     try {
-      const res = await fetch(`${API_URL}/proxies`, {
+      const json = await apiRequest('/proxies', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, proxy_url: proxyUrl.trim() }),
       });
-      const json = await res.json();
       if (json.status === 'success') {
         setName('');
         setProxyUrl('');
@@ -141,10 +138,9 @@ const ProxyManager = ({ API_URL }) => {
     if (!confirm('Apakah Anda yakin ingin menghapus proxy ini? Seluruh perangkat yang terhubung ke proxy ini akan beralih ke koneksi langsung.')) return;
 
     try {
-      const res = await fetch(`${API_URL}/proxies/${id}`, {
+      const json = await apiRequest(`/proxies/${id}`, {
         method: 'DELETE',
       });
-      const json = await res.json();
       if (json.status === 'success') {
         fetchProxies();
         fetchSessions(); // Sesi akan beralih ke NULL di DB, jadi refresh sesi juga
@@ -159,10 +155,9 @@ const ProxyManager = ({ API_URL }) => {
   const handleTestProxy = async (id) => {
     setTestingId(id);
     try {
-      const res = await fetch(`${API_URL}/proxies/${id}/test`, {
+      const json = await apiRequest(`/proxies/${id}/test`, {
         method: 'POST',
       });
-      const json = await res.json();
       if (json.status === 'success') {
         setTestResults(prev => ({
           ...prev,
@@ -186,12 +181,10 @@ const ProxyManager = ({ API_URL }) => {
   const handleAssignProxy = async (sessionId, proxyId) => {
     setUpdatingSessionId(sessionId);
     try {
-      const res = await fetch(`${API_URL}/sessions/${sessionId}/proxy`, {
+      const json = await apiRequest(`/sessions/${sessionId}/proxy`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ proxy_id: proxyId ? parseInt(proxyId) : null }),
       });
-      const json = await res.json();
       if (json.status === 'success') {
         await fetchSessions(); // Refresh data sesi
       } else {
@@ -207,10 +200,9 @@ const ProxyManager = ({ API_URL }) => {
   const handleDownloadOfflineDb = async () => {
     setLoadingOfflineDb(true);
     try {
-      const res = await fetch(`${API_URL}/proxies/offline-db/download`, {
+      const json = await apiRequest('/proxies/offline-db/download', {
         method: 'POST'
       });
-      const json = await res.json();
       if (json.status === 'success') {
         setDownloading(true);
         alert('Proses pengunduhan database offline telah dimulai di latar belakang.');
@@ -330,6 +322,9 @@ const ProxyManager = ({ API_URL }) => {
                   onChange={(e) => setIplocateApiKey(e.target.value)}
                 />
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                  {savedIplocateApiKey
+                    ? <>Saved key: <code>{savedIplocateApiKey}</code>. Enter a new key only when rotating it. </>
+                    : null}
                   Get your API key from <a href="https://www.iplocate.io/account" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary-color)', textDecoration: 'underline' }}>iplocate.io account settings</a>
                 </div>
               </div>

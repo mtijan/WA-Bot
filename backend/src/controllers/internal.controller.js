@@ -1,6 +1,13 @@
 import whatsappService from '../services/whatsapp.service.js';
 import { dbAll, dbGet, dbRun } from '../database.js';
 import { getReadiness } from '../services/readiness.service.js';
+import { maskProxyUrl } from '../utils/secret_masking.js';
+
+const maskSessionProxy = (session) => ({
+  ...session,
+  proxy_url: maskProxyUrl(session.proxy_url),
+  resolved_proxy_url: maskProxyUrl(session.resolved_proxy_url)
+});
 
 const waitForSessionState = async (sessionId, maxAttempts = 10) => {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -37,13 +44,13 @@ export const listSessions = async (req, res) => {
   const data = [];
   for (const session of dbSessions) {
     const liveData = await whatsappService.getSessionStatus(session.session_id);
-    data.push(liveData || {
+    data.push(liveData ? maskSessionProxy(liveData) : {
       session_id: session.session_id,
       phone_number: session.phone_number,
       status: session.status,
       proxy_id: session.proxy_id,
       proxy_name: session.proxy_name,
-      proxy_url: session.resolved_proxy_url || session.proxy_url,
+      proxy_url: maskProxyUrl(session.resolved_proxy_url || session.proxy_url),
       qr_code: null
     });
   }
@@ -56,7 +63,7 @@ export const getSession = async (req, res) => {
   if (!data) {
     return res.status(404).json({ status: 'error', message: 'Sesi tidak ditemukan.' });
   }
-  return res.json({ status: 'success', data });
+  return res.json({ status: 'success', data: maskSessionProxy(data) });
 };
 
 export const initSession = async (req, res) => {
@@ -75,7 +82,7 @@ export const initSession = async (req, res) => {
   return res.status(201).json({
     status: 'success',
     message: 'Sesi diinisialisasi oleh session manager.',
-    data
+    data: data ? maskSessionProxy(data) : data
   });
 };
 

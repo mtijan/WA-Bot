@@ -66,5 +66,8 @@ export const config = {
     token: process.env.WA_BOT_INTERNAL_TOKEN || '',
     port: parseOptionalPositiveInteger(process.env.WA_BOT_INTERNAL_PORT),
     sessionManagerUrl: process.env.WA_BOT_SESSION_MANAGER_URL || ''
+  },
+  integrations: {
+    iplocateApiKey: process.env.WA_BOT_IPLOCATE_API_KEY || ''
   }
 };

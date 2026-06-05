@@ -3,12 +3,13 @@ import http from 'http';
 import https from 'https';
 import { dbRun, dbAll, dbGet } from '../database.js';
 import { getDownloadStatus, startDownload } from '../services/iplocate.service.js';
+import { maskProxyRecord, maskSecret } from '../utils/secret_masking.js';
 
 
 export const getProxies = async (req, res) => {
   try {
     const proxies = await dbAll('SELECT * FROM proxies ORDER BY created_at DESC');
-    res.json({ status: 'success', data: proxies });
+    res.json({ status: 'success', data: proxies.map(maskProxyRecord) });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
@@ -150,6 +151,15 @@ export const getSetting = async (req, res) => {
   const { key } = req.params;
   try {
     const setting = await dbGet('SELECT value FROM settings WHERE key = ?', [key]);
+    if (key === 'iplocate_api_key') {
+      const value = setting ? setting.value : '';
+      return res.json({
+        status: 'success',
+        value: '',
+        has_value: Boolean(value),
+        masked_value: maskSecret(value)
+      });
+    }
     res.json({ status: 'success', value: setting ? setting.value : '' });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
@@ -193,4 +203,3 @@ export const startOfflineDbDownload = async (req, res) => {
     res.status(500).json({ status: 'error', message: error.message });
   }
 };
-

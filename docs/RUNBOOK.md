@@ -327,11 +327,13 @@ Additional hardening evidence recorded on 2026-06-05:
 * `/etc/logrotate.d/wa-bot` is installed for `/var/log/wa-bot/*.log`.
 * Domain HTTPS smoke passed for `/health`, `/api/auth/me`, and frontend `/`.
 * HTTP requests redirect to HTTPS with `308 Permanent Redirect`.
+* Provider firewall review passed: inbound public access is limited to SSH `22`, HTTP `80`, and HTTPS `443`; direct public access to backend port `3001` timed out.
 * `WA_BOT_COOKIE_SECURE=true` and domain-specific `WA_BOT_ALLOWED_ORIGINS` are applied on staging.
 * Required secret env values were reviewed for placeholders and rotated where needed. Do not print secret values in logs or docs.
 * Admin HTTPS auth smoke passed: login, Secure cookie, authenticated `/api/auth/me`, and logout.
+* Manual browser smoke over HTTPS passed: login, dashboard, session manager, contact groups, templates, proxy manager, and logout were checked by the operator.
 
-Do not treat this as production-ready. Remaining hardening: provider firewall review, external monitoring alerts, manual browser smoke evidence over HTTPS, and encrypted offsite backup copy when storage is available.
+Do not treat this as production-ready. Remaining hardening: external monitoring alerts, deploy the latest repo hardening changes to staging, and encrypted offsite backup copy when storage is available.
 
 For the full staging note, see `docs/STAGING.md`.
 For the next manual hardening commands, see `docs/deploy/STAGING_HARDENING.commands.md`.

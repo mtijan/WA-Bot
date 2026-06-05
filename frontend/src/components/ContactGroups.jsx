@@ -11,8 +11,9 @@ import {
   X,
   RefreshCw
 } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
-const ContactGroups = ({ API_URL }) => {
+const ContactGroups = () => {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -36,8 +37,7 @@ const ContactGroups = ({ API_URL }) => {
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/contacts/groups`);
-      const json = await res.json();
+      const json = await apiRequest('/contacts/groups');
       if (json.status === 'success') {
         setGroups(json.data || []);
       } else {
@@ -56,12 +56,10 @@ const ContactGroups = ({ API_URL }) => {
     if (!name) return;
 
     try {
-      const res = await fetch(`${API_URL}/contacts/groups`, {
+      const json = await apiRequest('/contacts/groups', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description, color })
       });
-      const json = await res.json();
       if (json.status === 'success') {
         setShowCreateModal(false);
         resetForm();
@@ -80,12 +78,10 @@ const ContactGroups = ({ API_URL }) => {
     if (!name || !selectedGroup) return;
 
     try {
-      const res = await fetch(`${API_URL}/contacts/groups/${selectedGroup.id}`, {
+      const json = await apiRequest(`/contacts/groups/${selectedGroup.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description, color })
       });
-      const json = await res.json();
       if (json.status === 'success') {
         setShowEditModal(false);
         resetForm();
@@ -104,10 +100,9 @@ const ContactGroups = ({ API_URL }) => {
     if (!confirm('Apakah Anda yakin ingin menghapus grup kontak ini beserta semua kontak di dalamnya?')) return;
 
     try {
-      const res = await fetch(`${API_URL}/contacts/groups/${id}`, {
+      const json = await apiRequest(`/contacts/groups/${id}`, {
         method: 'DELETE'
       });
-      const json = await res.json();
       if (json.status === 'success') {
         fetchGroups();
       } else {
@@ -123,8 +118,7 @@ const ContactGroups = ({ API_URL }) => {
     if (!confirm('Apakah Anda ingin membersihkan dan menghapus data kontak yatim (tidak memiliki grup)?')) return;
 
     try {
-      const res = await fetch(`${API_URL}/contacts/cleanup`, { method: 'POST' });
-      const json = await res.json();
+      const json = await apiRequest('/contacts/cleanup', { method: 'POST' });
       alert(json.message || 'Pembersihan selesai');
       fetchGroups();
     } catch (err) {

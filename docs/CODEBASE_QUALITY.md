@@ -10,7 +10,8 @@
 | Central config | Core runtime/security/admin/internal values are read through `backend/src/config.js`. | `backend/src/config.js` |
 | Structured logger | Pino logger exists for bootstrap/runtime/internal error paths. | `backend/src/logger.js` |
 | Error response helper | Shared helpers exist for consistent success/error JSON envelopes. | `backend/src/utils/http_response.js` |
-| Frontend API client | Central API request helper exists; auth flow, dashboard stats, session manager, and message templates use it. | `frontend/src/apiClient.js`, `frontend/src/components/Dashboard.jsx`, `frontend/src/components/SessionManager.jsx`, `frontend/src/components/Templates.jsx` |
+| Secret masking helper | Shared masking helper exists for proxy URLs and partial secret display. | `backend/src/utils/secret_masking.js` |
+| Frontend API client | Central API request helper exists; auth flow, dashboard stats, session manager, contact groups, proxy manager, and message templates use it. | `frontend/src/apiClient.js`, `frontend/src/components/Dashboard.jsx`, `frontend/src/components/SessionManager.jsx`, `frontend/src/components/ContactGroups.jsx`, `frontend/src/components/ProxyManager.jsx`, `frontend/src/components/Templates.jsx` |
 | Auth response helper migration | Admin auth controller uses `sendSuccess` / `sendError`. | `backend/src/controllers/auth.controller.js` |
 
 ## Rules for Future Changes
@@ -41,6 +42,9 @@ Do not mark item 7 as DONE until the remaining work above is migrated and verifi
 | 2026-06-05 | Admin auth responses | `backend/src/controllers/auth.controller.js` uses `sendSuccess` / `sendError`; `node --check .\src\controllers\auth.controller.js` passed. |
 | 2026-06-05 | Frontend session API calls | `frontend/src/components/SessionManager.jsx` uses `apiRequest` for session list/create/delete; `npm run build` passed. |
 | 2026-06-05 | Frontend template API calls | `frontend/src/components/Templates.jsx` uses `apiRequest` for template list/create/delete; `npm run build` passed. |
+| 2026-06-05 | Frontend contact group API calls | `frontend/src/components/ContactGroups.jsx` uses `apiRequest` for group list/create/update/delete and orphan cleanup; `npm run build` passed. |
+| 2026-06-05 | Frontend proxy manager API calls | `frontend/src/components/ProxyManager.jsx` uses `apiRequest` for proxy/session/IPLocate/offline-db API calls; `npm run build` passed. |
+| 2026-06-05 | Proxy/IPLocate secret masking | Proxy URL responses and IPLocate setting responses are masked; hardcoded IPLocate fallback key was removed; backend syntax checks, `npm run build`, and `npm run security:audit` passed. |
 
 ## Current Priority Note
 

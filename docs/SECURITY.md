@@ -18,7 +18,8 @@ This document separates implemented controls from production requirements. It is
 | Admin dashboard authentication | Optional admin login issues an HttpOnly cookie when `WA_BOT_ADMIN_PASSWORD` is configured. | `backend/src/routes/auth.routes.js`, `frontend/src/components/Login.jsx` |
 | Security response headers | Native Express middleware sets baseline headers such as CSP, frame denial, referrer policy, permissions policy, and optional HSTS when secure cookies are enabled. | `backend/src/middleware/security.middleware.js` |
 | Request-size policy | Default JSON/urlencoded body limit is configurable and lower than import endpoints. | `WA_BOT_JSON_BODY_LIMIT`, `WA_BOT_IMPORT_BODY_LIMIT` |
-| Dependency audit baseline | `sqlite3@6.x` remediation was tested and latest backend audit was clean. | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
+| Proxy/IPLocate secret masking | Proxy URLs and IPLocate settings responses no longer return credential plaintext; IPLocate env key is preferred for production. | `backend/src/utils/secret_masking.js`, `backend/src/controllers/proxy.controller.js`, `backend/src/controllers/session.controller.js`, `WA_BOT_IPLOCATE_API_KEY` |
+| Dependency audit baseline | `sqlite3@6.x` remediation was tested and latest backend audit was clean (`npm run security:audit`, 2026-06-05). | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
 | Staging deploy baseline | HTTP/IP staging is verified, but production hardening is pending. | `docs/STAGING.md` |
 
 ## 3. Known Production Gaps
@@ -28,7 +29,7 @@ This document separates implemented controls from production requirements. It is
 | Session credentials are not proven encrypted at-rest | Filesystem access may expose linked WhatsApp sessions. | Apply OS ACLs, encryption at-rest, and session rotation procedures. |
 | Existing Chatbot AI keys may predate field encryption | Older SQLite rows may remain plaintext until saved again. | Configure `WA_BOT_SECRET_ENCRYPTION_KEY` and save each AI configuration again. |
 | Sensitive examples may drift into docs or source code | Secrets can be leaked accidentally. | Use placeholders only and scan before release. |
-| Staging still lacks final network hardening evidence | Domain HTTPS, secure cookie, and restricted CORS are active, but provider firewall review is still pending. | Confirm provider firewall allows only SSH, HTTP, and HTTPS inbound; record manual browser smoke evidence. |
+| Staging still lacks external alerting evidence | Domain HTTPS, secure cookie, restricted CORS, provider firewall review, and manual browser smoke are complete, but external alert notifications are still pending. | Install/test external monitoring alerts and record release evidence. |
 | Filesystem ACL needs final dedicated-user review | Current staging ACL baseline is applied for the `ubuntu` service user, but the production template assumes a dedicated `wa-bot` user. | Migrate service user later or keep documenting the `ubuntu` staging exception; protect env, database, sessions, backups, and logs. |
 | Offsite backup destination not selected | Local encrypted backups protect against app mistakes, but not VPS loss. | Add offsite/object storage copy when a storage destination is available; keep backup encryption key separate. |
 | Baileys is an unofficial integration | Account restriction and platform-policy risk remain. | Review WhatsApp policy and evaluate the official Business Platform. |
@@ -46,6 +47,7 @@ Implemented backend hardening:
 - Optional AES-256-GCM encryption for newly saved Chatbot AI keys controlled by `WA_BOT_SECRET_ENCRYPTION_KEY`.
 - `sqlite3@6.x` upgrade path has been tested and backend dependency audit is currently clean.
 - Staging placeholder secrets were rotated and auth HTTPS smoke passed without exposing secret values.
+- Proxy URLs and IPLocate API key responses are masked; the previous hardcoded IPLocate fallback key was removed in favor of `WA_BOT_IPLOCATE_API_KEY` or protected settings.
 
 The browser must not embed `WA_BOT_API_KEY` in frontend JavaScript. For public deployment, configure admin login or place the dashboard behind an authenticated reverse proxy. The API key path is suitable for trusted server-to-server access.
 
@@ -60,7 +62,7 @@ The browser must not embed `WA_BOT_API_KEY` in frontend JavaScript. For public d
 - Run `npm run security:audit` from `backend/` and record the output in `docs/SECURITY_AUDIT.md`.
 - Encrypt disks and restrict access to `backend/sessions/` and `backend/database.sqlite`.
 - Apply or adapt `docs/deploy/security_acl.commands.txt` on the VPS.
-- Configure `WA_BOT_SECRET_ENCRYPTION_KEY`; move environment keys and IPLocate keys into managed secrets or protected configuration.
+- Configure `WA_BOT_SECRET_ENCRYPTION_KEY`; move environment keys and IPLocate keys into managed secrets or protected configuration. Prefer `WA_BOT_IPLOCATE_API_KEY` over saving the IPLocate key in SQLite settings for production.
 - Remove stale sessions promptly after staff changes or suspected compromise.
 - Back up the SQLite database and test restore procedures.
 - Record security test evidence for each release candidate.

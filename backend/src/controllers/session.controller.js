@@ -1,11 +1,21 @@
 import whatsappService from '../services/whatsapp.service.js';
 import { dbAll, dbGet, dbRun } from '../database.js';
 import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
+import { maskProxyUrl } from '../utils/secret_masking.js';
+
+const maskSessionProxy = (session) => ({
+  ...session,
+  proxy_url: maskProxyUrl(session.proxy_url),
+  resolved_proxy_url: maskProxyUrl(session.resolved_proxy_url)
+});
 
 export const getSessions = async (req, res) => {
   try {
     if (isSessionManagerClientEnabled()) {
       const payload = await sessionManagerClient.listSessions();
+      if (Array.isArray(payload?.data)) {
+        payload.data = payload.data.map(maskSessionProxy);
+      }
       return res.json(payload);
     }
 
@@ -18,13 +28,13 @@ export const getSessions = async (req, res) => {
     
     for (const session of dbSessions) {
       const liveData = await whatsappService.getSessionStatus(session.session_id);
-      result.push(liveData || {
+      result.push(liveData ? maskSessionProxy(liveData) : {
         session_id: session.session_id,
         phone_number: session.phone_number,
         status: session.status,
         proxy_id: session.proxy_id,
         proxy_name: session.proxy_name,
-        proxy_url: session.resolved_proxy_url || session.proxy_url,
+        proxy_url: maskProxyUrl(session.resolved_proxy_url || session.proxy_url),
         qr_code: null
       });
     }
@@ -77,7 +87,7 @@ export const createSession = async (req, res) => {
     res.status(201).json({
       status: 'success',
       message: 'Sesi diinisialisasi.',
-      data: finalStatus
+      data: finalStatus ? maskSessionProxy(finalStatus) : finalStatus
     });
   } catch (err) {
     res.status(500).json({ status: 'error', message: err.message });
