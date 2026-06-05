@@ -20,8 +20,9 @@ import {
   Smile,
   CornerDownLeft
 } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
-const Templates = ({ API_URL }) => {
+const Templates = () => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,8 +50,7 @@ const Templates = ({ API_URL }) => {
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/templates`);
-      const json = await res.json();
+      const json = await apiRequest('/templates');
       if (json.status === 'success') {
         setTemplates(json.data || []);
       }
@@ -86,9 +86,8 @@ const Templates = ({ API_URL }) => {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/templates`, {
+      const json = await apiRequest('/templates', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: templateName,
           content: messageContent,
@@ -102,7 +101,6 @@ const Templates = ({ API_URL }) => {
           poll_options: pollOptions || null
         })
       });
-      const json = await res.json();
       if (json.status === 'success') {
         window.showSuccess('Template pesan berhasil disimpan.');
         // Reset states
@@ -131,8 +129,7 @@ const Templates = ({ API_URL }) => {
   const handleDeleteTemplate = async (id) => {
     if (!confirm('Apakah Anda yakin ingin menghapus template pesan ini?')) return;
     try {
-      const res = await fetch(`${API_URL}/templates/${id}`, { method: 'DELETE' });
-      const json = await res.json();
+      const json = await apiRequest(`/templates/${id}`, { method: 'DELETE' });
       if (json.status === 'success') {
         window.showSuccess('Template berhasil dihapus.');
         fetchTemplates();
