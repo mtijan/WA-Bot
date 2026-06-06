@@ -66,6 +66,27 @@ const BulkCampaign = ({ API_URL }) => {
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
 
+  // Confirm Dialog State
+  const [confirmDialog, setConfirmDialog] = useState({ 
+    show: false, 
+    title: '', 
+    message: '', 
+    confirmLabel: 'Ya, Hapus', 
+    confirmBtnClass: 'btn-danger', 
+    onConfirm: null 
+  });
+
+  const triggerConfirm = (title, message, confirmLabel, confirmBtnClass, onConfirm) => {
+    setConfirmDialog({
+      show: true,
+      title,
+      message,
+      confirmLabel,
+      confirmBtnClass,
+      onConfirm
+    });
+  };
+
   // Fetch initial data
   useEffect(() => {
     fetchCampaigns();
@@ -212,24 +233,31 @@ const BulkCampaign = ({ API_URL }) => {
   };
 
   const handleDeleteCampaign = async (campaignId) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus riwayat kampanye ini?')) return;
-    try {
-      const json = await apiRequest(`/campaigns/${campaignId}`, {
-        method: 'DELETE'
-      });
-      if (json.status === 'success') {
-        fetchCampaigns();
-        if (progress?.campaign_id === campaignId) {
-          setProgress(null);
-          setActiveCampaignId(null);
-        }
-        if (window.showSuccess) {
-          window.showSuccess('Kampanye berhasil dihapus');
+    triggerConfirm(
+      'Hapus Kampanye',
+      'Apakah Anda yakin ingin menghapus riwayat kampanye ini?',
+      'Ya, Hapus',
+      'btn-danger',
+      async () => {
+        try {
+          const json = await apiRequest(`/campaigns/${campaignId}`, {
+            method: 'DELETE'
+          });
+          if (json.status === 'success') {
+            fetchCampaigns();
+            if (progress?.campaign_id === campaignId) {
+              setProgress(null);
+              setActiveCampaignId(null);
+            }
+            if (window.showSuccess) {
+              window.showSuccess('Kampanye berhasil dihapus');
+            }
+          }
+        } catch (err) {
+          console.error('Gagal menghapus kampanye:', err);
         }
       }
-    } catch (err) {
-      console.error('Gagal menghapus kampanye:', err);
-    }
+    );
   };
 
   const handleTemplateSelect = (templateId) => {
@@ -1164,6 +1192,79 @@ const BulkCampaign = ({ API_URL }) => {
           >
             Tutup Monitor
           </button>
+        </div>
+      )}
+
+      {/* Confirm Dialog Modal */}
+      {confirmDialog.show && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div className="modal-content" style={{
+            maxWidth: '440px',
+            width: '90%',
+            borderRadius: '16px',
+            padding: '24px',
+            backgroundColor: 'var(--card-bg, #ffffff)',
+            boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+            border: '1px solid var(--border-color)',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            <div className="modal-header" style={{
+              marginBottom: '16px',
+              borderBottom: 'none',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-color)', margin: 0 }}>
+                {confirmDialog.title}
+              </h2>
+            </div>
+            <div className="modal-body" style={{ marginBottom: '24px', padding: 0 }}>
+              <p style={{ color: 'var(--text-color-muted, #6b7280)', fontSize: '0.95rem', lineHeight: '1.5', margin: 0 }}>
+                {confirmDialog.message}
+              </p>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: 'none', padding: 0 }}>
+              <button
+                className="btn btn-outline"
+                onClick={() => setConfirmDialog({ show: false, title: '', message: '', confirmLabel: '', confirmBtnClass: '', onConfirm: null })}
+                style={{ padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: 500 }}
+              >
+                Batal
+              </button>
+              <button
+                className={`btn ${confirmDialog.confirmBtnClass === 'btn-danger' ? '' : 'btn-primary'}`}
+                onClick={() => {
+                  if (confirmDialog.onConfirm) confirmDialog.onConfirm();
+                  setConfirmDialog({ show: false, title: '', message: '', confirmLabel: '', confirmBtnClass: '', onConfirm: null });
+                }}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: '8px',
+                  backgroundColor: confirmDialog.confirmBtnClass === 'btn-danger' ? '#ef4444' : 'var(--primary-color, #3b82f6)',
+                  color: 'white',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 500
+                }}
+              >
+                {confirmDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

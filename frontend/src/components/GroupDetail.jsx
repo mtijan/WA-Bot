@@ -39,6 +39,27 @@ const GroupDetail = ({ API_URL }) => {
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
+  // Confirm Dialog State
+  const [confirmDialog, setConfirmDialog] = useState({ 
+    show: false, 
+    title: '', 
+    message: '', 
+    confirmLabel: 'Ya, Hapus', 
+    confirmBtnClass: 'btn-danger', 
+    onConfirm: null 
+  });
+
+  const triggerConfirm = (title, message, confirmLabel, confirmBtnClass, onConfirm) => {
+    setConfirmDialog({
+      show: true,
+      title,
+      message,
+      confirmLabel,
+      confirmBtnClass,
+      onConfirm
+    });
+  };
+
   // Manual contact form state
   const [contactName, setContactName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -457,33 +478,45 @@ const GroupDetail = ({ API_URL }) => {
 
   // Delete Invalid Contacts
   const handleDeleteInvalid = async () => {
-    if (!confirm('Apakah Anda ingin menghapus semua nomor yang tidak valid (INVALID) dari grup ini?')) return;
-
-    try {
-      const json = await apiRequest(`/contacts/groups/${groupId}/invalid`, {
-        method: 'DELETE'
-      });
-      if (json.status === 'success') {
-        fetchContacts();
-        fetchGroupInfo();
+    triggerConfirm(
+      'Hapus Nomor Tidak Valid',
+      'Apakah Anda ingin menghapus semua nomor yang tidak valid (INVALID) dari grup ini?',
+      'Ya, Hapus',
+      'btn-danger',
+      async () => {
+        try {
+          const json = await apiRequest(`/contacts/groups/${groupId}/invalid`, {
+            method: 'DELETE'
+          });
+          if (json.status === 'success') {
+            fetchContacts();
+            fetchGroupInfo();
+          }
+        } catch (err) {
+          console.error('Error delete invalid:', err);
+        }
       }
-    } catch (err) {
-      console.error('Error delete invalid:', err);
-    }
+    );
   };
 
   const handleDeleteContact = async (contactId) => {
-    if (!confirm('Hapus kontak ini?')) return;
-
-    try {
-      const json = await apiRequest(`/contacts/${contactId}`, { method: 'DELETE' });
-      if (json.status === 'success') {
-        fetchContacts();
-        fetchGroupInfo();
+    triggerConfirm(
+      'Hapus Kontak',
+      'Apakah Anda yakin ingin menghapus kontak ini?',
+      'Ya, Hapus',
+      'btn-danger',
+      async () => {
+        try {
+          const json = await apiRequest(`/contacts/${contactId}`, { method: 'DELETE' });
+          if (json.status === 'success') {
+            fetchContacts();
+            fetchGroupInfo();
+          }
+        } catch (err) {
+          console.error('Error delete single contact:', err);
+        }
       }
-    } catch (err) {
-      console.error('Error delete single contact:', err);
-    }
+    );
   };
 
   const resetManualForm = () => {
@@ -878,6 +911,78 @@ const GroupDetail = ({ API_URL }) => {
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', marginTop: '8px' }}>
             Harap tunggu. Sistem sedang menguji keaktifan nomor satu per satu secara asinkron.
           </p>
+        </div>
+      )}
+      {/* CONFIRMATION DIALOG MODAL */}
+      {confirmDialog.show && (
+        <div className="modal-overlay" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div className="modal-content" style={{
+            maxWidth: '440px',
+            width: '90%',
+            borderRadius: '16px',
+            padding: '24px',
+            backgroundColor: 'var(--card-bg, #ffffff)',
+            boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+            border: '1px solid var(--border-color)',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            <div className="modal-header" style={{
+              marginBottom: '16px',
+              borderBottom: 'none',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-color)', margin: 0 }}>
+                {confirmDialog.title}
+              </h2>
+            </div>
+            <div className="modal-body" style={{ marginBottom: '24px', padding: 0 }}>
+              <p style={{ color: 'var(--text-color-muted, #6b7280)', fontSize: '0.95rem', lineHeight: '1.5', margin: 0 }}>
+                {confirmDialog.message}
+              </p>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: 'none', padding: 0 }}>
+              <button
+                className="btn btn-outline"
+                onClick={() => setConfirmDialog({ show: false, title: '', message: '', confirmLabel: '', confirmBtnClass: '', onConfirm: null })}
+                style={{ padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: 500 }}
+              >
+                Batal
+              </button>
+              <button
+                className={`btn ${confirmDialog.confirmBtnClass === 'btn-danger' ? '' : 'btn-primary'}`}
+                onClick={() => {
+                  if (confirmDialog.onConfirm) confirmDialog.onConfirm();
+                  setConfirmDialog({ show: false, title: '', message: '', confirmLabel: '', confirmBtnClass: '', onConfirm: null });
+                }}
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: '8px',
+                  backgroundColor: confirmDialog.confirmBtnClass === 'btn-danger' ? '#ef4444' : 'var(--primary-color, #3b82f6)',
+                  color: 'white',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 500
+                }}
+              >
+                {confirmDialog.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
