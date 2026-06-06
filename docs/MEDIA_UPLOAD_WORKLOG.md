@@ -1,9 +1,9 @@
 # Media Upload Worklog
 
 **Status:** Completed  
-**Last updated:** 2026-06-05
+**Last updated:** 2026-06-06
 
-Dokumen ini dibuat agar agent berikutnya bisa melanjutkan fitur upload media tanpa mengulang investigasi dari awal.
+Dokumen ini dibuat agar agent berikutnya memahami riwayat penyelesaian fitur upload media tanpa mengulang investigasi dari awal.
 
 ## Goal
 
@@ -22,9 +22,9 @@ Target limit:
 
 ## Current Implementation State
 
-Backend foundation sudah mulai dibuat, tetapi fitur belum selesai end-to-end.
+Fitur sudah selesai end-to-end dan diverifikasi.
 
-Sudah ada:
+Komponen yang sudah ada:
 
 - Dependency backend `multer`.
 - `.gitignore` untuk runtime upload `backend/uploads/`.

@@ -21,6 +21,7 @@ Use this directory as a starting point, not as copy-paste without review. Replac
 | `security_acl.commands.txt` | Filesystem permission checklist for sessions, database, env, and logs. |
 | `BACKUP_SCHEDULE.commands.md` | systemd timer command sheet for encrypted backups and restore drills. |
 | `MONITORING_SETUP.commands.md` | monitoring command sheet for endpoint, process, resource, and backup freshness checks. |
+| `EXTERNAL_ALERTING.commands.md` | systemd timer command sheet for webhook-based external alerts. |
 
 ## Recommended VPS Layout
 
@@ -107,13 +108,10 @@ curl -fsS https://<domain>/api/auth/me
 
 For environment-specific staging notes, keep a local-only `docs/STAGING.md` and do not commit real IP addresses, SSH users, secrets, or provider details.
 
-Recommended staging order from here:
-
 Current staging has already reached domain HTTPS with secure cookie/CORS, UFW, provider firewall review, local backup/restore timers, local healthcheck, logrotate, HTTP/HTTPS smoke, auth HTTPS smoke, and manual browser smoke.
 
 Recommended staging order from here:
 
-1. Finish the current partial media upload feature if it is the active workstream.
-2. `MONITORING_SETUP.commands.md` with an external alert destination.
-3. Offsite backup copy later when storage exists.
-4. Evidence update for each release candidate.
+1. `EXTERNAL_ALERTING.commands.md` or `MONITORING_SETUP.commands.md` with an external alert destination.
+2. Offsite backup copy later when storage exists.
+3. Evidence update for each release candidate.

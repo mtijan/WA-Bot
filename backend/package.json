@@ -18,6 +18,7 @@
     "backup:encrypted": "node scripts/backup_runtime_data_encrypted.js",
     "restore:drill": "node scripts/restore_drill_encrypted_backup.js",
     "security:audit": "npm audit --omit=dev",
+    "monitor:alert": "node scripts/alert_healthcheck.js",
     "logs:prune": "node scripts/prune_delivery_logs.js",
     "logs:prune:apply": "node scripts/prune_delivery_logs.js --apply"
   },

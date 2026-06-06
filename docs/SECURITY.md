@@ -1,7 +1,7 @@
 # WA-Bot Pro Security Baseline
 
 **Status:** Internal development baseline  
-**Last updated:** 2026-06-05
+**Last updated:** 2026-06-06
 
 ## 1. Scope
 
@@ -18,7 +18,7 @@ This document separates implemented controls from production requirements. It is
 | Admin dashboard authentication | Optional admin login issues an HttpOnly cookie when `WA_BOT_ADMIN_PASSWORD` is configured. | `backend/src/routes/auth.routes.js`, `frontend/src/components/Login.jsx` |
 | Security response headers | Native Express middleware sets baseline headers such as CSP, frame denial, referrer policy, permissions policy, and optional HSTS when secure cookies are enabled. | `backend/src/middleware/security.middleware.js` |
 | Request-size policy | Default JSON/urlencoded body limit is configurable and lower than import endpoints. | `WA_BOT_JSON_BODY_LIMIT`, `WA_BOT_IMPORT_BODY_LIMIT` |
-| Media upload limits | Backend upload foundation is being added for admin image/video media with explicit size limits and runtime storage outside git. | `WA_BOT_MEDIA_UPLOAD_DIR`, `WA_BOT_IMAGE_UPLOAD_MAX_BYTES`, `WA_BOT_VIDEO_UPLOAD_MAX_BYTES`, `backend/uploads/` |
+| Media upload limits | Admin image/video upload is implemented with explicit size limits and runtime storage outside git. | `WA_BOT_MEDIA_UPLOAD_DIR`, `WA_BOT_IMAGE_UPLOAD_MAX_BYTES`, `WA_BOT_VIDEO_UPLOAD_MAX_BYTES`, `backend/uploads/` |
 | Proxy/IPLocate secret masking | Proxy URLs and IPLocate settings responses no longer return credential plaintext; IPLocate env key is preferred for production. | `backend/src/utils/secret_masking.js`, `backend/src/controllers/proxy.controller.js`, `backend/src/controllers/session.controller.js`, `WA_BOT_IPLOCATE_API_KEY` |
 | Dependency audit baseline | `sqlite3@6.x` remediation was tested and latest backend audit was clean (`npm run security:audit`, 2026-06-05). | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
 | Staging deploy baseline | HTTP/IP staging is verified, but production hardening is pending. | `docs/STAGING.md` |
@@ -45,7 +45,7 @@ Implemented backend hardening:
 - Disabled Express `X-Powered-By` response header.
 - Native security headers for CSP, frame denial, MIME sniffing protection, referrer policy, permissions policy, and optional HSTS.
 - Request-size policy controlled by `WA_BOT_JSON_BODY_LIMIT` and `WA_BOT_IMPORT_BODY_LIMIT`; import endpoints can be larger than normal API calls.
-- Media upload work is partial. Planned limits are image <= 5 MB and video <= 10 MB, stored under `backend/uploads/` or `WA_BOT_MEDIA_UPLOAD_DIR`.
+- Media upload is implemented. Limits are image <= 5 MB and video <= 10 MB, stored under `backend/uploads/` or `WA_BOT_MEDIA_UPLOAD_DIR`.
 - Masked Chatbot AI key responses with `has_api_key` metadata.
 - Optional AES-256-GCM encryption for newly saved Chatbot AI keys controlled by `WA_BOT_SECRET_ENCRYPTION_KEY`.
 - `sqlite3@6.x` upgrade path has been tested and backend dependency audit is currently clean.

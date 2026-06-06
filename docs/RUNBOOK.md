@@ -1,7 +1,7 @@
 # WA-Bot Pro Operations Runbook
 
 **Status:** Internal baseline  
-**Last updated:** 2026-06-05
+**Last updated:** 2026-06-06
 
 ## 1. Local Start
 
@@ -77,6 +77,13 @@ Copy `backend/.env.example` into your deployment secret-management workflow. The
 | `WA_BOT_MEDIA_UPLOAD_DIR` | Optional media upload directory. Defaults to `backend/uploads/media`. Keep it outside the frontend webroot. |
 | `WA_BOT_IMAGE_UPLOAD_MAX_BYTES` | Optional image upload limit. Defaults to `5242880` bytes / 5 MB. |
 | `WA_BOT_VIDEO_UPLOAD_MAX_BYTES` | Optional video upload limit. Defaults to `10485760` bytes / 10 MB. |
+| `WA_BOT_ALERT_TELEGRAM_BOT_TOKEN` | Optional Telegram bot token used by `npm run monitor:alert`. Keep it secret and out of git. |
+| `WA_BOT_ALERT_TELEGRAM_CHAT_ID` | Optional Telegram destination chat ID used by `npm run monitor:alert`. Keep it out of git. |
+| `WA_BOT_ALERT_WEBHOOK_URL` | Optional external alert webhook used by `npm run monitor:alert`. Keep it secret and out of git. |
+| `WA_BOT_ALERT_PUBLIC_URL` | Optional public frontend URL checked by `npm run monitor:alert`. |
+| `WA_BOT_ALERT_PUBLIC_HEALTH_URL` | Optional public health URL checked by `npm run monitor:alert`. |
+| `WA_BOT_ALERT_BACKUP_MAX_AGE_HOURS` | Optional encrypted-backup freshness threshold. Defaults to `36`. |
+| `WA_BOT_ALERT_DISK_WARN_PERCENT` | Optional disk usage warning threshold. Defaults to `80`. |
 
 Do not ship the backend API key inside frontend JavaScript. Public browser deployments should use an authenticated reverse proxy or server-side session layer.
 
@@ -292,6 +299,13 @@ cd /opt/wa-bot/backend
 npm run security:audit
 ```
 
+Alert check before VPS exposure:
+
+```bash
+cd /opt/wa-bot/backend
+npm run monitor:alert
+```
+
 Review `docs/deploy/security_acl.commands.txt` before migrating to a dedicated `wa-bot` service user. Current staging ACL baseline is applied for the active `ubuntu` service user.
 
 ### 9.1 Staging VPS Evidence - 2026-06-05
@@ -306,7 +320,7 @@ Verified inventory:
 * npm: `10.9.8`
 * Caddy: `v2.11.4`
 * systemd services: `wa-bot-api` and `wa-bot-worker`
-* Public access shape: HTTP over IP only, no domain/TLS yet
+* Public access shape: domain HTTPS through Caddy; backend port remains private
 
 Verified checks:
 
@@ -339,7 +353,7 @@ Additional hardening evidence recorded on 2026-06-05:
 * Admin HTTPS auth smoke passed: login, Secure cookie, authenticated `/api/auth/me`, and logout.
 * Manual browser smoke over HTTPS passed: login, dashboard, session manager, contact groups, templates, proxy manager, and logout were checked by the operator.
 
-Do not treat this as production-ready. Remaining hardening: external monitoring alerts and encrypted offsite backup copy when storage is available. The current media upload feature is still partial and must be completed before using uploaded assets in staging campaigns.
+Do not treat this as production-ready. Remaining hardening: external monitoring alerts and encrypted offsite backup copy when storage is available. Media upload is complete, but uploaded media should still be treated as protected runtime data.
 
 For the full staging note, see `docs/STAGING.md`.
 For the next manual hardening commands, see `docs/deploy/STAGING_HARDENING.commands.md`.

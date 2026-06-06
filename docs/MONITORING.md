@@ -1,11 +1,11 @@
 # WA-Bot Monitoring & Alert Template
 
-**Status:** Template siap pakai; local healthcheck aktif di staging, external alerting belum dipasang  
-**Last updated:** 2026-06-05
+**Status:** Template siap pakai; local healthcheck aktif di staging, webhook alert baseline tersedia, external alert evidence belum dicatat  
+**Last updated:** 2026-06-06
 
 Dokumen ini menjadi acuan monitoring sebelum deploy publik. Targetnya adalah memastikan proses mati, endpoint tidak ready, disk penuh, sesi WhatsApp putus, campaign macet, dan backup gagal bisa diketahui sebelum berdampak ke pengguna.
 
-For VPS command steps, use `docs/deploy/MONITORING_SETUP.commands.md`.
+For VPS command steps, use `docs/deploy/MONITORING_SETUP.commands.md` and the lightweight webhook baseline in `docs/deploy/EXTERNAL_ALERTING.commands.md`.
 
 ## 1. Monitoring Targets
 
@@ -41,6 +41,31 @@ Notification channels:
 * Telegram bot or email for low-cost alerting.
 * Use a separate operator account from the application admin account.
 * Escalate if API and worker are both down for more than 5 minutes.
+
+## 2.1 Lightweight Webhook Alert Baseline
+
+The repository includes a lightweight alert script for staging when a full monitoring stack is not installed yet:
+
+```bash
+cd /opt/wa-bot/backend
+npm run monitor:alert
+```
+
+It checks API readiness, worker readiness, optional public HTTPS URLs, disk usage, and encrypted-backup freshness. If a check fails, it sends an alert to Telegram and/or `WA_BOT_ALERT_WEBHOOK_URL`.
+
+Required env values:
+
+| Variable | Purpose |
+|----------|---------|
+| `WA_BOT_ALERT_TELEGRAM_BOT_TOKEN` | Telegram bot token. Keep secret and never commit. |
+| `WA_BOT_ALERT_TELEGRAM_CHAT_ID` | Telegram destination chat ID. Keep private and out of git. |
+| `WA_BOT_ALERT_WEBHOOK_URL` | Optional external webhook destination. Keep secret and never commit. |
+| `WA_BOT_ALERT_PUBLIC_URL` | Optional public frontend URL, e.g. `https://stagingwabot.web.id/`. |
+| `WA_BOT_ALERT_PUBLIC_HEALTH_URL` | Optional public health URL, e.g. `https://stagingwabot.web.id/health`. |
+| `WA_BOT_ALERT_BACKUP_MAX_AGE_HOURS` | Backup freshness threshold. Default `36`. |
+| `WA_BOT_ALERT_DISK_WARN_PERCENT` | Disk warning threshold. Default `80`. |
+
+Install it as a systemd timer using `docs/deploy/EXTERNAL_ALERTING.commands.md`.
 
 ## 3. Netdata / Resource Alerts
 
@@ -162,4 +187,4 @@ Manual checks on the staging VPS confirmed that the deploy baseline is alive. Ke
 | Auth HTTPS smoke | Login, Secure cookie, authenticated `/api/auth/me`, and logout passed |
 | Manual browser smoke HTTPS | Operator confirmed login, dashboard, session manager, contact groups, templates, proxy manager, and logout worked over HTTPS |
 
-Monitoring is still **PARTIAL** because external alerting such as Uptime Kuma/Netdata notification has not been installed and tested yet. Next required evidence: external API readiness alert, external worker readiness alert, disk/RAM alert notification, backup freshness alert notification, and test notification. Use `docs/deploy/MONITORING_SETUP.commands.md` as the command checklist.
+Monitoring is still **PARTIAL** because external alerting evidence has not been installed and tested yet. Next required evidence: external API readiness alert, external worker readiness alert, disk/RAM or disk-only alert notification, backup freshness alert notification, and test notification. Use `docs/deploy/EXTERNAL_ALERTING.commands.md` for the lightweight webhook baseline or `docs/deploy/MONITORING_SETUP.commands.md` for Uptime Kuma/Netdata.
