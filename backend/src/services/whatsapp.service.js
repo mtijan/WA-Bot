@@ -33,6 +33,26 @@ function getMediaSource(urlOrPath) {
   return { url: urlOrPath };
 }
 
+export function parseSpintax(text) {
+  if (typeof text !== 'string') return text;
+
+  // Pola regex untuk mencocokkan kurung kurawal terluar yang berisi karakter '|'
+  const regex = /\{([^{|}]+\|[^{}]+)\}/g;
+  let result = text;
+  let match;
+
+  while ((match = regex.exec(result)) !== null) {
+    const options = match[1].split('|');
+    const randomIndex = Math.floor(Math.random() * options.length);
+    const chosen = options[randomIndex];
+
+    result = result.replace(match[0], chosen);
+    regex.lastIndex = 0; // Reset index untuk pencarian ulang karena panjang string berubah
+  }
+
+  return result;
+}
+
 // -------------------------------------------------------------------
 // Penyaring output konsol dari library libsignal.
 // Library ini mencetak pesan debug langsung ke console.info/warn/error
@@ -579,7 +599,8 @@ class WhatsAppService {
       throw new Error(`Nomor ${target} tidak terdaftar di WhatsApp.`);
     }
 
-    await sock.sendMessage(jid, { text });
+    const parsedText = parseSpintax(text || '');
+    await sock.sendMessage(jid, { text: parsedText });
     return true;
   }
 
@@ -604,6 +625,8 @@ class WhatsAppService {
         }
         visited.add(nodeIdStr);
 
+        const messageContentParsed = parseSpintax(currentNode.message_content || '');
+
         // Eksekusi node saat ini
         if (currentNode.typing_indicator) {
           await sock.presenceSubscribe(jid);
@@ -625,12 +648,12 @@ class WhatsAppService {
               case 'Image':
                 attachmentPayload = isInteractive 
                   ? { image: mediaSource } 
-                  : { image: mediaSource, caption: currentNode.message_content };
+                  : { image: mediaSource, caption: messageContentParsed };
                 break;
               case 'Video':
                 attachmentPayload = isInteractive 
                   ? { video: mediaSource } 
-                  : { video: mediaSource, caption: currentNode.message_content };
+                  : { video: mediaSource, caption: messageContentParsed };
                 break;
               case 'Audio':
                 attachmentPayload = { audio: mediaSource, mimetype: 'audio/mp4' };
@@ -638,7 +661,7 @@ class WhatsAppService {
               case 'Document':
                 attachmentPayload = isInteractive 
                   ? { document: mediaSource, mimetype: 'application/pdf', fileName: 'Document.pdf' } 
-                  : { document: mediaSource, mimetype: 'application/pdf', fileName: 'Document.pdf', caption: currentNode.message_content };
+                  : { document: mediaSource, mimetype: 'application/pdf', fileName: 'Document.pdf', caption: messageContentParsed };
                 break;
             }
           }
@@ -662,7 +685,7 @@ class WhatsAppService {
 
           const interactiveMessage = proto.Message.InteractiveMessage.fromObject({
             body: {
-              text: currentNode.message_content
+              text: messageContentParsed
             },
             nativeFlowMessage: {
               buttons: buttons
@@ -718,7 +741,7 @@ class WhatsAppService {
           });
         } else {
           if (!(currentNode.attachment && currentNode.attachment.url)) {
-            await sock.sendMessage(jid, { text: currentNode.message_content });
+            await sock.sendMessage(jid, { text: messageContentParsed });
           }
         }
 
@@ -789,6 +812,7 @@ class WhatsAppService {
     }
 
     const { messageType, text, attachmentUrl, attachmentType, attachmentName, templateId } = payload;
+    const parsedText = parseSpintax(text || '');
 
     if (messageType === 'template' && templateId) {
       const template = await dbGet("SELECT * FROM message_templates WHERE id = ?", [templateId]);
@@ -797,7 +821,7 @@ class WhatsAppService {
       }
 
       const type = template.type || 'text';
-      const content = template.content;
+      const content = parseSpintax(template.content || '');
 
       if (type === 'text') {
         await sock.sendMessage(jid, { text: content });
@@ -829,13 +853,14 @@ class WhatsAppService {
           await sock.sendMessage(jid, mediaPayload);
         }
       } else if (type === 'poll') {
-        const question = template.poll_question || 'Poll Question';
+        const question = parseSpintax(template.poll_question || 'Poll Question');
         let options = [];
         try {
           options = JSON.parse(template.poll_options || '[]');
         } catch (e) {
           options = (template.poll_options || '').split(',').map(o => o.trim()).filter(Boolean);
         }
+        options = options.map(o => parseSpintax(o));
         await sock.sendMessage(jid, {
           poll: {
             name: question,
@@ -855,11 +880,11 @@ class WhatsAppService {
         await sock.sendMessage(jid, { text: content });
       }
     } else if (messageType === 'text') {
-      await sock.sendMessage(jid, { text });
+      await sock.sendMessage(jid, { text: parsedText });
     } else if (messageType === 'media' && attachmentUrl) {
       let mediaPayload = {};
       const url = resolveUploadedMediaPath(attachmentUrl);
-      const caption = text || '';
+      const caption = parsedText;
       const mediaSource = getMediaSource(url);
 
       if (mediaSource) {
