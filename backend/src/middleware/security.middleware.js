@@ -63,6 +63,21 @@ export function createApiKeyAuth() {
 export function createRateLimiter() {
   const requestBuckets = new Map();
 
+  // Pembersihan berkala setiap 5 menit untuk mencegah memory leak dari IP yang tidak aktif
+  const gcInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [key, bucket] of requestBuckets.entries()) {
+      if (bucket.resetAt <= now) {
+        requestBuckets.delete(key);
+      }
+    }
+  }, 5 * 60 * 1000);
+
+  // Hindari menahan proses Node.js keluar jika server dihentikan
+  if (gcInterval && typeof gcInterval.unref === 'function') {
+    gcInterval.unref();
+  }
+
   return (req, res, next) => {
     const windowMs = Number.parseInt(process.env.WA_BOT_RATE_LIMIT_WINDOW_MS) || config.security.rateLimitWindowMs;
     const maxRequests = Number.parseInt(process.env.WA_BOT_RATE_LIMIT_MAX) || config.security.rateLimitMax;

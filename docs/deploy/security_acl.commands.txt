@@ -1,17 +1,41 @@
 # Ubuntu filesystem hardening checklist for WA-Bot runtime data.
-# Review paths before running on a real VPS.
+# Review paths and user variables before running on your VPS.
 
-sudo chown -R wa-bot:wa-bot /opt/wa-bot/backend
+# --- PILIHAN A: Untuk VPS Staging (Menggunakan user "ubuntu" aktif) ---
+# Jalankan perintah berikut jika aplikasi Anda saat ini dijalankan oleh user "ubuntu".
+
+# Pastikan folder backend dimiliki oleh ubuntu
+sudo chown -R ubuntu:ubuntu /opt/wa-bot/backend
 sudo chmod 750 /opt/wa-bot/backend
 
-# Runtime data must be private to the service user.
+# Batasi izin akses untuk folder sensitif (sesi dan database) agar tidak dapat dibaca oleh user lain
 sudo chmod 750 /opt/wa-bot/backend/sessions
 sudo chmod 640 /opt/wa-bot/backend/database.sqlite
 
-# Environment file contains secrets. Keep readable by root and service group only.
+# Batasi file env yang menyimpan kredensial sensitif agar hanya bisa dibaca root dan group ubuntu
+sudo chown root:ubuntu /etc/wa-bot/wa-bot.env
+sudo chmod 640 /etc/wa-bot/wa-bot.env
+
+# Folder log hanya boleh diakses oleh ubuntu
+sudo chown -R ubuntu:ubuntu /var/log/wa-bot
+sudo chmod 750 /var/log/wa-bot
+
+
+# --- PILIHAN B: Untuk VPS Produksi (Menggunakan dedicated user "wa-bot") ---
+# Jalankan perintah berikut jika Anda telah memigrasikan layanan systemd ke dedicated user "wa-bot".
+
+# Ubah kepemilikan berkas backend ke wa-bot
+sudo chown -R wa-bot:wa-bot /opt/wa-bot/backend
+sudo chmod 750 /opt/wa-bot/backend
+
+# Batasi folder data runtime agar privat bagi user wa-bot
+sudo chmod 750 /opt/wa-bot/backend/sessions
+sudo chmod 640 /opt/wa-bot/backend/database.sqlite
+
+# Amankan file env agar hanya bisa dibaca root dan group wa-bot
 sudo chown root:wa-bot /etc/wa-bot/wa-bot.env
 sudo chmod 640 /etc/wa-bot/wa-bot.env
 
-# Logs should not be world-readable.
+# Amankan folder log agar hanya bisa dibaca oleh wa-bot
 sudo chown -R wa-bot:wa-bot /var/log/wa-bot
 sudo chmod 750 /var/log/wa-bot
