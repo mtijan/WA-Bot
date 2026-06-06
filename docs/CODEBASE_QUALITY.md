@@ -12,7 +12,7 @@
 | Error response helper | Shared helpers exist for consistent success/error JSON envelopes. | `backend/src/utils/http_response.js` |
 | Secret masking helper | Shared masking helper exists for proxy URLs and partial secret display. | `backend/src/utils/secret_masking.js` |
 | Media upload attachments | Backend upload modules and frontend upload UI for Templates, Single Message, and Chatbot Flow are implemented and verified. | `backend/src/services/upload.service.js`, `backend/src/controllers/upload.controller.js`, `backend/src/routes/upload.routes.js`, `frontend/src/components/MediaUploadField.jsx`, `docs/MEDIA_UPLOAD_WORKLOG.md` |
-| Frontend API client | Central API request helper exists; auth flow, dashboard stats, session manager, contact groups, proxy manager, and message templates use it. | `frontend/src/apiClient.js`, `frontend/src/components/Dashboard.jsx`, `frontend/src/components/SessionManager.jsx`, `frontend/src/components/ContactGroups.jsx`, `frontend/src/components/ProxyManager.jsx`, `frontend/src/components/Templates.jsx` |
+| Frontend API client | Central API request helper exists; auth flow, dashboard stats, session manager, contact groups, proxy manager, message templates, chatbot flows, and single message use it. | `frontend/src/apiClient.js`, `frontend/src/components/Dashboard.jsx`, `frontend/src/components/SessionManager.jsx`, `frontend/src/components/ContactGroups.jsx`, `frontend/src/components/ProxyManager.jsx`, `frontend/src/components/Templates.jsx`, `frontend/src/components/ChatbotFlows.jsx`, `frontend/src/components/SingleMessage.jsx` |
 | Auth response helper migration | Admin auth controller uses `sendSuccess` / `sendError`. | `backend/src/controllers/auth.controller.js` |
 
 ## Rules for Future Changes
@@ -30,7 +30,6 @@
 | Many controllers still return inline JSON errors. | Migrate module by module to `sendError` / `sendSuccess`. |
 | Request validation is still manual in controllers. | Add lightweight validation helpers or a schema validator such as Zod/Joi after dependency decision. |
 | Backend logs still use `console.*` in services/controllers. | Replace high-volume runtime logs first: WhatsApp service, campaign worker, warmer worker. |
-| Frontend components still call `fetch` directly. | Move API calls gradually into `apiRequest` or resource-specific API modules. |
 | Error response contract is not fully enforced. | Add backend integration tests for common error envelopes. |
 
 Do not mark item 7 as DONE until the remaining work above is migrated and verified.
@@ -47,6 +46,9 @@ Do not mark item 7 as DONE until the remaining work above is migrated and verifi
 | 2026-06-05 | Frontend proxy manager API calls | `frontend/src/components/ProxyManager.jsx` uses `apiRequest` for proxy/session/IPLocate/offline-db API calls; `npm run build` passed. |
 | 2026-06-05 | Proxy/IPLocate secret masking | Proxy URL responses and IPLocate setting responses are masked; hardcoded IPLocate fallback key was removed; backend syntax checks, `npm run build`, and `npm run security:audit` passed. |
 | 2026-06-06 | Media upload completed | `multer`, upload config, upload service/controller/routes, runtime `.gitignore`, WhatsApp uploaded-path resolver, reusable frontend upload component, and integrations for Templates, Single Message, and Chatbot Flow were completed and verified. |
+| 2026-06-06 | Frontend chatbot flow API calls | `frontend/src/components/ChatbotFlows.jsx` now uses `apiRequest` for list/session polling, create/update/delete, status toggle, import, and export; `npm run build` passed. |
+| 2026-06-06 | Frontend SingleMessage API calls | `frontend/src/components/SingleMessage.jsx` now uses `apiRequest` for sessions, templates, contact groups, groups list, and sending messages; `npm run build` passed. |
+| 2026-06-06 | All remaining frontend components | `BulkCampaign.jsx`, `Warmer.jsx`, `GroupDetail.jsx`, `GroupGrabber.jsx`, and `ChatbotAI.jsx` successfully migrated to `apiRequest` for all network calls; `npm run build` passed and Production API URL guard verified. |
 
 ## Current Priority Note
 

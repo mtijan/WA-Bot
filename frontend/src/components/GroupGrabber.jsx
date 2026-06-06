@@ -16,6 +16,7 @@ import {
   AlertCircle,
   FileText
 } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
 const GroupGrabber = ({ API_URL }) => {
   const [sessions, setSessions] = useState([]);
@@ -55,8 +56,7 @@ const GroupGrabber = ({ API_URL }) => {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
-      const json = await res.json();
+      const json = await apiRequest('/sessions');
       if (json.status === 'success') {
         const connected = (json.data || []).filter(s => s.status === 'CONNECTED');
         const currentSelected = selectedSessionIdRef.current;
@@ -83,8 +83,7 @@ const GroupGrabber = ({ API_URL }) => {
     if (!selectedSessionId) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/group-grabber/groups/${selectedSessionId}?t=${Date.now()}`);
-      const json = await res.json();
+      const json = await apiRequest(`/group-grabber/groups/${selectedSessionId}?t=${Date.now()}`);
       if (json.status === 'success') {
         setGroups(json.data || []);
         setSelectedGroupIds([]);
@@ -157,7 +156,7 @@ const GroupGrabber = ({ API_URL }) => {
 
       for (const g of adminGroups) {
         try {
-          const res = await fetch(`${API_URL}/group-grabber/invite-link`, {
+          const json = await apiRequest('/group-grabber/invite-link', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -165,7 +164,6 @@ const GroupGrabber = ({ API_URL }) => {
               groupId: g.id
             })
           });
-          const json = await res.json();
           if (json.status === 'success' && json.data.inviteLink) {
             results.push(`${g.subject}: ${json.data.inviteLink}`);
           } else {
@@ -236,21 +234,17 @@ const GroupGrabber = ({ API_URL }) => {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/group-grabber/export-participants`, {
+      const blob = await apiRequest('/group-grabber/export-participants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: selectedSessionId,
           groupIds: actualGroupIds
-        })
+        }),
+        responseType: 'blob'
       });
 
-      if (!res.ok) {
-        throw new Error('Gagal mengekspor data anggota.');
-      }
-
       // Download streaming CSV
-      const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -292,21 +286,17 @@ const GroupGrabber = ({ API_URL }) => {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/group-grabber/export-participants`, {
+      const blob = await apiRequest('/group-grabber/export-participants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: selectedSessionId,
           groupIds: selectedGroupIds,
           format: 'json'
-        })
+        }),
+        responseType: 'blob'
       });
 
-      if (!res.ok) {
-        throw new Error('Gagal mengekspor data JSON.');
-      }
-
-      const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -348,21 +338,17 @@ const GroupGrabber = ({ API_URL }) => {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/group-grabber/export-participants`, {
+      const blob = await apiRequest('/group-grabber/export-participants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: selectedSessionId,
           groupIds: selectedGroupIds,
           format: 'txt'
-        })
+        }),
+        responseType: 'blob'
       });
 
-      if (!res.ok) {
-        throw new Error('Gagal mengekspor data TXT.');
-      }
-
-      const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -399,7 +385,7 @@ const GroupGrabber = ({ API_URL }) => {
   const generateSingleInviteLink = async (groupId, groupName) => {
     try {
       setGeneratingLinkGroupId(groupId);
-      const res = await fetch(`${API_URL}/group-grabber/invite-link`, {
+      const json = await apiRequest('/group-grabber/invite-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -407,7 +393,6 @@ const GroupGrabber = ({ API_URL }) => {
           groupId: groupId
         })
       });
-      const json = await res.json();
       if (json.status === 'success' && json.data.inviteLink) {
         navigator.clipboard.writeText(json.data.inviteLink);
         window.showSuccess(`Tautan undangan untuk ${groupName} berhasil disalin ke clipboard.`);

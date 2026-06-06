@@ -1,8 +1,10 @@
 import { dbRun, dbAll, dbGet } from '../database.js';
 import warmerService from '../services/warmer.service.js';
+import { config } from '../config.js';
+import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
 
 const shouldRunInlineWorkers = () => {
-  return (process.env.WA_BOT_PROCESS_ROLE || 'all').trim().toLowerCase() === 'all';
+  return config.runtime.role === 'all';
 };
 
 // ==========================================
@@ -109,6 +111,10 @@ export const createCampaign = async (req, res) => {
     if (shouldRunInlineWorkers()) {
       // Jalankan mesin warmer di background pada mode monolith lokal.
       warmerService.startCampaign(campaignId);
+    } else if (isSessionManagerClientEnabled()) {
+      sessionManagerClient.startWarmerCampaign(campaignId).catch((err) => {
+        console.error(`[Warmer Controller] Gagal mendelegasikan warmer #${campaignId} ke worker:`, err.message);
+      });
     }
 
     res.status(201).json({
@@ -129,7 +135,11 @@ export const stopCampaign = async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'Kampanye tidak ditemukan.' });
     }
 
-    await warmerService.stopCampaign(id);
+    if (isSessionManagerClientEnabled()) {
+      await sessionManagerClient.stopWarmerCampaign(id);
+    } else {
+      await warmerService.stopCampaign(id);
+    }
     res.json({ status: 'success', message: 'Kampanye warmer berhasil dihentikan.' });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
@@ -175,7 +185,11 @@ export const deleteCampaign = async (req, res) => {
     }
 
     // Pastikan mematikan loop aktif jika sedang berjalan
-    warmerService.clearTimer(id);
+    if (isSessionManagerClientEnabled()) {
+      await sessionManagerClient.clearWarmerCampaign(id);
+    } else {
+      warmerService.clearTimer(id);
+    }
 
     // Hapus kampanye (log juga terhapus otomatis karena ON DELETE CASCADE)
     await dbRun("DELETE FROM warmer_campaigns WHERE id = ?", [id]);

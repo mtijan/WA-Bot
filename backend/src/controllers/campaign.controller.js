@@ -1,5 +1,6 @@
 import campaignService from '../services/campaign.service.js';
 import { dbAll, dbRun } from '../database.js';
+import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
 
 export const getCampaigns = async (req, res) => {
   try {
@@ -41,6 +42,12 @@ export const createCampaign = async (req, res) => {
       delay_ms_max || 8000,
       name
     );
+
+    if (isSessionManagerClientEnabled()) {
+      sessionManagerClient.processCampaign(campaignId).catch((err) => {
+        console.error(`[Campaign Controller] Gagal mendelegasikan kampanye #${campaignId} ke worker:`, err.message);
+      });
+    }
 
     res.status(202).json({
       status: 'success',

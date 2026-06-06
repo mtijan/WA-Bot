@@ -65,5 +65,64 @@ export const sessionManagerClient = {
       method: 'PATCH',
       body: { proxy_id: proxyId || null }
     });
+  },
+
+  async getDetailedGroups(sessionId) {
+    return request(`/groups/${encodeURIComponent(sessionId)}`);
+  },
+
+  async getGroupInviteLink(sessionId, groupId) {
+    return request('/groups/invite-link', {
+      method: 'POST',
+      body: { sessionId, groupId }
+    });
+  },
+
+  async getGroupsMetadata(sessionId, groupIds) {
+    return request('/groups/metadata', {
+      method: 'POST',
+      body: { sessionId, groupIds }
+    });
+  },
+
+  async forceSyncContacts(sessionId) {
+    return request('/groups/force-sync-contacts', {
+      method: 'POST',
+      body: { sessionId }
+    });
+  },
+
+  async getGroups(sessionId) {
+    return request(`/single-message/groups/${encodeURIComponent(sessionId)}`);
+  },
+
+  async sendSingleMessage(sessionId, target, payload) {
+    return request('/single-message/send', {
+      method: 'POST',
+      body: { sessionId, target, payload }
+    });
+  },
+
+  async verifyGroupContacts(groupId, sessionId) {
+    return request('/contacts/verify-group-contacts', {
+      method: 'POST',
+      body: { groupId, sessionId }
+    });
+  },
+
+  async processCampaign(campaignId) {
+    return request(`/campaigns/${encodeURIComponent(campaignId)}/process`, { method: 'POST' });
+  },
+
+  async startWarmerCampaign(campaignId) {
+    return request(`/warmer/campaigns/${encodeURIComponent(campaignId)}/start`, { method: 'POST' });
+  },
+
+  async stopWarmerCampaign(campaignId) {
+    return request(`/warmer/campaigns/${encodeURIComponent(campaignId)}/stop`, { method: 'POST' });
+  },
+
+  async clearWarmerCampaign(campaignId) {
+    return request(`/warmer/campaigns/${encodeURIComponent(campaignId)}/clear`, { method: 'POST' });
   }
 };

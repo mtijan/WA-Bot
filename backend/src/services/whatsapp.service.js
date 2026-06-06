@@ -943,6 +943,63 @@ class WhatsAppService {
     }
   }
 
+  async getGroupsMetadata(sessionId, groupIds) {
+    const sock = this.sockets[sessionId];
+    if (!sock) {
+      throw new Error(`Sesi ${sessionId} tidak aktif atau belum terhubung.`);
+    }
+
+    if (!Array.isArray(groupIds)) {
+      throw new Error('Parameter groupIds harus berupa array.');
+    }
+
+    const ownJid = sock.authState?.creds?.me?.id || sock.user?.id;
+    const ownJidClean = ownJid ? ownJid.split(':')[0].split('@')[0] + '@s.whatsapp.net' : '';
+
+    const ownLid = sock.authState?.creds?.me?.lid || sock.user?.lid;
+    const ownLidClean = ownLid ? ownLid.split(':')[0].split('@')[0] + '@lid' : '';
+
+    const selectedGroups = [];
+    for (const gid of groupIds) {
+      try {
+        const metadata = await sock.groupMetadata(gid);
+        if (!metadata) continue;
+
+        const me = metadata.participants?.find(p => {
+          const pJid = p.id.split(':')[0].split('@')[0] + '@s.whatsapp.net';
+          const pLid = p.id.split(':')[0].split('@')[0] + '@lid';
+          return (pJid === ownJidClean) || (pLid === ownLidClean);
+        });
+
+        const isAdmin = me && (me.admin === 'admin' || me.admin === 'superadmin');
+        const isCommunity = !!(metadata.isCommunity || metadata.isCommunityAnnounce || metadata.id.includes('community'));
+
+        selectedGroups.push({
+          id: metadata.id,
+          subject: metadata.subject,
+          size: metadata.participants?.length || 0,
+          isAdmin: !!isAdmin,
+          isCommunity,
+          participants: (metadata.participants || []).map(p => {
+            const pJid = p.id ? p.id.split(':')[0].split('@')[0] + '@s.whatsapp.net' : '';
+            const cachedContact = sock.contacts?.[pJid] || sock.contacts?.[p.id] || sock.contacts?.[p.lid];
+            return {
+              id: p.id,
+              jid: p.jid || cachedContact?.jid || null,
+              lid: p.lid || cachedContact?.lid || null,
+              admin: p.admin,
+              name: cachedContact?.name || cachedContact?.notify || cachedContact?.verifiedName || p.name || p.notify || p.verifiedName || ''
+            };
+          })
+        });
+      } catch (err) {
+        console.error(`Gagal mengambil metadata grup live untuk ${gid}:`, err.message);
+      }
+    }
+
+    return selectedGroups;
+  }
+
   /**
    * Memaksa re-sinkronisasi kontak dari WhatsApp.
    * Menghapus file app-state-sync agar Baileys meminta ulang data kontak dari server.

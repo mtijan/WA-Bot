@@ -15,6 +15,7 @@ import {
   Clock,
   MessageSquare
 } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
 function ChatbotAI({ API_URL }) {
   const [sessions, setSessions] = useState([]);
@@ -86,8 +87,7 @@ function ChatbotAI({ API_URL }) {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
-      const result = await res.json();
+      const result = await apiRequest('/sessions');
       if (result.status === 'success') {
         const activeSessions = result.data.filter(s => s.status === 'CONNECTED');
         setSessions(activeSessions);
@@ -105,8 +105,7 @@ function ChatbotAI({ API_URL }) {
     setLoadingSettings(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/chatbot-ai/settings/${sessionId}`);
-      const result = await res.json();
+      const result = await apiRequest(`/chatbot-ai/settings/${sessionId}`);
       if (result.status === 'success' && result.data) {
         const d = result.data;
         setIsActive(d.is_active === 1);
@@ -150,8 +149,7 @@ function ChatbotAI({ API_URL }) {
   const fetchCredentials = async () => {
     setLoadingCredentials(true);
     try {
-      const res = await fetch(`${API_URL}/chatbot-ai/credentials`);
-      const result = await res.json();
+      const result = await apiRequest('/chatbot-ai/credentials');
       if (result.status === 'success') {
         setCredentials(result.data);
       }
@@ -201,11 +199,11 @@ function ChatbotAI({ API_URL }) {
         payload.api_key = credApiKey;
       }
 
-      let url = `${API_URL}/chatbot-ai/credentials`;
+      let path = '/chatbot-ai/credentials';
       let method = 'POST';
 
       if (editingCred) {
-        url = `${API_URL}/chatbot-ai/credentials/${editingCred.id}`;
+        path = `/chatbot-ai/credentials/${editingCred.id}`;
         method = 'PUT';
         if (!credApiKey && !editingCred.has_api_key) {
           window.showWarning('API Key wajib disertakan.');
@@ -218,12 +216,11 @@ function ChatbotAI({ API_URL }) {
         }
       }
 
-      const res = await fetch(url, {
+      const result = await apiRequest(path, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const result = await res.json();
       if (result.status === 'success') {
         window.showSuccess(result.message);
         setShowCredModal(false);
@@ -244,10 +241,9 @@ function ChatbotAI({ API_URL }) {
     if (!window.confirm('Apakah Anda yakin ingin menghapus kredensial ini?')) return;
 
     try {
-      const res = await fetch(`${API_URL}/chatbot-ai/credentials/${id}`, {
+      const result = await apiRequest(`/chatbot-ai/credentials/${id}`, {
         method: 'DELETE'
       });
-      const result = await res.json();
       if (result.status === 'success') {
         window.showSuccess('Kredensial berhasil dihapus.');
         fetchCredentials();
@@ -265,10 +261,9 @@ function ChatbotAI({ API_URL }) {
 
   const handleToggleCredential = async (id) => {
     try {
-      const res = await fetch(`${API_URL}/chatbot-ai/credentials/${id}/toggle`, {
+      const result = await apiRequest(`/chatbot-ai/credentials/${id}/toggle`, {
         method: 'PATCH'
       });
-      const result = await res.json();
       if (result.status === 'success') {
         window.showSuccess(`Kredensial ${result.is_active === 1 ? 'diaktifkan' : 'dinonaktifkan'}.`);
         fetchCredentials();
@@ -302,12 +297,11 @@ function ChatbotAI({ API_URL }) {
         }
       }
 
-      const res = await fetch(`${API_URL}/chatbot-ai/settings`, {
+      const result = await apiRequest('/chatbot-ai/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const result = await res.json();
       if (result.status === 'success') {
         if (apiKey) setHasStoredApiKey(true);
         setApiKey('');
@@ -331,7 +325,7 @@ function ChatbotAI({ API_URL }) {
 
     setSavingSettings(true);
     try {
-      const res = await fetch(`${API_URL}/chatbot-ai/settings`, {
+      const result = await apiRequest('/chatbot-ai/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -345,7 +339,6 @@ function ChatbotAI({ API_URL }) {
           chatbot_mode: chatbotMode
         })
       });
-      const result = await res.json();
       if (result.status === 'success') {
         window.showSuccess('Pengaturan Chatbot AI berhasil disimpan.');
         fetchAISettings(selectedSession);
@@ -365,7 +358,7 @@ function ChatbotAI({ API_URL }) {
     setChatbotMode(newMode);
 
     try {
-      const res = await fetch(`${API_URL}/chatbot-ai/settings`, {
+      const result = await apiRequest('/chatbot-ai/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -373,7 +366,6 @@ function ChatbotAI({ API_URL }) {
           chatbot_mode: newMode
         })
       });
-      const result = await res.json();
       if (result.status === 'success') {
         window.showSuccess('Mode chatbot berhasil diperbarui.');
       } else {
@@ -391,7 +383,7 @@ function ChatbotAI({ API_URL }) {
     setIsActive(nextActiveState);
 
     try {
-      const res = await fetch(`${API_URL}/chatbot-ai/settings`, {
+      const result = await apiRequest('/chatbot-ai/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -399,7 +391,6 @@ function ChatbotAI({ API_URL }) {
           is_active: nextActiveState ? 1 : 0
         })
       });
-      const result = await res.json();
       if (result.status === 'success') {
         window.showSuccess(`Status AI berhasil diubah menjadi ${nextActiveState ? 'AKTIF' : 'NON-AKTIF'}.`);
       } else {
@@ -434,12 +425,11 @@ function ChatbotAI({ API_URL }) {
         payload.model_name = modelName;
       }
 
-      const res = await fetch(`${API_URL}/chatbot-ai/test`, {
+      const result = await apiRequest('/chatbot-ai/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const result = await res.json();
       if (result.status === 'success') {
         window.showSuccess('Koneksi sukses! API Key valid.');
         setSandboxMessages(prev => [
@@ -510,12 +500,11 @@ function ChatbotAI({ API_URL }) {
         payload.model_name = modelName;
       }
 
-      const res = await fetch(`${API_URL}/chatbot-ai/test`, {
+      const result = await apiRequest('/chatbot-ai/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const result = await res.json();
       if (result.status === 'success') {
         setSandboxMessages(prev => [...prev, { role: 'assistant', content: result.reply }]);
       } else {

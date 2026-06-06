@@ -17,6 +17,7 @@ import {
   Edit2,
   Users
 } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
 const GroupDetail = ({ API_URL }) => {
   const { groupId } = useParams();
@@ -65,8 +66,7 @@ const GroupDetail = ({ API_URL }) => {
 
   const fetchGroupInfo = async () => {
     try {
-      const res = await fetch(`${API_URL}/contacts/groups`);
-      const json = await res.json();
+      const json = await apiRequest('/contacts/groups');
       if (json.status === 'success') {
         const found = (json.data || []).find(g => g.id.toString() === groupId.toString());
         if (found) {
@@ -80,8 +80,7 @@ const GroupDetail = ({ API_URL }) => {
 
   const fetchActiveSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
-      const json = await res.json();
+      const json = await apiRequest('/sessions');
       if (json.status === 'success') {
         const connected = (json.data || []).filter(s => s.status === 'CONNECTED');
         setActiveSessions(connected);
@@ -102,8 +101,7 @@ const GroupDetail = ({ API_URL }) => {
         search,
         status: statusFilter
       });
-      const res = await fetch(`${API_URL}/contacts?${queryParams.toString()}`);
-      const json = await res.json();
+      const json = await apiRequest(`/contacts?${queryParams.toString()}`);
       if (json.status === 'success') {
         setContacts(json.data || []);
       }
@@ -132,12 +130,11 @@ const GroupDetail = ({ API_URL }) => {
         ...vars
       };
 
-      const res = await fetch(`${API_URL}/contacts`, {
+      const json = await apiRequest('/contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const json = await res.json();
       if (json.status === 'success') {
         setShowManualModal(false);
         resetManualForm();
@@ -206,12 +203,11 @@ const GroupDetail = ({ API_URL }) => {
     }).filter(c => c.phone_number !== '');
 
     try {
-      const res = await fetch(`${API_URL}/contacts/bulk`, {
+      const json = await apiRequest('/contacts/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group_id: groupId, contacts: parsedContacts })
       });
-      const json = await res.json();
       if (json.status === 'success') {
         setShowCopyPasteModal(false);
         setRawNumbers('');
@@ -377,12 +373,11 @@ const GroupDetail = ({ API_URL }) => {
       }).filter(c => c.phone_number !== '');
       
       try {
-        const res = await fetch(`${API_URL}/contacts/bulk`, {
+        const json = await apiRequest('/contacts/bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ group_id: groupId, contacts: standardContacts })
         });
-        const json = await res.json();
         if (json.status === 'success') {
           alert(json.message);
           fetchContacts();
@@ -409,12 +404,11 @@ const GroupDetail = ({ API_URL }) => {
     try {
       setIsVerifying(true);
       setShowVerifyModal(false);
-      const res = await fetch(`${API_URL}/contacts/groups/${groupId}/verify`, {
+      const json = await apiRequest(`/contacts/groups/${groupId}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: selectedSessionId })
       });
-      const json = await res.json();
       alert(json.message || 'Verifikasi selesai');
       fetchContacts();
       fetchGroupInfo();
@@ -466,10 +460,9 @@ const GroupDetail = ({ API_URL }) => {
     if (!confirm('Apakah Anda ingin menghapus semua nomor yang tidak valid (INVALID) dari grup ini?')) return;
 
     try {
-      const res = await fetch(`${API_URL}/contacts/groups/${groupId}/invalid`, {
+      const json = await apiRequest(`/contacts/groups/${groupId}/invalid`, {
         method: 'DELETE'
       });
-      const json = await res.json();
       if (json.status === 'success') {
         fetchContacts();
         fetchGroupInfo();
@@ -483,8 +476,7 @@ const GroupDetail = ({ API_URL }) => {
     if (!confirm('Hapus kontak ini?')) return;
 
     try {
-      const res = await fetch(`${API_URL}/contacts/${contactId}`, { method: 'DELETE' });
-      const json = await res.json();
+      const json = await apiRequest(`/contacts/${contactId}`, { method: 'DELETE' });
       if (json.status === 'success') {
         fetchContacts();
         fetchGroupInfo();

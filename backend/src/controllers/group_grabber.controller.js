@@ -1,5 +1,6 @@
 import whatsappService from '../services/whatsapp.service.js';
 import { dbAll, dbRun } from '../database.js';
+import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
 
 // Helper: Deteksi Info Negara
 const getCountryInfo = (num) => {
@@ -83,7 +84,10 @@ export const getDetailedGroups = async (req, res) => {
   }
 
   try {
-    const groups = await whatsappService.getDetailedGroups(sessionId);
+    const response = isSessionManagerClientEnabled()
+      ? await sessionManagerClient.getDetailedGroups(sessionId)
+      : { data: await whatsappService.getDetailedGroups(sessionId) };
+    const groups = response.data || [];
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.json({
       status: 'success',
@@ -107,7 +111,10 @@ export const getInviteLink = async (req, res) => {
   }
 
   try {
-    const inviteLink = await whatsappService.getGroupInviteLink(sessionId, groupId);
+    const response = isSessionManagerClientEnabled()
+      ? await sessionManagerClient.getGroupInviteLink(sessionId, groupId)
+      : { data: { inviteLink: await whatsappService.getGroupInviteLink(sessionId, groupId) } };
+    const inviteLink = response.data?.inviteLink;
     res.json({
       status: 'success',
       data: { inviteLink }
@@ -130,71 +137,81 @@ export const exportParticipants = async (req, res) => {
   }
 
   try {
-    const sock = whatsappService.sockets[sessionId];
-    if (!sock) {
-      return res.status(404).json({
-        status: 'error',
-        message: `Sesi ${sessionId} tidak aktif atau belum terhubung.`
-      });
+    let sock = null;
+    let selectedGroups = [];
+
+    if (isSessionManagerClientEnabled()) {
+      const response = await sessionManagerClient.getGroupsMetadata(sessionId, groupIds);
+      selectedGroups = response.data || [];
+    } else {
+      sock = whatsappService.sockets[sessionId];
+      if (!sock) {
+        return res.status(404).json({
+          status: 'error',
+          message: `Sesi ${sessionId} tidak aktif atau belum terhubung.`
+        });
+      }
     }
 
     // Gabungkan kontak dari database whatsapp_contacts ke sock.contacts agar cache selalu lengkap terisi
-    try {
-      const dbWaContacts = await dbAll("SELECT * FROM whatsapp_contacts");
-      if (!sock.contacts) sock.contacts = {};
-      for (const c of dbWaContacts) {
-        if (!sock.contacts[c.jid]) {
-          sock.contacts[c.jid] = {
-            id: c.jid,
-            jid: c.jid,
-            name: c.name,
-            notify: c.notify,
-            verifiedName: c.verified_name,
-            lid: c.lid
-          };
-        }
-      }
-    } catch (err) {
-      console.error("Gagal melakukan preload database whatsapp_contacts:", err.message);
-    }
-
-    const ownJid = sock.authState?.creds?.me?.id || sock.user?.id;
-    const ownJidClean = ownJid ? ownJid.split(':')[0].split('@')[0] + '@s.whatsapp.net' : '';
-
-    const ownLid = sock.authState?.creds?.me?.lid || sock.user?.lid;
-    const ownLidClean = ownLid ? ownLid.split(':')[0].split('@')[0] + '@lid' : '';
-
-    const selectedGroups = [];
-
-    // Ambil live metadata untuk setiap grup agar anggota selalu fresh dan lengkap
-    for (const gid of groupIds) {
+    if (sock) {
       try {
-        const metadata = await sock.groupMetadata(gid);
-        if (metadata) {
-          const me = metadata.participants?.find(p => {
-            const pJid = p.id.split(':')[0].split('@')[0] + '@s.whatsapp.net';
-            const pLid = p.id.split(':')[0].split('@')[0] + '@lid';
-            return (pJid === ownJidClean) || (pLid === ownLidClean);
-          });
-          const isAdmin = me && (me.admin === 'admin' || me.admin === 'superadmin');
-          const isCommunity = !!(metadata.isCommunity || metadata.isCommunityAnnounce || metadata.id.includes('community'));
-
-          selectedGroups.push({
-            id: metadata.id,
-            subject: metadata.subject,
-            size: metadata.participants?.length || 0,
-            isAdmin: !!isAdmin,
-            isCommunity: isCommunity,
-            participants: metadata.participants || []
-          });
+        const dbWaContacts = await dbAll("SELECT * FROM whatsapp_contacts");
+        if (!sock.contacts) sock.contacts = {};
+        for (const c of dbWaContacts) {
+          if (!sock.contacts[c.jid]) {
+            sock.contacts[c.jid] = {
+              id: c.jid,
+              jid: c.jid,
+              name: c.name,
+              notify: c.notify,
+              verifiedName: c.verified_name,
+              lid: c.lid
+            };
+          }
         }
       } catch (err) {
-        console.error(`Gagal mengambil metadata grup live untuk ${gid}:`, err.message);
+        console.error("Gagal melakukan preload database whatsapp_contacts:", err.message);
+      }
+    }
+
+    // Ambil live metadata untuk setiap grup agar anggota selalu fresh dan lengkap
+    if (sock) {
+      const ownJid = sock.authState?.creds?.me?.id || sock.user?.id;
+      const ownJidClean = ownJid ? ownJid.split(':')[0].split('@')[0] + '@s.whatsapp.net' : '';
+
+      const ownLid = sock.authState?.creds?.me?.lid || sock.user?.lid;
+      const ownLidClean = ownLid ? ownLid.split(':')[0].split('@')[0] + '@lid' : '';
+
+      for (const gid of groupIds) {
+        try {
+          const metadata = await sock.groupMetadata(gid);
+          if (metadata) {
+            const me = metadata.participants?.find(p => {
+              const pJid = p.id.split(':')[0].split('@')[0] + '@s.whatsapp.net';
+              const pLid = p.id.split(':')[0].split('@')[0] + '@lid';
+              return (pJid === ownJidClean) || (pLid === ownLidClean);
+            });
+            const isAdmin = me && (me.admin === 'admin' || me.admin === 'superadmin');
+            const isCommunity = !!(metadata.isCommunity || metadata.isCommunityAnnounce || metadata.id.includes('community'));
+
+            selectedGroups.push({
+              id: metadata.id,
+              subject: metadata.subject,
+              size: metadata.participants?.length || 0,
+              isAdmin: !!isAdmin,
+              isCommunity: isCommunity,
+              participants: metadata.participants || []
+            });
+          }
+        } catch (err) {
+          console.error(`Gagal mengambil metadata grup live untuk ${gid}:`, err.message);
+        }
       }
     }
 
     // Fallback jika live metadata gagal
-    if (selectedGroups.length === 0) {
+    if (selectedGroups.length === 0 && sock) {
       const allGroups = await whatsappService.getDetailedGroups(sessionId);
       const fallbackGroups = allGroups.filter(g => groupIds.includes(g.id));
       selectedGroups.push(...fallbackGroups);
@@ -308,18 +325,20 @@ export const exportParticipants = async (req, res) => {
 
     // 3a. Batch onWhatsApp() check -- mengembalikan exists + verifiedName untuk akun bisnis
     try {
-      const allNumbers = allResolvedJids.map(r => r.cleanNumber);
-      const onWaResult = await sock.onWhatsApp(...allNumbers);
-      if (Array.isArray(onWaResult)) {
-        for (const r of onWaResult) {
-          if (r.jid) {
-            const num = r.jid.split('@')[0].split(':')[0].replace(/\D/g, '');
-            businessProfileMap.set(num, {
-              exists: r.exists,
-              jid: r.jid,
-              verifiedName: r.verifiedName || null,
-              isBusiness: !!r.verifiedName
-            });
+      if (sock) {
+        const allNumbers = allResolvedJids.map(r => r.cleanNumber);
+        const onWaResult = await sock.onWhatsApp(...allNumbers);
+        if (Array.isArray(onWaResult)) {
+          for (const r of onWaResult) {
+            if (r.jid) {
+              const num = r.jid.split('@')[0].split(':')[0].replace(/\D/g, '');
+              businessProfileMap.set(num, {
+                exists: r.exists,
+                jid: r.jid,
+                verifiedName: r.verifiedName || null,
+                isBusiness: !!r.verifiedName
+              });
+            }
           }
         }
       }
@@ -329,7 +348,7 @@ export const exportParticipants = async (req, res) => {
 
     // 3b. Untuk akun bisnis yang terdeteksi, coba ambil profil bisnis lebih detail
     for (const [num, info] of businessProfileMap) {
-      if (info.isBusiness && info.jid) {
+      if (sock && info.isBusiness && info.jid) {
         try {
           const profile = await sock.getBusinessProfile(info.jid);
           if (profile) {

@@ -1,11 +1,15 @@
 import whatsappService from '../services/whatsapp.service.js';
 import { dbRun } from '../database.js';
 import { isOptedOut } from '../services/opt_out.service.js';
+import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
 
 export const getGroups = async (req, res) => {
   const { sessionId } = req.params;
   try {
-    const groups = await whatsappService.getGroups(sessionId);
+    const response = isSessionManagerClientEnabled()
+      ? await sessionManagerClient.getGroups(sessionId)
+      : { data: await whatsappService.getGroups(sessionId) };
+    const groups = response.data || [];
     res.json({
       status: 'success',
       data: groups
@@ -37,14 +41,20 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    await whatsappService.sendSingleMessage(sessionId, target, {
+    const payload = {
       messageType,
       text,
       attachmentUrl,
       attachmentType,
       attachmentName,
       templateId
-    });
+    };
+
+    if (isSessionManagerClientEnabled()) {
+      await sessionManagerClient.sendSingleMessage(sessionId, target, payload);
+    } else {
+      await whatsappService.sendSingleMessage(sessionId, target, payload);
+    }
 
     // Catat log pengiriman pesan sebagai single message (campaign_id = NULL)
     await dbRun(

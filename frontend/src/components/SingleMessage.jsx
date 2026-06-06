@@ -16,6 +16,7 @@ import {
   Folder, 
   CheckCircle 
 } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 import MediaUploadField from './MediaUploadField';
 
 const SingleMessage = ({ API_URL }) => {
@@ -82,8 +83,7 @@ const SingleMessage = ({ API_URL }) => {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
-      const json = await res.json();
+      const json = await apiRequest('/sessions');
       if (json.status === 'success') {
         const connected = (json.data || []).filter(s => s.status === 'CONNECTED');
         const currentSelected = selectedSessionIdRef.current;
@@ -108,8 +108,7 @@ const SingleMessage = ({ API_URL }) => {
 
   const fetchContactGroups = async () => {
     try {
-      const res = await fetch(`${API_URL}/contacts/groups`);
-      const json = await res.json();
+      const json = await apiRequest('/contacts/groups');
       if (json.status === 'success') {
         setContactGroups(json.data || []);
         if (json.data && json.data.length > 0) {
@@ -123,8 +122,7 @@ const SingleMessage = ({ API_URL }) => {
 
   const fetchTemplates = async () => {
     try {
-      const res = await fetch(`${API_URL}/templates`);
-      const json = await res.json();
+      const json = await apiRequest('/templates');
       if (json.status === 'success') {
         setTemplates(json.data || []);
       }
@@ -137,15 +135,13 @@ const SingleMessage = ({ API_URL }) => {
     if (!selectedSessionId) return;
     try {
       setGroupsLoading(true);
-      const res = await fetch(`${API_URL}/single-message/groups/${selectedSessionId}`);
-      const json = await res.json();
+      const json = await apiRequest(`/single-message/groups/${selectedSessionId}`);
       if (json.status === 'success') {
         setGroups(json.data || []);
-      } else {
-        window.showError(json.message || 'Gagal memuat daftar grup.');
       }
     } catch (err) {
       console.error('Error fetching WhatsApp groups:', err);
+      window.showError(err.message || 'Gagal memuat daftar grup.');
     } finally {
       setGroupsLoading(false);
     }
@@ -205,8 +201,7 @@ const SingleMessage = ({ API_URL }) => {
         
         try {
           setLoading(true);
-          const res = await fetch(`${API_URL}/contacts?groupId=${selectedContactGroupId}`);
-          const json = await res.json();
+          const json = await apiRequest(`/contacts?groupId=${selectedContactGroupId}`);
           if (json.status === 'success' && json.data) {
             targets = json.data.map(c => c.phone_number);
           }
@@ -216,7 +211,7 @@ const SingleMessage = ({ API_URL }) => {
             return;
           }
         } catch (err) {
-          window.showError('Gagal memuat kontak dari database group.');
+          window.showError(err.message || 'Gagal memuat kontak dari database group.');
           setLoading(false);
           return;
         }
@@ -240,18 +235,21 @@ const SingleMessage = ({ API_URL }) => {
           templateId: selectedTemplateId || null
         };
 
-        const res = await fetch(`${API_URL}/single-message/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        try {
+          const json = await apiRequest('/single-message/send', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
 
-        const json = await res.json();
-        if (json.status === 'success') {
-          successCount++;
-        } else {
+          if (json.status === 'success') {
+            successCount++;
+          } else {
+            failCount++;
+            console.error(`Gagal mengirim ke ${target}:`, json.message);
+          }
+        } catch (err) {
           failCount++;
-          console.error(`Gagal mengirim ke ${target}:`, json.message);
+          console.error(`Gagal mengirim ke ${target}:`, err.message);
         }
       }
 

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Network, Plus, Search, MessageSquare, Play, Pause, Edit, Trash2, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 import ChatbotFlowModal from './ChatbotFlowModal';
 
-const ChatbotFlows = ({ API_URL }) => {
+const ChatbotFlows = () => {
   const [flows, setFlows] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,11 +25,8 @@ const ChatbotFlows = ({ API_URL }) => {
 
   const fetchFlows = async () => {
     try {
-      const res = await fetch(`${API_URL}/chatbot-flows`);
-      const json = await res.json();
-      if (json.status === 'success') {
-        setFlows(json.data);
-      }
+      const json = await apiRequest('/chatbot-flows');
+      setFlows(json.data || []);
     } catch (err) {
       console.error('Failed to fetch flows:', err);
     }
@@ -36,11 +34,8 @@ const ChatbotFlows = ({ API_URL }) => {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
-      const json = await res.json();
-      if (json.status === 'success') {
-        setSessions(json.data);
-      }
+      const json = await apiRequest('/sessions');
+      setSessions(json.data || []);
     } catch (err) {
       console.error('Failed to fetch sessions:', err);
     }
@@ -49,49 +44,40 @@ const ChatbotFlows = ({ API_URL }) => {
   const handleSaveFlow = async (flowData) => {
     try {
       const isEdit = !!flowData.id;
-      const url = isEdit ? `${API_URL}/chatbot-flows/${flowData.id}` : `${API_URL}/chatbot-flows`;
+      const url = isEdit ? `/chatbot-flows/${flowData.id}` : '/chatbot-flows';
       const method = isEdit ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      await apiRequest(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(flowData),
       });
 
-      const json = await res.json();
-      if (json.status === 'success') {
-        setIsModalOpen(false);
-        setEditingFlow(null);
-        fetchFlows();
-      } else {
-        alert('Failed to save flow: ' + json.message);
-      }
+      setIsModalOpen(false);
+      setEditingFlow(null);
+      fetchFlows();
     } catch (err) {
-      alert('Connection error.');
+      alert('Failed to save flow: ' + err.message);
     }
   };
 
   const handleDeleteFlow = async (id) => {
     if (!confirm('Are you sure you want to delete this flow?')) return;
     try {
-      const res = await fetch(`${API_URL}/chatbot-flows/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchFlows();
-      }
+      await apiRequest(`/chatbot-flows/${id}`, { method: 'DELETE' });
+      fetchFlows();
     } catch (err) {
-      alert('Connection error.');
+      alert('Failed to delete flow: ' + err.message);
     }
   };
 
   const handleToggleStatus = async (id, currentStatus) => {
     const newStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
-      const res = await fetch(`${API_URL}/chatbot-flows/${id}/status`, {
+      await apiRequest(`/chatbot-flows/${id}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
-      if (res.ok) fetchFlows();
+      fetchFlows();
     } catch (err) {
       console.error('Toggle status error', err);
     }
@@ -99,8 +85,7 @@ const ChatbotFlows = ({ API_URL }) => {
 
   const handleExportFlows = async () => {
     try {
-      const res = await fetch(`${API_URL}/chatbot-flows/export`);
-      const data = await res.json();
+      const data = await apiRequest('/chatbot-flows/export');
       
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
@@ -123,22 +108,16 @@ const ChatbotFlows = ({ API_URL }) => {
     reader.onload = async (event) => {
       try {
         const flowData = JSON.parse(event.target.result);
-        
-        const res = await fetch(`${API_URL}/chatbot-flows/import`, {
+
+        const json = await apiRequest('/chatbot-flows/import', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(flowData)
         });
 
-        const json = await res.json();
-        if (json.status === 'success') {
-          alert(json.message);
-          fetchFlows();
-        } else {
-          alert('Gagal mengimpor: ' + json.message);
-        }
+        alert(json.message);
+        fetchFlows();
       } catch (err) {
-        alert('Format file JSON tidak valid.');
+        alert('Gagal mengimpor: ' + err.message);
       }
     };
     reader.readAsText(file);

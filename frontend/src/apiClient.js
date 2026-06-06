@@ -22,12 +22,24 @@ export async function apiRequest(path, options = {}) {
     credentials: 'include'
   });
 
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => null);
+    throw new ApiError(payload?.message || 'Request API gagal.', response, payload);
+  }
+
+  if (options.responseType === 'blob') {
+    return await response.blob();
+  }
+
   const contentType = response.headers.get('content-type') || '';
   const payload = contentType.includes('application/json')
     ? await response.json().catch(() => null)
     : await response.text().catch(() => null);
 
-  if (!response.ok || payload?.status === 'error') {
+  if (payload?.status === 'error') {
     throw new ApiError(payload?.message || 'Request API gagal.', response, payload);
   }
 

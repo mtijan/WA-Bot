@@ -1,5 +1,6 @@
 import { dbRun, dbAll, dbGet } from '../database.js';
 import whatsappService from '../services/whatsapp.service.js';
+import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
 
 export const getGroups = async (req, res) => {
   try {
@@ -364,6 +365,15 @@ export const verifyGroupContacts = async (req, res) => {
 
   if (!session_id) {
     return res.status(400).json({ status: 'error', message: 'session_id is required for verification' });
+  }
+
+  if (isSessionManagerClientEnabled()) {
+    try {
+      const result = await sessionManagerClient.verifyGroupContacts(groupId, session_id);
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ status: 'error', message: error.message });
+    }
   }
 
   const sock = whatsappService.sockets[session_id];

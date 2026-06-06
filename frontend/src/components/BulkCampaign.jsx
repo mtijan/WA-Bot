@@ -18,6 +18,7 @@ import {
   Clock,
   ChevronRight
 } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
 const BulkCampaign = ({ API_URL }) => {
   // Campaign list and search state
@@ -88,8 +89,7 @@ const BulkCampaign = ({ API_URL }) => {
     const fetchDrawerProgress = async () => {
       if (!drawerCampaignId) return;
       try {
-        const res = await fetch(`${API_URL}/campaigns/${drawerCampaignId}`);
-        const json = await res.json();
+        const json = await apiRequest(`/campaigns/${drawerCampaignId}`);
         if (json.status === 'success') {
           setDrawerProgress(json.data);
           // If the campaign completes while they are watching, refresh list
@@ -119,8 +119,7 @@ const BulkCampaign = ({ API_URL }) => {
         let allTargets = [];
         for (const groupId of selectedGroupsList) {
           try {
-            const res = await fetch(`${API_URL}/contacts?groupId=${groupId}`);
-            const json = await res.json();
+            const json = await apiRequest(`/contacts?groupId=${groupId}`);
             if (json.status === 'success') {
               const verifiedNumbers = (json.data || [])
                 .filter(c => c.status === 'VERIFIED')
@@ -148,8 +147,7 @@ const BulkCampaign = ({ API_URL }) => {
 
   const fetchCampaigns = async () => {
     try {
-      const res = await fetch(`${API_URL}/campaigns`);
-      const json = await res.json();
+      const json = await apiRequest('/campaigns');
       if (json.status === 'success') {
         setCampaigns(json.data || []);
       }
@@ -160,8 +158,7 @@ const BulkCampaign = ({ API_URL }) => {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
-      const json = await res.json();
+      const json = await apiRequest('/sessions');
       if (json.status === 'success') {
         const connected = json.data.filter(s => s.status === 'CONNECTED');
         setSessions(connected);
@@ -173,8 +170,7 @@ const BulkCampaign = ({ API_URL }) => {
 
   const fetchContactGroups = async () => {
     try {
-      const res = await fetch(`${API_URL}/contacts/groups`);
-      const json = await res.json();
+      const json = await apiRequest('/contacts/groups');
       if (json.status === 'success') {
         setContactGroups(json.data || []);
       }
@@ -185,8 +181,7 @@ const BulkCampaign = ({ API_URL }) => {
 
   const fetchTemplates = async () => {
     try {
-      const res = await fetch(`${API_URL}/templates`);
-      const json = await res.json();
+      const json = await apiRequest('/templates');
       if (json.status === 'success') {
         setTemplates(json.data || []);
       }
@@ -198,8 +193,7 @@ const BulkCampaign = ({ API_URL }) => {
   const fetchProgress = async () => {
     if (!activeCampaignId) return;
     try {
-      const res = await fetch(`${API_URL}/campaigns/${activeCampaignId}`);
-      const json = await res.json();
+      const json = await apiRequest(`/campaigns/${activeCampaignId}`);
       if (json.status === 'success') {
         setProgress(json.data);
         if (json.data.campaign_status === 'COMPLETED') {
@@ -220,10 +214,9 @@ const BulkCampaign = ({ API_URL }) => {
   const handleDeleteCampaign = async (campaignId) => {
     if (!confirm('Apakah Anda yakin ingin menghapus riwayat kampanye ini?')) return;
     try {
-      const res = await fetch(`${API_URL}/campaigns/${campaignId}`, {
+      const json = await apiRequest(`/campaigns/${campaignId}`, {
         method: 'DELETE'
       });
-      const json = await res.json();
       if (json.status === 'success') {
         fetchCampaigns();
         if (progress?.campaign_id === campaignId) {
@@ -252,7 +245,7 @@ const BulkCampaign = ({ API_URL }) => {
     e.preventDefault();
     if (!newTemplateName.trim()) return;
     try {
-      const res = await fetch(`${API_URL}/templates`, {
+      const json = await apiRequest('/templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -260,7 +253,6 @@ const BulkCampaign = ({ API_URL }) => {
           content: messageContent
         })
       });
-      const json = await res.json();
       if (json.status === 'success') {
         setShowSaveTemplateModal(false);
         setNewTemplateName('');
@@ -297,7 +289,7 @@ const BulkCampaign = ({ API_URL }) => {
     const primarySessionId = selectedSessions[0];
 
     try {
-      const res = await fetch(`${API_URL}/campaigns`, {
+      const json = await apiRequest('/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -309,7 +301,6 @@ const BulkCampaign = ({ API_URL }) => {
           delay_ms_max: delayMax * 1000
         })
       });
-      const json = await res.json();
       if (json.status === 'success' || json.status === 'queued') {
         setShowCreateModal(false);
         resetForm();

@@ -16,6 +16,7 @@ import {
   Play,
   Pause
 } from 'lucide-react';
+import { apiRequest } from '../apiClient';
 
 const Warmer = ({ API_URL }) => {
   // Tabs and general lists
@@ -72,8 +73,7 @@ const Warmer = ({ API_URL }) => {
     const fetchDrawerLogs = async () => {
       if (!drawerCampaignId) return;
       try {
-        const res = await fetch(`${API_URL}/warmer/campaigns/${drawerCampaignId}/logs`);
-        const json = await res.json();
+        const json = await apiRequest(`/warmer/campaigns/${drawerCampaignId}/logs`);
         if (json.status === 'success') {
           setDrawerProgress(json.data);
           // If the campaign finishes while open, refresh the background list
@@ -99,8 +99,7 @@ const Warmer = ({ API_URL }) => {
   // Fetch API helpers
   const fetchCampaigns = async () => {
     try {
-      const res = await fetch(`${API_URL}/warmer/campaigns`);
-      const json = await res.json();
+      const json = await apiRequest('/warmer/campaigns');
       if (json.status === 'success') {
         setCampaigns(json.data);
       }
@@ -111,8 +110,7 @@ const Warmer = ({ API_URL }) => {
 
   const fetchTemplates = async () => {
     try {
-      const res = await fetch(`${API_URL}/warmer/templates`);
-      const json = await res.json();
+      const json = await apiRequest('/warmer/templates');
       if (json.status === 'success') {
         setTemplates(json.data);
       }
@@ -123,8 +121,7 @@ const Warmer = ({ API_URL }) => {
 
   const fetchSessions = async () => {
     try {
-      const res = await fetch(`${API_URL}/sessions`);
-      const json = await res.json();
+      const json = await apiRequest('/sessions');
       if (json.status === 'success') {
         setSessions(json.data || []);
       }
@@ -166,7 +163,7 @@ const Warmer = ({ API_URL }) => {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/warmer/templates`, {
+      const json = await apiRequest('/warmer/templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -175,7 +172,6 @@ const Warmer = ({ API_URL }) => {
           messages: templateMessages
         })
       });
-      const json = await res.json();
       if (json.status === 'success') {
         window.showSuccess('Template percakapan warmer berhasil disimpan.');
         setTemplateName('');
@@ -197,8 +193,7 @@ const Warmer = ({ API_URL }) => {
   const handleDeleteTemplate = async (id) => {
     if (!confirm('Apakah Anda yakin ingin menghapus template ini?')) return;
     try {
-      const res = await fetch(`${API_URL}/warmer/templates/${id}`, { method: 'DELETE' });
-      const json = await res.json();
+      const json = await apiRequest(`/warmer/templates/${id}`, { method: 'DELETE' });
       if (json.status === 'success') {
         window.showSuccess('Template berhasil dihapus.');
         fetchTemplates();
@@ -214,13 +209,13 @@ const Warmer = ({ API_URL }) => {
   const handleCreateCampaignSubmit = async (e) => {
     e.preventDefault();
     if (!campaignName || selectedDevices.length < 2 || !messageContent) {
-      window.showWarning('Nama kampanye, minimal 2 perangkat, dan kalimat pesan wajib diisi.');
+      window.showWarning('Nama kampanye, minimal 2 perangkat, and kalimat pesan wajib diisi.');
       return;
     }
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/warmer/campaigns`, {
+      const json = await apiRequest('/warmer/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -234,7 +229,6 @@ const Warmer = ({ API_URL }) => {
           duration: parseInt(duration)
         })
       });
-      const json = await res.json();
       if (json.status === 'success') {
         window.showSuccess('Kampanye warmer berhasil diluncurkan di background.');
         // Reset states
@@ -262,8 +256,7 @@ const Warmer = ({ API_URL }) => {
   const handleStopCampaign = async (id) => {
     if (!confirm('Apakah Anda yakin ingin menghentikan kampanye warmer ini?')) return;
     try {
-      const res = await fetch(`${API_URL}/warmer/campaigns/${id}/stop`, { method: 'POST' });
-      const json = await res.json();
+      const json = await apiRequest(`/warmer/campaigns/${id}/stop`, { method: 'POST' });
       if (json.status === 'success') {
         window.showSuccess('Kampanye warmer dihentikan.');
         fetchCampaigns();
@@ -283,8 +276,7 @@ const Warmer = ({ API_URL }) => {
   const handleDeleteCampaign = async (id) => {
     if (!confirm('Apakah Anda yakin ingin menghapus kampanye warmer ini beserta seluruh log pengirimannya?')) return;
     try {
-      const res = await fetch(`${API_URL}/warmer/campaigns/${id}`, { method: 'DELETE' });
-      const json = await res.json();
+      const json = await apiRequest(`/warmer/campaigns/${id}`, { method: 'DELETE' });
       if (json.status === 'success') {
         window.showSuccess('Kampanye warmer berhasil dihapus.');
         fetchCampaigns();
