@@ -89,6 +89,15 @@ sudo chmod 640 /etc/wa-bot/wa-bot.env
 11. Configure monitoring using `MONITORING_SETUP.commands.md` and `docs/MONITORING.md`.
 12. Run smoke checks:
 
+Jalankan pengujian smoke otomatis untuk memvalidasi seluruh endpoint (frontend, publik API, dan internal API):
+
+```bash
+cd /opt/wa-bot/backend
+WA_BOT_FRONTEND_URL="https://<domain>" WA_BOT_API_URL="https://<domain>/api" WA_BOT_INTERNAL_URL="http://127.0.0.1:3002/internal" WA_BOT_INTERNAL_TOKEN="<token>" npm run test:smoke
+```
+
+Atau secara manual menggunakan curl:
+
 ```bash
 curl -fsS http://127.0.0.1:3001/health
 curl -fsS http://127.0.0.1:3001/health/ready

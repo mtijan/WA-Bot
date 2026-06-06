@@ -21,7 +21,8 @@
     "monitor:alert": "node scripts/alert_healthcheck.js",
     "logs:prune": "node scripts/prune_delivery_logs.js",
     "logs:prune:apply": "node scripts/prune_delivery_logs.js --apply",
-    "test": "node --test test/**/*.test.js"
+    "test": "node --test test/**/*.test.js",
+    "test:smoke": "node scripts/deploy_smoke_test.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.9",
