@@ -98,6 +98,8 @@ const migrations = [
           nodes TEXT NOT NULL,
           status TEXT DEFAULT 'ACTIVE',
           sent_count INTEGER DEFAULT 0,
+          trigger_count INTEGER DEFAULT 0,
+          failed_count INTEGER DEFAULT 0,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`,
         `CREATE TABLE IF NOT EXISTS auto_replies (
@@ -222,6 +224,8 @@ const migrations = [
       ]);
 
       await addColumnIfMissing(db, 'chatbot_flows', 'sent_count', 'INTEGER DEFAULT 0');
+      await addColumnIfMissing(db, 'chatbot_flows', 'trigger_count', 'INTEGER DEFAULT 0');
+      await addColumnIfMissing(db, 'chatbot_flows', 'failed_count', 'INTEGER DEFAULT 0');
       await addColumnIfMissing(db, 'campaigns', 'name', 'TEXT');
       await addColumnIfMissing(db, 'sessions', 'proxy_url', 'TEXT');
       await addColumnIfMissing(db, 'sessions', 'proxy_id', 'INTEGER');
@@ -315,6 +319,20 @@ const migrations = [
     description: 'Add chatbot_mode column to chatbot_ai_settings table.',
     up: async (db) => {
       await addColumnIfMissing(db, 'chatbot_ai_settings', 'chatbot_mode', "TEXT DEFAULT 'both'");
+    }
+  },
+  {
+    id: '006_chatbot_flow_delivery_metrics',
+    description: 'Separate chatbot flow trigger, successful message, and failed message counters.',
+    up: async (db) => {
+      const hadTriggerCount = await columnExists(db, 'chatbot_flows', 'trigger_count');
+      await addColumnIfMissing(db, 'chatbot_flows', 'trigger_count', 'INTEGER DEFAULT 0');
+      await addColumnIfMissing(db, 'chatbot_flows', 'failed_count', 'INTEGER DEFAULT 0');
+
+      if (!hadTriggerCount) {
+        await run(db, 'UPDATE chatbot_flows SET trigger_count = COALESCE(sent_count, 0)');
+        await run(db, 'UPDATE chatbot_flows SET sent_count = 0');
+      }
     }
   }
 ];

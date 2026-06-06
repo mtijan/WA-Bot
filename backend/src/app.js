@@ -74,6 +74,7 @@ export function createApp(options = {}) {
       const singleSent = await dbGet("SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NULL");
       
       const chatbotSent = await dbGet("SELECT SUM(sent_count) as total FROM chatbot_flows");
+      const chatbotTriggered = await dbGet("SELECT SUM(trigger_count) as total FROM chatbot_flows");
       const totalContacts = await dbGet("SELECT COUNT(DISTINCT target_number) as total FROM delivery_logs");
       const activeCampaigns = await dbGet("SELECT COUNT(*) as active FROM campaigns WHERE status = 'RUNNING'");
       const totalFlows = await dbGet("SELECT COUNT(*) as total FROM chatbot_flows");
@@ -110,7 +111,7 @@ export function createApp(options = {}) {
           totalContacts: totalContacts?.total || 0,
           totalTemplates: totalTemplates?.total || 0,
           activeCampaigns: activeCampaigns?.active || 0,
-          chatbotInteractions: chatbotSent?.total || 0,
+          chatbotInteractions: chatbotTriggered?.total || 0,
           totalNodes: totalNodes,
           successRate: successRate
         }

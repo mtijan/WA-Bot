@@ -412,14 +412,16 @@ class WhatsAppService {
 
         if (matchedFlow) {
           console.log(`[Chatbot] Sesi ${sessionId} membalas ke ${senderId} untuk flow: ${matchedFlow.flow_name}`);
-          
-          // Increment jumlah pesan terkirim pada flow ini
-          await dbRun('UPDATE chatbot_flows SET sent_count = sent_count + 1 WHERE id = ?', [matchedFlow.id]);
 
           if (matchedFlow.delay > 0) {
              await new Promise(r => setTimeout(r, matchedFlow.delay * 1000));
           }
-          await this.executeFlowNodes(sock, senderId, matchedFlow);
+          const stats = await this.executeFlowNodes(sock, senderId, matchedFlow);
+          await this.recordFlowDeliveryStats(matchedFlow.id, {
+            triggered: 1,
+            sent: stats.sent,
+            failed: stats.failed
+          });
         } else if ((chatbotMode === 'ai' || chatbotMode === 'both') && !isGroup) {
           // Fallback ke Chatbot AI (SumoPod API)
           if (aiSettings && aiSettings.is_active === 1) {
@@ -605,9 +607,20 @@ class WhatsAppService {
   }
 
   async executeFlowNodes(sock, jid, flow) {
+    const stats = { sent: 0, failed: 0 };
+    const sendAndCount = async (sendAction) => {
+      try {
+        await sendAction();
+        stats.sent += 1;
+      } catch (error) {
+        stats.failed += 1;
+        throw error;
+      }
+    };
+
     try {
       const nodes = JSON.parse(flow.nodes || '[]');
-      if (nodes.length === 0) return;
+      if (nodes.length === 0) return stats;
 
       // Buat map node berdasarkan ID agar pencarian cepat
       const nodesMap = new Map();
@@ -667,7 +680,7 @@ class WhatsAppService {
           }
 
           if (Object.keys(attachmentPayload).length > 0) {
-            await sock.sendMessage(jid, attachmentPayload);
+            await sendAndCount(() => sock.sendMessage(jid, attachmentPayload));
             if (isInteractive) {
               await new Promise(r => setTimeout(r, 1000));
             }
@@ -735,13 +748,13 @@ class WhatsAppService {
             });
           }
 
-          await sock.relayMessage(jid, msg.message, { 
+          await sendAndCount(() => sock.relayMessage(jid, msg.message, {
             messageId: msg.key.id,
             additionalNodes 
-          });
+          }));
         } else {
           if (!(currentNode.attachment && currentNode.attachment.url)) {
-            await sock.sendMessage(jid, { text: messageContentParsed });
+            await sendAndCount(() => sock.sendMessage(jid, { text: messageContentParsed }));
           }
         }
 
@@ -754,8 +767,12 @@ class WhatsAppService {
             const nextFlow = await dbGet("SELECT * FROM chatbot_flows WHERE id = ?", [nextFlowId]);
             if (nextFlow) {
               console.log(`[Chatbot] Alur melompat ke flow lain: ${nextFlow.flow_name}`);
-              // Eksekusi flow lain tersebut secara asinkron
-              this.executeFlowNodes(sock, jid, nextFlow);
+              const nextStats = await this.executeFlowNodes(sock, jid, nextFlow);
+              await this.recordFlowDeliveryStats(nextFlow.id, {
+                triggered: 1,
+                sent: nextStats.sent,
+                failed: nextStats.failed
+              });
             }
             break; // Hentikan eksekusi flow saat ini
           } else {
@@ -771,6 +788,24 @@ class WhatsAppService {
     } catch (error) {
       console.error('Error executing flow nodes:', error);
     }
+
+    return stats;
+  }
+
+  async recordFlowDeliveryStats(flowId, stats = {}) {
+    await dbRun(
+      `UPDATE chatbot_flows
+       SET trigger_count = COALESCE(trigger_count, 0) + ?,
+           sent_count = COALESCE(sent_count, 0) + ?,
+           failed_count = COALESCE(failed_count, 0) + ?
+       WHERE id = ?`,
+      [
+        stats.triggered || 0,
+        stats.sent || 0,
+        stats.failed || 0,
+        flowId
+      ]
+    );
   }
 
   async getGroups(sessionId) {

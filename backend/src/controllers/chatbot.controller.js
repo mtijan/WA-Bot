@@ -17,6 +17,8 @@ export const getFlows = async (req, res) => {
         delay,
         status,
         sent_count,
+        trigger_count,
+        failed_count,
         created_at,
         CASE
           WHEN json_valid(nodes) THEN json_array_length(nodes)
@@ -37,6 +39,8 @@ export const getFlows = async (req, res) => {
         delay,
         status,
         sent_count,
+        0 AS trigger_count,
+        0 AS failed_count,
         created_at,
         0 AS node_count
       FROM chatbot_flows
