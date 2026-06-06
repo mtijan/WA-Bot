@@ -48,6 +48,7 @@ test-kroki.js
 
 # Local agent handoff and generated documentation not needed in GitHub source
 AGENTS.md
+HANDOFF.md
 checklist.html
 sdlc_documentation.md
 docs/STAGING.md
