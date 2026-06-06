@@ -99,7 +99,7 @@ export const sessionManagerClient = {
   async sendSingleMessage(sessionId, target, payload) {
     return request('/single-message/send', {
       method: 'POST',
-      body: { sessionId, target, payload }
+      body: { sessionId, target, ...payload }
     });
   },
 

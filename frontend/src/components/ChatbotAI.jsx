@@ -512,7 +512,8 @@ function ChatbotAI({ API_URL }) {
       }
     } catch (err) {
       console.error(err);
-      setSandboxMessages(prev => [...prev, { role: 'assistant', content: 'Gagal terhubung dengan server simulator.' }]);
+      const errMsg = err.payload?.message || err.message || 'Gagal terhubung dengan server simulator.';
+      setSandboxMessages(prev => [...prev, { role: 'assistant', content: errMsg }]);
     } finally {
       setSimulating(false);
     }
