@@ -1,6 +1,8 @@
 import campaignService from '../services/campaign.service.js';
 import { dbAll, dbRun } from '../database.js';
 import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 export const getCampaigns = async (req, res) => {
   try {
@@ -17,21 +19,15 @@ export const getCampaigns = async (req, res) => {
       ORDER BY c.created_at DESC
     `;
     const campaigns = await dbAll(sql);
-    res.json({ status: 'success', data: campaigns });
+    return sendSuccess(res, campaigns);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getCampaigns', error);
+    return sendError(res, 500, 'GET_CAMPAIGNS_ERROR', 'Gagal memuat daftar kampanye.');
   }
 };
 
 export const createCampaign = async (req, res) => {
   const { session_id, name, message, targets, delay_ms_min, delay_ms_max } = req.body;
-
-  if (!session_id || !message || !targets || !Array.isArray(targets) || targets.length === 0) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Parameter session_id, message, dan targets (Array tidak boleh kosong) wajib diisi.'
-    });
-  }
 
   try {
     const campaignId = await campaignService.createCampaign(
@@ -45,33 +41,31 @@ export const createCampaign = async (req, res) => {
 
     if (isSessionManagerClientEnabled()) {
       sessionManagerClient.processCampaign(campaignId).catch((err) => {
-        console.error(`[Campaign Controller] Gagal mendelegasikan kampanye #${campaignId} ke worker:`, err.message);
+        logError('delegateCampaign', err, { campaignId });
       });
     }
 
-    res.status(202).json({
-      status: 'success',
-      message: 'Kampanye berhasil dimasukkan ke antrean.',
-      data: {
-        campaign_id: campaignId,
-        total_targets: targets.length
-      }
-    });
+    return sendSuccess(res, {
+      campaign_id: campaignId,
+      total_targets: targets.length
+    }, 202, { message: 'Kampanye berhasil dimasukkan ke antrean.' });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    logError('createCampaign', err, { body: req.body });
+    return sendError(res, 500, 'CREATE_CAMPAIGN_ERROR', err.message || 'Gagal membuat kampanye.');
   }
 };
 
 export const getCampaignProgress = async (req, res) => {
   const { id } = req.params;
   try {
-    const progress = await campaignService.getCampaignProgress(parseInt(id));
+    const progress = await campaignService.getCampaignProgress(Number.parseInt(id, 10));
     if (!progress) {
-      return res.status(404).json({ status: 'error', message: 'Kampanye tidak ditemukan.' });
+      return sendError(res, 404, 'CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
     }
-    res.json({ status: 'success', data: progress });
+    return sendSuccess(res, progress);
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    logError('getCampaignProgress', err, { params: req.params });
+    return sendError(res, 500, 'GET_CAMPAIGN_PROGRESS_ERROR', err.message || 'Gagal memuat progress kampanye.');
   }
 };
 
@@ -80,8 +74,9 @@ export const deleteCampaign = async (req, res) => {
   try {
     await dbRun('DELETE FROM delivery_logs WHERE campaign_id = ?', [id]);
     await dbRun('DELETE FROM campaigns WHERE id = ?', [id]);
-    res.json({ status: 'success', message: 'Kampanye berhasil dihapus.' });
+    return sendSuccess(res, null, 200, { message: 'Kampanye berhasil dihapus.' });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    logError('deleteCampaign', err, { params: req.params });
+    return sendError(res, 500, 'DELETE_CAMPAIGN_ERROR', err.message || 'Gagal menghapus kampanye.');
   }
 };

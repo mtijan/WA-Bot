@@ -2,6 +2,8 @@ import whatsappService from '../services/whatsapp.service.js';
 import { dbAll, dbGet, dbRun } from '../database.js';
 import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
 import { maskProxyUrl } from '../utils/secret_masking.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError, logger } from '../logger.js';
 
 const maskSessionProxy = (session) => ({
   ...session,
@@ -39,17 +41,15 @@ export const getSessions = async (req, res) => {
       });
     }
     
-    res.json({ status: 'success', data: result });
+    return sendSuccess(res, result);
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    logError('getSessions', err);
+    return sendError(res, 500, 'GET_SESSIONS_ERROR', 'Gagal memuat sesi.');
   }
 };
 
 export const createSession = async (req, res) => {
   const { session_id } = req.body;
-  if (!session_id) {
-    return res.status(400).json({ status: 'error', message: 'session_id wajib diisi.' });
-  }
 
   try {
     if (isSessionManagerClientEnabled()) {
@@ -84,13 +84,10 @@ export const createSession = async (req, res) => {
     };
 
     const finalStatus = await checkState();
-    res.status(201).json({
-      status: 'success',
-      message: 'Sesi diinisialisasi.',
-      data: finalStatus ? maskSessionProxy(finalStatus) : finalStatus
-    });
+    return sendSuccess(res, finalStatus ? maskSessionProxy(finalStatus) : finalStatus, 201, { message: 'Sesi diinisialisasi.' });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    logError('createSession', err, { body: req.body });
+    return sendError(res, 500, 'CREATE_SESSION_ERROR', err.message || 'Gagal menginisialisasi sesi.');
   }
 };
 
@@ -103,9 +100,10 @@ export const deleteSession = async (req, res) => {
     }
 
     await whatsappService.deleteSession(id);
-    res.json({ status: 'success', message: `Sesi ${id} berhasil dihapus.` });
+    return sendSuccess(res, null, 200, { message: `Sesi ${id} berhasil dihapus.` });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    logError('deleteSession', err, { params: req.params });
+    return sendError(res, 500, 'DELETE_SESSION_ERROR', err.message || 'Gagal menghapus sesi.');
   }
 };
 
@@ -125,20 +123,18 @@ export const updateSessionProxy = async (req, res) => {
     // 2. Cek apakah socket sesi ini sedang berjalan aktif
     const activeSock = whatsappService.sockets[id];
     if (activeSock) {
-      console.log(`[WA Server] Proxy untuk sesi ${id} diperbarui menjadi proxy_id: ${proxy_id || 'null'}. Memutuskan koneksi soket aktif...`);
+      logger.info({ scope: 'updateSessionProxy', sessionId: id }, `Proxy untuk sesi ${id} diperbarui menjadi proxy_id: ${proxy_id || 'null'}. Memutuskan koneksi soket aktif...`);
       // Panggil .end() untuk memutuskan soket secara bersih, Baileys akan otomatis reconnect
       try {
         activeSock.end(new Error('Proxy changed'));
       } catch (err) {
-        console.warn(`[WA Server] Gagal memutuskan soket sesi ${id}:`, err.message);
+        logError('disconnectSocketOnProxyUpdate', err, { sessionId: id });
       }
     }
 
-    res.json({
-      status: 'success',
-      message: 'Proxy sesi berhasil diperbarui.'
-    });
+    return sendSuccess(res, null, 200, { message: 'Proxy sesi berhasil diperbarui.' });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    logError('updateSessionProxy', err, { params: req.params, body: req.body });
+    return sendError(res, 500, 'UPDATE_SESSION_PROXY_ERROR', err.message || 'Gagal memperbarui proxy sesi.');
   }
 };

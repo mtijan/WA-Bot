@@ -1,29 +1,20 @@
 import express from 'express';
-import { getDetailedGroups, getInviteLink, exportParticipants } from '../controllers/group_grabber.controller.js';
-import whatsappService from '../services/whatsapp.service.js';
-import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
+import { getDetailedGroups, getInviteLink, exportParticipants, forceSyncContacts } from '../controllers/group_grabber.controller.js';
+import { validateBody } from '../utils/validator.js';
 
 const router = express.Router();
 
 router.get('/groups/:sessionId', getDetailedGroups);
-router.post('/invite-link', getInviteLink);
-router.post('/export-participants', exportParticipants);
-
-// Endpoint untuk memaksa re-sinkronisasi kontak
-router.post('/force-sync-contacts', async (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    if (!sessionId) {
-      return res.status(400).json({ status: 'error', message: 'sessionId wajib diisi.' });
-    }
-    const response = isSessionManagerClientEnabled()
-      ? await sessionManagerClient.forceSyncContacts(sessionId)
-      : { data: await whatsappService.forceSyncContacts(sessionId) };
-    const result = response.data;
-    res.json({ status: 'success', data: result });
-  } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
+router.post('/invite-link', validateBody({
+  sessionId: { required: true, type: 'string', min: 1 },
+  groupId: { required: true, type: 'string', min: 1 }
+}), getInviteLink);
+router.post('/export-participants', validateBody({
+  sessionId: { required: true, type: 'string', min: 1 },
+  groupIds: { required: true, type: 'array', min: 1 }
+}), exportParticipants);
+router.post('/force-sync-contacts', validateBody({
+  sessionId: { required: true, type: 'string', min: 1 }
+}), forceSyncContacts);
 
 export default router;

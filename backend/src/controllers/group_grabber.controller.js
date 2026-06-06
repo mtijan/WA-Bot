@@ -1,6 +1,8 @@
 import whatsappService from '../services/whatsapp.service.js';
-import { dbAll, dbRun } from '../database.js';
+import { dbAll } from '../database.js';
 import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 // Helper: Deteksi Info Negara
 const getCountryInfo = (num) => {
@@ -76,12 +78,6 @@ const normalizePhoneForMatching = (num) => {
 
 export const getDetailedGroups = async (req, res) => {
   const { sessionId } = req.params;
-  if (!sessionId) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Parameter sessionId wajib diisi.'
-    });
-  }
 
   try {
     const response = isSessionManagerClientEnabled()
@@ -89,52 +85,43 @@ export const getDetailedGroups = async (req, res) => {
       : { data: await whatsappService.getDetailedGroups(sessionId) };
     const groups = response.data || [];
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.json({
-      status: 'success',
-      data: groups
-    });
+    return sendSuccess(res, groups);
   } catch (err) {
-    res.status(500).json({
-      status: 'error',
-      message: err.message
-    });
+    logError('getDetailedGroups', err, { params: req.params });
+    return sendError(res, 500, 'GET_DETAILED_GROUPS_ERROR', err.message || 'Gagal mengambil detail grup.');
   }
 };
 
 export const getInviteLink = async (req, res) => {
   const { sessionId, groupId } = req.body;
-  if (!sessionId || !groupId) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Parameter sessionId dan groupId wajib diisi.'
-    });
-  }
 
   try {
     const response = isSessionManagerClientEnabled()
       ? await sessionManagerClient.getGroupInviteLink(sessionId, groupId)
       : { data: { inviteLink: await whatsappService.getGroupInviteLink(sessionId, groupId) } };
     const inviteLink = response.data?.inviteLink;
-    res.json({
-      status: 'success',
-      data: { inviteLink }
-    });
+    return sendSuccess(res, { inviteLink });
   } catch (err) {
-    res.status(500).json({
-      status: 'error',
-      message: err.message
-    });
+    logError('getInviteLink', err, { body: req.body });
+    return sendError(res, 500, 'GET_INVITE_LINK_ERROR', err.message || 'Gagal mendapatkan tautan undangan grup.');
+  }
+};
+
+export const forceSyncContacts = async (req, res) => {
+  const { sessionId } = req.body;
+  try {
+    const response = isSessionManagerClientEnabled()
+      ? await sessionManagerClient.forceSyncContacts(sessionId)
+      : { data: await whatsappService.forceSyncContacts(sessionId) };
+    return sendSuccess(res, response.data);
+  } catch (err) {
+    logError('forceSyncContacts', err, { body: req.body });
+    return sendError(res, 500, 'FORCE_SYNC_CONTACTS_ERROR', err.message || 'Gagal sinkronisasi kontak.');
   }
 };
 
 export const exportParticipants = async (req, res) => {
   const { sessionId, groupIds } = req.body;
-  if (!sessionId || !groupIds || !Array.isArray(groupIds)) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Parameter sessionId dan groupIds (array) wajib diisi.'
-    });
-  }
 
   try {
     let sock = null;
@@ -146,10 +133,7 @@ export const exportParticipants = async (req, res) => {
     } else {
       sock = whatsappService.sockets[sessionId];
       if (!sock) {
-        return res.status(404).json({
-          status: 'error',
-          message: `Sesi ${sessionId} tidak aktif atau belum terhubung.`
-        });
+        return sendError(res, 404, 'SESSION_NOT_ACTIVE', `Sesi ${sessionId} tidak aktif atau belum terhubung.`);
       }
     }
 
@@ -171,7 +155,7 @@ export const exportParticipants = async (req, res) => {
           }
         }
       } catch (err) {
-        console.error("Gagal melakukan preload database whatsapp_contacts:", err.message);
+        logError('preloadWaContacts', err);
       }
     }
 
@@ -205,7 +189,7 @@ export const exportParticipants = async (req, res) => {
             });
           }
         } catch (err) {
-          console.error(`Gagal mengambil metadata grup live untuk ${gid}:`, err.message);
+          logError('getGroupMetadata', err, { groupId: gid });
         }
       }
     }
@@ -218,10 +202,7 @@ export const exportParticipants = async (req, res) => {
     }
 
     if (selectedGroups.length === 0) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Grup terpilih tidak ditemukan.'
-      });
+      return sendError(res, 400, 'GROUPS_NOT_FOUND', 'Grup terpilih tidak ditemukan.');
     }
 
     // ========== FASE 1: Kumpulkan semua kontak dari berbagai sumber ==========
@@ -343,7 +324,7 @@ export const exportParticipants = async (req, res) => {
         }
       }
     } catch (err) {
-      console.warn('[Group Grabber] Batch onWhatsApp lookup gagal:', err.message);
+      logError('batchOnWhatsApp', err);
     }
 
     // 3b. Untuk akun bisnis yang terdeteksi, coba ambil profil bisnis lebih detail
@@ -529,12 +510,10 @@ export const exportParticipants = async (req, res) => {
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename=${filename}_${Date.now()}.csv`);
-    res.send(csvContent);
+    return res.send(csvContent);
 
   } catch (err) {
-    res.status(500).json({
-      status: 'error',
-      message: err.message
-    });
+    logError('exportParticipants', err, { body: req.body });
+    return sendError(res, 500, 'EXPORT_PARTICIPANTS_ERROR', err.message || 'Gagal mengekspor peserta grup.');
   }
 };

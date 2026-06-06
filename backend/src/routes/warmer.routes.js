@@ -9,17 +9,28 @@ import {
   getCampaignLogs,
   deleteCampaign
 } from '../controllers/warmer.controller.js';
+import { validateBody } from '../utils/validator.js';
 
 const router = express.Router();
 
 // Rute Template Warmer
 router.get('/templates', getTemplates);
-router.post('/templates', createTemplate);
+router.post('/templates', validateBody({
+  name: { required: true, type: 'string', min: 1, max: 100 },
+  messages: { required: true, type: 'string', min: 1 }
+}), createTemplate);
 router.delete('/templates/:id', deleteTemplate);
 
 // Rute Kampanye Warmer
 router.get('/campaigns', getCampaigns);
-router.post('/campaigns', createCampaign);
+router.post('/campaigns', validateBody({
+  name: { required: true, type: 'string', min: 1, max: 100 },
+  device_ids: { required: true, type: 'string', min: 1 },
+  messages: { required: true, type: 'string', min: 1 },
+  min_delay: { required: true, type: 'number' },
+  max_delay: { required: true, type: 'number' },
+  duration: { required: true, type: 'number' }
+}), createCampaign);
 router.post('/campaigns/:id/stop', stopCampaign);
 router.get('/campaigns/:id/logs', getCampaignLogs);
 router.delete('/campaigns/:id', deleteCampaign);

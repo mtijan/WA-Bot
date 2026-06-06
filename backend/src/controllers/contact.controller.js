@@ -1,6 +1,8 @@
 import { dbRun, dbAll, dbGet } from '../database.js';
 import whatsappService from '../services/whatsapp.service.js';
 import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 export const getGroups = async (req, res) => {
   try {
@@ -16,49 +18,46 @@ export const getGroups = async (req, res) => {
       ORDER BY cg.created_at DESC
     `;
     const groups = await dbAll(sql);
-    res.json({ status: 'success', data: groups });
+    return sendSuccess(res, groups);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getGroupsContacts', error);
+    return sendError(res, 500, 'GET_CONTACT_GROUPS_ERROR', 'Gagal memuat grup kontak.');
   }
 };
 
 export const createGroup = async (req, res) => {
   const { name, description, color } = req.body;
-  if (!name) {
-    return res.status(400).json({ status: 'error', message: 'Group name is required' });
-  }
 
   try {
     const result = await dbRun(
       'INSERT INTO contact_groups (name, description, color) VALUES (?, ?, ?)',
-      [name, description, color || '#3b82f6']
+      [name, description || null, color || '#3b82f6']
     );
-    res.status(201).json({ status: 'success', message: 'Contact group created', data: { id: result.id } });
+    return sendSuccess(res, { id: result.id }, 201, { message: 'Grup kontak berhasil dibuat.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('createGroupContacts', error, { body: req.body });
+    return sendError(res, 500, 'CREATE_CONTACT_GROUP_ERROR', 'Gagal membuat grup kontak.');
   }
 };
 
 export const updateGroup = async (req, res) => {
   const { id } = req.params;
   const { name, description, color } = req.body;
-  if (!name) {
-    return res.status(400).json({ status: 'error', message: 'Group name is required' });
-  }
 
   try {
     const existing = await dbGet('SELECT * FROM contact_groups WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Contact group not found' });
+      return sendError(res, 404, 'CONTACT_GROUP_NOT_FOUND', 'Grup kontak tidak ditemukan.');
     }
 
     await dbRun(
       'UPDATE contact_groups SET name = ?, description = ?, color = ? WHERE id = ?',
-      [name, description, color, id]
+      [name, description || null, color || '#3b82f6', id]
     );
-    res.json({ status: 'success', message: 'Contact group updated' });
+    return sendSuccess(res, null, 200, { message: 'Grup kontak berhasil diperbarui.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('updateGroupContacts', error, { params: req.params, body: req.body });
+    return sendError(res, 500, 'UPDATE_CONTACT_GROUP_ERROR', 'Gagal memperbarui grup kontak.');
   }
 };
 
@@ -67,22 +66,23 @@ export const deleteGroup = async (req, res) => {
   try {
     const existing = await dbGet('SELECT * FROM contact_groups WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Contact group not found' });
+      return sendError(res, 404, 'CONTACT_GROUP_NOT_FOUND', 'Grup kontak tidak ditemukan.');
     }
 
     // Manual cascade delete contacts for safety
     await dbRun('DELETE FROM contacts WHERE group_id = ?', [id]);
     await dbRun('DELETE FROM contact_groups WHERE id = ?', [id]);
-    res.json({ status: 'success', message: 'Contact group deleted successfully' });
+    return sendSuccess(res, null, 200, { message: 'Grup kontak berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteGroupContacts', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_CONTACT_GROUP_ERROR', 'Gagal menghapus grup kontak.');
   }
 };
 
 export const getContacts = async (req, res) => {
   const { groupId, search, status } = req.query;
   if (!groupId) {
-    return res.status(400).json({ status: 'error', message: 'groupId parameter is required' });
+    return sendError(res, 400, 'GROUP_ID_REQUIRED', 'Parameter groupId wajib disertakan.');
   }
 
   try {
@@ -102,9 +102,10 @@ export const getContacts = async (req, res) => {
     sql += ' ORDER BY created_at DESC';
 
     const contacts = await dbAll(sql, params);
-    res.json({ status: 'success', data: contacts });
+    return sendSuccess(res, contacts);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getContacts', error, { query: req.query });
+    return sendError(res, 500, 'GET_CONTACTS_ERROR', 'Gagal memuat daftar kontak.');
   }
 };
 
@@ -129,10 +130,6 @@ export const createContact = async (req, res) => {
     var9,
     var10
   } = req.body;
-
-  if (!group_id || !phone_number) {
-    return res.status(400).json({ status: 'error', message: 'Group ID and Phone Number are required' });
-  }
 
   try {
     let cleanPhone = phone_number.toString().trim();
@@ -173,9 +170,10 @@ export const createContact = async (req, res) => {
       ]
     );
 
-    res.status(201).json({ status: 'success', message: 'Contact created', data: { id: result.id } });
+    return sendSuccess(res, { id: result.id }, 201, { message: 'Kontak berhasil ditambahkan.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('createContact', error, { body: req.body });
+    return sendError(res, 500, 'CREATE_CONTACT_ERROR', 'Gagal menambahkan kontak.');
   }
 };
 
@@ -202,14 +200,10 @@ export const updateContact = async (req, res) => {
     var10
   } = req.body;
 
-  if (!name || !phone_number) {
-    return res.status(400).json({ status: 'error', message: 'Name and Phone Number are required' });
-  }
-
   try {
     const existing = await dbGet('SELECT * FROM contacts WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Contact not found' });
+      return sendError(res, 404, 'CONTACT_NOT_FOUND', 'Kontak tidak ditemukan.');
     }
 
     let cleanPhone = phone_number.toString().trim();
@@ -248,9 +242,10 @@ export const updateContact = async (req, res) => {
       ]
     );
 
-    res.json({ status: 'success', message: 'Contact updated' });
+    return sendSuccess(res, null, 200, { message: 'Kontak berhasil diperbarui.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('updateContact', error, { params: req.params, body: req.body });
+    return sendError(res, 500, 'UPDATE_CONTACT_ERROR', 'Gagal memperbarui kontak.');
   }
 };
 
@@ -259,21 +254,19 @@ export const deleteContact = async (req, res) => {
   try {
     const existing = await dbGet('SELECT * FROM contacts WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Contact not found' });
+      return sendError(res, 404, 'CONTACT_NOT_FOUND', 'Kontak tidak ditemukan.');
     }
 
     await dbRun('DELETE FROM contacts WHERE id = ?', [id]);
-    res.json({ status: 'success', message: 'Contact deleted successfully' });
+    return sendSuccess(res, null, 200, { message: 'Kontak berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteContact', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_CONTACT_ERROR', 'Gagal menghapus kontak.');
   }
 };
 
 export const bulkCreateContacts = async (req, res) => {
   const { group_id, contacts } = req.body;
-  if (!group_id || !Array.isArray(contacts)) {
-    return res.status(400).json({ status: 'error', message: 'Group ID and contacts array are required' });
-  }
 
   try {
     // Jalankan dalam sequence
@@ -334,9 +327,10 @@ export const bulkCreateContacts = async (req, res) => {
       );
     }
 
-    res.status(201).json({ status: 'success', message: `Imported ${contacts.length} contacts successfully` });
+    return sendSuccess(res, null, 201, { message: `Imported ${contacts.length} contacts successfully` });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('bulkCreateContacts', error, { body: req.body });
+    return sendError(res, 500, 'BULK_CREATE_CONTACTS_ERROR', 'Gagal mengimpor kontak.');
   }
 };
 
@@ -344,18 +338,20 @@ export const deleteInvalidContacts = async (req, res) => {
   const { groupId } = req.params;
   try {
     await dbRun('DELETE FROM contacts WHERE group_id = ? AND status = "INVALID"', [groupId]);
-    res.json({ status: 'success', message: 'All invalid contacts deleted successfully' });
+    return sendSuccess(res, null, 200, { message: 'Semua nomor tidak valid berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteInvalidContacts', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_INVALID_CONTACTS_ERROR', 'Gagal menghapus kontak tidak valid.');
   }
 };
 
 export const cleanupOrphanedContacts = async (req, res) => {
   try {
     const result = await dbRun('DELETE FROM contacts WHERE group_id NOT IN (SELECT id FROM contact_groups)');
-    res.json({ status: 'success', message: `Cleaned up ${result.changes} orphaned contact(s) successfully` });
+    return sendSuccess(res, null, 200, { message: `Berhasil membersihkan ${result.changes} kontak yatim.` });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('cleanupOrphanedContacts', error);
+    return sendError(res, 500, 'CLEANUP_ORPHANED_CONTACTS_ERROR', 'Gagal membersihkan kontak yatim.');
   }
 };
 
@@ -363,28 +359,25 @@ export const verifyGroupContacts = async (req, res) => {
   const { groupId } = req.params;
   const { session_id } = req.body;
 
-  if (!session_id) {
-    return res.status(400).json({ status: 'error', message: 'session_id is required for verification' });
-  }
-
   if (isSessionManagerClientEnabled()) {
     try {
       const result = await sessionManagerClient.verifyGroupContacts(groupId, session_id);
       return res.json(result);
     } catch (error) {
-      return res.status(500).json({ status: 'error', message: error.message });
+      logError('delegateVerifyGroupContacts', error, { groupId, sessionId: session_id });
+      return sendError(res, 500, 'DELEGATE_VERIFY_CONTACTS_ERROR', error.message || 'Gagal mendelegasikan verifikasi kontak.');
     }
   }
 
   const sock = whatsappService.sockets[session_id];
   if (!sock) {
-    return res.status(404).json({ status: 'error', message: `WhatsApp session "${session_id}" is disconnected or not found.` });
+    return sendError(res, 404, 'SESSION_NOT_ACTIVE', `Sesi WhatsApp "${session_id}" tidak aktif atau tidak terhubung.`);
   }
 
   try {
     const contacts = await dbAll('SELECT * FROM contacts WHERE group_id = ? AND status = "UNVERIFIED"', [groupId]);
     if (contacts.length === 0) {
-      return res.json({ status: 'success', message: 'No unverified contacts found in this group' });
+      return sendSuccess(res, null, 200, { message: 'Tidak ada kontak belum terverifikasi dalam grup ini.' });
     }
 
     let verifiedCount = 0;
@@ -415,15 +408,13 @@ export const verifyGroupContacts = async (req, res) => {
         // Jeda halus 150ms agar stabil
         await new Promise(r => setTimeout(r, 150));
       } catch (err) {
-        console.error(`Verification failed for number ${contact.phone_number}:`, err.message);
+        logError('verifySingleContact', err, { phoneNumber: contact.phone_number });
       }
     }
 
-    res.json({ 
-      status: 'success', 
-      message: `Verification complete. Verified: ${verifiedCount}, Invalid: ${invalidCount}` 
-    });
+    return sendSuccess(res, null, 200, { message: `Verifikasi selesai. Terverifikasi: ${verifiedCount}, Tidak Valid: ${invalidCount}` });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('verifyGroupContacts', error, { groupId, sessionId: session_id });
+    return sendError(res, 500, 'VERIFY_GROUP_CONTACTS_ERROR', error.message || 'Gagal memproses verifikasi kontak.');
   }
 };

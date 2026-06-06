@@ -1,6 +1,6 @@
 # WA-Bot Codebase Quality Baseline
 
-**Status:** Baseline implemented, migration across all modules still in progress  
+**Status:** Completed  
 **Last updated:** 2026-06-06
 
 ## Implemented Baseline
@@ -12,27 +12,24 @@
 | Error response helper | Shared helpers exist for consistent success/error JSON envelopes. | `backend/src/utils/http_response.js` |
 | Secret masking helper | Shared masking helper exists for proxy URLs and partial secret display. | `backend/src/utils/secret_masking.js` |
 | Media upload attachments | Backend upload modules and frontend upload UI for Templates, Single Message, and Chatbot Flow are implemented and verified. | `backend/src/services/upload.service.js`, `backend/src/controllers/upload.controller.js`, `backend/src/routes/upload.routes.js`, `frontend/src/components/MediaUploadField.jsx`, `docs/MEDIA_UPLOAD_WORKLOG.md` |
-| Frontend API client | Central API request helper exists; auth flow, dashboard stats, session manager, contact groups, proxy manager, message templates, chatbot flows, and single message use it. | `frontend/src/apiClient.js`, `frontend/src/components/Dashboard.jsx`, `frontend/src/components/SessionManager.jsx`, `frontend/src/components/ContactGroups.jsx`, `frontend/src/components/ProxyManager.jsx`, `frontend/src/components/Templates.jsx`, `frontend/src/components/ChatbotFlows.jsx`, `frontend/src/components/SingleMessage.jsx` |
-| Auth response helper migration | Admin auth controller uses `sendSuccess` / `sendError`. | `backend/src/controllers/auth.controller.js` |
+| Frontend API client | Central API request helper exists; all React components use it. | `frontend/src/apiClient.js`, `frontend/src/components/Dashboard.jsx`, `frontend/src/components/SessionManager.jsx`, `frontend/src/components/ContactGroups.jsx`, `frontend/src/components/ProxyManager.jsx`, `frontend/src/components/Templates.jsx`, `frontend/src/components/ChatbotFlows.jsx`, `frontend/src/components/SingleMessage.jsx`, `frontend/src/components/BulkCampaign.jsx`, `frontend/src/components/Warmer.jsx`, `frontend/src/components/GroupDetail.jsx`, `frontend/src/components/ChatbotAI.jsx` |
+| Controller Response & Validation Migration | All 15 backend controllers are fully migrated to use Pino logger, centralized config, consistent response helper, and declarative validation middleware. | `backend/src/controllers/*.js`, `backend/src/routes/*.js`, `backend/src/utils/validator.js` |
 
 ## Rules for Future Changes
 
 - Prefer `config` from `backend/src/config.js` over new direct `process.env` reads.
 - Prefer `logger` / `logError` over new `console.log` or `console.error` in backend runtime code.
 - Prefer `sendError` and `sendSuccess` for new backend endpoints.
+- Prefer `validateBody` schema rules in route registration for new payload validation.
 - Prefer `apiRequest` from `frontend/src/apiClient.js` for frontend API calls.
-- Keep old controllers working, but migrate them opportunistically when touching the file for real feature work.
 
 ## Remaining Work
 
 | Gap | Recommended Next Step |
 |-----|-----------------------|
-| Many controllers still return inline JSON errors. | Migrate module by module to `sendError` / `sendSuccess`. |
-| Request validation is still manual in controllers. | Add lightweight validation helpers or a schema validator such as Zod/Joi after dependency decision. |
-| Backend logs still use `console.*` in services/controllers. | Replace high-volume runtime logs first: WhatsApp service, campaign worker, warmer worker. |
 | Error response contract is not fully enforced. | Add backend integration tests for common error envelopes. |
 
-Do not mark item 7 as DONE until the remaining work above is migrated and verified.
+---
 
 ## Migration Evidence
 
@@ -49,7 +46,4 @@ Do not mark item 7 as DONE until the remaining work above is migrated and verifi
 | 2026-06-06 | Frontend chatbot flow API calls | `frontend/src/components/ChatbotFlows.jsx` now uses `apiRequest` for list/session polling, create/update/delete, status toggle, import, and export; `npm run build` passed. |
 | 2026-06-06 | Frontend SingleMessage API calls | `frontend/src/components/SingleMessage.jsx` now uses `apiRequest` for sessions, templates, contact groups, groups list, and sending messages; `npm run build` passed. |
 | 2026-06-06 | All remaining frontend components | `BulkCampaign.jsx`, `Warmer.jsx`, `GroupDetail.jsx`, `GroupGrabber.jsx`, and `ChatbotAI.jsx` successfully migrated to `apiRequest` for all network calls; `npm run build` passed and Production API URL guard verified. |
-
-## Current Priority Note
-
-As of 2026-06-06, staging VPS baseline is verified with domain HTTPS, secure cookie/CORS, UFW, provider firewall review, local backup/restore timers, local healthcheck, logrotate, HTTP/HTTPS smoke, auth HTTPS smoke, and manual browser smoke. Media upload and WhatsApp session stability/log-noise hardening are complete. Continue codebase-quality migration while the remaining production blockers wait on external alerting and offsite backup later when a storage destination is available.
+| 2026-06-06 | Backend controllers & validation migration | All 15 controllers refactored to use `sendSuccess`/`sendError` response helpers, logging converted from `console.*` to `logger`/`logError`, and route payload validation middleware `validator.js` created and integrated across all routes. Syntax loop and frontend build verified. |

@@ -1,34 +1,33 @@
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import http from 'http';
 import https from 'https';
 import { dbRun, dbAll, dbGet } from '../database.js';
 import { getDownloadStatus, startDownload } from '../services/iplocate.service.js';
 import { maskProxyRecord, maskSecret } from '../utils/secret_masking.js';
-
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 export const getProxies = async (req, res) => {
   try {
     const proxies = await dbAll('SELECT * FROM proxies ORDER BY created_at DESC');
-    res.json({ status: 'success', data: proxies.map(maskProxyRecord) });
+    return sendSuccess(res, proxies.map(maskProxyRecord));
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getProxies', error);
+    return sendError(res, 500, 'GET_PROXIES_ERROR', 'Gagal memuat daftar proxy.');
   }
 };
 
 export const createProxy = async (req, res) => {
   const { name, proxy_url } = req.body;
-  if (!name || !proxy_url) {
-    return res.status(400).json({ status: 'error', message: 'Name dan Proxy URL wajib diisi.' });
-  }
 
   try {
     const result = await dbRun(
       'INSERT INTO proxies (name, proxy_url, status) VALUES (?, ?, ?)',
       [name, proxy_url.trim(), 'ACTIVE']
     );
-    res.status(201).json({ status: 'success', message: 'Proxy berhasil ditambahkan.', data: { id: result.id } });
+    return sendSuccess(res, { id: result.id }, 201, { message: 'Proxy berhasil ditambahkan.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('createProxy', error, { body: req.body });
+    return sendError(res, 500, 'CREATE_PROXY_ERROR', 'Gagal menyimpan proxy.');
   }
 };
 
@@ -38,9 +37,10 @@ export const deleteProxy = async (req, res) => {
     // Kembalikan sesi-sesi yang memakai proxy ini ke null
     await dbRun('UPDATE sessions SET proxy_id = NULL WHERE proxy_id = ?', [id]);
     await dbRun('DELETE FROM proxies WHERE id = ?', [id]);
-    res.json({ status: 'success', message: 'Proxy berhasil dihapus.' });
+    return sendSuccess(res, null, 200, { message: 'Proxy berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteProxy', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_PROXIES_ERROR', 'Gagal menghapus proxy.');
   }
 };
 
@@ -50,7 +50,7 @@ export const testProxyConnection = async (req, res) => {
   try {
     const proxy = await dbGet('SELECT * FROM proxies WHERE id = ?', [id]);
     if (!proxy) {
-      return res.status(404).json({ status: 'error', message: 'Proxy tidak ditemukan.' });
+      return sendError(res, 404, 'PROXY_NOT_FOUND', 'Proxy tidak ditemukan.');
     }
 
     // Ambil API Key IPLocate jika dikonfigurasi
@@ -96,7 +96,7 @@ export const testProxyConnection = async (req, res) => {
                   ip: json.ip || null
                 };
               } catch (e) {
-                console.warn('[Proxy Test] Gagal parsing JSON dari iplocate:', e.message);
+                logError('parseGeoData', e);
               }
             }
             const latency = Date.now() - start;
@@ -123,27 +123,24 @@ export const testProxyConnection = async (req, res) => {
         'UPDATE proxies SET status = ?, country = ?, city = ?, isp = ?, ip = ? WHERE id = ?', 
         ['ACTIVE', geo.country, geo.city, geo.isp, geo.ip, id]
       );
-      res.json({
-        status: 'success',
+      return sendSuccess(res, {
         working: true,
         latency: result.latency,
-        geo: geo,
-        message: `Proxy aktif dengan latency ${result.latency}ms.`
-      });
+        geo: geo
+      }, 200, { message: `Proxy aktif dengan latency ${result.latency}ms.` });
     } else {
       await dbRun(
         'UPDATE proxies SET status = ?, country = NULL, city = NULL, isp = NULL, ip = NULL WHERE id = ?', 
         ['INACTIVE', id]
       );
-      res.json({
-        status: 'success',
+      return sendSuccess(res, {
         working: false,
-        error: result.error || 'Gagal merespons (bukan status 200)',
-        message: `Proxy gagal terhubung: ${result.error || 'Bukan status 200'}`
-      });
+        error: result.error || 'Gagal merespons (bukan status 200)'
+      }, 200, { message: `Proxy gagal terhubung: ${result.error || 'Bukan status 200'}` });
     }
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('testProxyConnection', error, { params: req.params });
+    return sendError(res, 500, 'TEST_PROXY_ERROR', error.message || 'Gagal mengetes koneksi proxy.');
   }
 };
 
@@ -153,16 +150,16 @@ export const getSetting = async (req, res) => {
     const setting = await dbGet('SELECT value FROM settings WHERE key = ?', [key]);
     if (key === 'iplocate_api_key') {
       const value = setting ? setting.value : '';
-      return res.json({
-        status: 'success',
+      return sendSuccess(res, {
         value: '',
         has_value: Boolean(value),
         masked_value: maskSecret(value)
       });
     }
-    res.json({ status: 'success', value: setting ? setting.value : '' });
+    return sendSuccess(res, { value: setting ? setting.value : '' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getSetting', error, { params: req.params });
+    return sendError(res, 500, 'GET_SETTING_ERROR', 'Gagal memuat pengaturan.');
   }
 };
 
@@ -176,18 +173,20 @@ export const saveSetting = async (req, res) => {
     } else {
       await dbRun('INSERT INTO settings (key, value) VALUES (?, ?)', [key, value]);
     }
-    res.json({ status: 'success', message: 'Pengaturan berhasil disimpan.' });
+    return sendSuccess(res, null, 200, { message: 'Pengaturan berhasil disimpan.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('saveSetting', error, { params: req.params, body: req.body });
+    return sendError(res, 500, 'SAVE_SETTING_ERROR', 'Gagal menyimpan pengaturan.');
   }
 };
 
 export const getOfflineDbStatus = async (req, res) => {
   try {
     const status = getDownloadStatus();
-    res.json({ status: 'success', data: status });
+    return sendSuccess(res, status);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getOfflineDbStatus', error);
+    return sendError(res, 500, 'GET_OFFLINE_DB_STATUS_ERROR', 'Gagal memuat status database offline.');
   }
 };
 
@@ -195,11 +194,12 @@ export const startOfflineDbDownload = async (req, res) => {
   try {
     const result = await startDownload();
     if (result.success) {
-      res.json({ status: 'success', message: result.message });
+      return sendSuccess(res, null, 200, { message: result.message });
     } else {
-      res.status(400).json({ status: 'error', message: result.message });
+      return sendError(res, 400, 'START_DOWNLOAD_FAILED', result.message);
     }
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('startOfflineDbDownload', error);
+    return sendError(res, 500, 'START_DOWNLOAD_ERROR', error.message || 'Gagal memulai download database offline.');
   }
 };

@@ -1,11 +1,14 @@
 import { dbRun, dbAll, dbGet } from '../database.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 export const getFlows = async (req, res) => {
   try {
     const flows = await dbAll('SELECT * FROM chatbot_flows');
-    res.json({ status: 'success', data: flows });
+    return sendSuccess(res, flows);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getFlows', error);
+    return sendError(res, 500, 'GET_FLOWS_ERROR', 'Gagal memuat alur chatbot.');
   }
 };
 
@@ -17,7 +20,7 @@ export const createFlow = async (req, res) => {
       'INSERT INTO chatbot_flows (flow_name, description, session_ids, target_type, keywords, match_type, case_sensitive, cooldown, delay, nodes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         flow_name, 
-        description, 
+        description || null, 
         JSON.stringify(session_ids || []), 
         target_type || 'ALL', 
         keywords, 
@@ -29,9 +32,10 @@ export const createFlow = async (req, res) => {
         status || 'ACTIVE'
       ]
     );
-    res.status(201).json({ status: 'success', message: 'Chatbot flow created', data: { id: result.id } });
+    return sendSuccess(res, { id: result.id }, 201, { message: 'Alur chatbot berhasil disimpan.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('createFlow', error, { body: req.body });
+    return sendError(res, 500, 'CREATE_FLOW_ERROR', 'Gagal menyimpan alur chatbot.');
   }
 };
 
@@ -40,11 +44,16 @@ export const updateFlow = async (req, res) => {
   const { flow_name, description, session_ids, target_type, keywords, match_type, case_sensitive, cooldown, delay, nodes, status } = req.body;
 
   try {
+    const existing = await dbGet('SELECT * FROM chatbot_flows WHERE id = ?', [id]);
+    if (!existing) {
+      return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
+    }
+
     await dbRun(
       'UPDATE chatbot_flows SET flow_name = ?, description = ?, session_ids = ?, target_type = ?, keywords = ?, match_type = ?, case_sensitive = ?, cooldown = ?, delay = ?, nodes = ?, status = ? WHERE id = ?',
       [
         flow_name, 
-        description, 
+        description || null, 
         JSON.stringify(session_ids || []), 
         target_type, 
         keywords, 
@@ -57,19 +66,26 @@ export const updateFlow = async (req, res) => {
         id
       ]
     );
-    res.json({ status: 'success', message: 'Chatbot flow updated' });
+    return sendSuccess(res, null, 200, { message: 'Alur chatbot berhasil diperbarui.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('updateFlow', error, { params: req.params, body: req.body });
+    return sendError(res, 500, 'UPDATE_FLOW_ERROR', 'Gagal memperbarui alur chatbot.');
   }
 };
 
 export const deleteFlow = async (req, res) => {
   const { id } = req.params;
   try {
+    const existing = await dbGet('SELECT * FROM chatbot_flows WHERE id = ?', [id]);
+    if (!existing) {
+      return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
+    }
+
     await dbRun('DELETE FROM chatbot_flows WHERE id = ?', [id]);
-    res.json({ status: 'success', message: 'Chatbot flow deleted' });
+    return sendSuccess(res, null, 200, { message: 'Alur chatbot berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteFlow', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_FLOW_ERROR', 'Gagal menghapus alur chatbot.');
   }
 };
 
@@ -77,10 +93,16 @@ export const updateFlowStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   try {
+    const existing = await dbGet('SELECT * FROM chatbot_flows WHERE id = ?', [id]);
+    if (!existing) {
+      return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
+    }
+
     await dbRun('UPDATE chatbot_flows SET status = ? WHERE id = ?', [status, id]);
-    res.json({ status: 'success', message: 'Chatbot flow status updated' });
+    return sendSuccess(res, null, 200, { message: 'Status alur chatbot berhasil diperbarui.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('updateFlowStatus', error, { params: req.params, body: req.body });
+    return sendError(res, 500, 'UPDATE_FLOW_STATUS_ERROR', 'Gagal memperbarui status alur chatbot.');
   }
 };
 
@@ -120,7 +142,7 @@ export const exportFlows = async (req, res) => {
         }
 
         return {
-          id: parseInt(node.id) || i + 1,
+          id: parseInt(node.id, 10) || i + 1,
           flow_id: flow.id,
           name: node.node_name || `Node ${i + 1}`,
           message: node.message_content || '',
@@ -164,18 +186,15 @@ export const exportFlows = async (req, res) => {
       flows: exportedFlows
     };
 
-    res.json(exportData);
+    return res.json(exportData);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('exportFlows', error);
+    return sendError(res, 500, 'EXPORT_FLOWS_ERROR', 'Gagal mengekspor alur chatbot.');
   }
 };
 
 export const importFlows = async (req, res) => {
-  const { version, type, flows } = req.body;
-
-  if (!flows || !Array.isArray(flows)) {
-    return res.status(400).json({ status: 'error', message: 'Invalid export file structure: missing flows array.' });
-  }
+  const { flows } = req.body;
 
   try {
     let importCount = 0;
@@ -211,7 +230,7 @@ export const importFlows = async (req, res) => {
               buttons = optObj.options.map(o => o.display_text || o.title);
             }
           } catch (e) {
-            console.error('Gagal memproses options JSON saat import node:', e);
+            logError('parseOptionsOnImport', e);
           }
         }
 
@@ -263,8 +282,9 @@ export const importFlows = async (req, res) => {
       importCount++;
     }
 
-    res.json({ status: 'success', message: `${importCount} chatbot flows successfully imported.` });
+    return sendSuccess(res, null, 200, { message: `${importCount} chatbot flows successfully imported.` });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('importFlows', error, { body: req.body });
+    return sendError(res, 500, 'IMPORT_FLOWS_ERROR', error.message || 'Gagal mengimpor alur chatbot.');
   }
 };

@@ -2,6 +2,8 @@ import { dbRun, dbAll, dbGet } from '../database.js';
 import warmerService from '../services/warmer.service.js';
 import { config } from '../config.js';
 import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 const shouldRunInlineWorkers = () => {
   return config.runtime.role === 'all';
@@ -14,30 +16,25 @@ const shouldRunInlineWorkers = () => {
 export const getTemplates = async (req, res) => {
   try {
     const templates = await dbAll("SELECT * FROM warmer_templates ORDER BY created_at DESC");
-    res.json({ status: 'success', data: templates });
+    return sendSuccess(res, templates);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getTemplatesWarmer', error);
+    return sendError(res, 500, 'GET_WARMER_TEMPLATES_ERROR', 'Gagal memuat template warmer.');
   }
 };
 
 export const createTemplate = async (req, res) => {
   const { name, description, messages } = req.body;
-  if (!name || !messages) {
-    return res.status(400).json({ status: 'error', message: 'Nama template dan daftar pesan wajib diisi.' });
-  }
 
   try {
     const result = await dbRun(
       "INSERT INTO warmer_templates (name, description, messages) VALUES (?, ?, ?)",
       [name, description || null, messages]
     );
-    res.status(201).json({
-      status: 'success',
-      message: 'Template berhasil disimpan.',
-      data: { id: result.id, name, description, messages }
-    });
+    return sendSuccess(res, { id: result.id, name, description, messages }, 201, { message: 'Template berhasil disimpan.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('createTemplateWarmer', error, { body: req.body });
+    return sendError(res, 500, 'CREATE_WARMER_TEMPLATE_ERROR', 'Gagal menyimpan template warmer.');
   }
 };
 
@@ -46,13 +43,14 @@ export const deleteTemplate = async (req, res) => {
   try {
     const existing = await dbGet("SELECT * FROM warmer_templates WHERE id = ?", [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Template tidak ditemukan.' });
+      return sendError(res, 404, 'WARMER_TEMPLATE_NOT_FOUND', 'Template tidak ditemukan.');
     }
 
     await dbRun("DELETE FROM warmer_templates WHERE id = ?", [id]);
-    res.json({ status: 'success', message: 'Template berhasil dihapus.' });
+    return sendSuccess(res, null, 200, { message: 'Template berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteTemplateWarmer', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_WARMER_TEMPLATE_ERROR', 'Gagal menghapus template warmer.');
   }
 };
 
@@ -63,22 +61,19 @@ export const deleteTemplate = async (req, res) => {
 export const getCampaigns = async (req, res) => {
   try {
     const campaigns = await dbAll("SELECT * FROM warmer_campaigns ORDER BY created_at DESC");
-    res.json({ status: 'success', data: campaigns });
+    return sendSuccess(res, campaigns);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getCampaignsWarmer', error);
+    return sendError(res, 500, 'GET_WARMER_CAMPAIGNS_ERROR', 'Gagal memuat kampanye warmer.');
   }
 };
 
 export const createCampaign = async (req, res) => {
   const { name, description, device_ids, template_id, messages, min_delay, max_delay, duration } = req.body;
 
-  if (!name || !device_ids || !messages || !min_delay || !max_delay || !duration) {
-    return res.status(400).json({ status: 'error', message: 'Semua kolom bertanda bintang wajib diisi.' });
-  }
-
   const deviceCount = device_ids.split(',').filter(Boolean).length;
   if (deviceCount < 2) {
-    return res.status(400).json({ status: 'error', message: 'Minimal harus memilih 2 perangkat untuk pemanasan.' });
+    return sendError(res, 400, 'MINIMUM_DEVICES_REQUIRED', 'Minimal harus memilih 2 perangkat untuk pemanasan.');
   }
 
   try {
@@ -92,9 +87,9 @@ export const createCampaign = async (req, res) => {
         device_ids,
         template_id || null,
         messages,
-        parseInt(min_delay),
-        parseInt(max_delay),
-        parseInt(duration),
+        Number.parseInt(min_delay, 10),
+        Number.parseInt(max_delay, 10),
+        Number.parseInt(duration, 10),
         'RUNNING',
         new Date().toISOString()
       ]
@@ -113,17 +108,14 @@ export const createCampaign = async (req, res) => {
       warmerService.startCampaign(campaignId);
     } else if (isSessionManagerClientEnabled()) {
       sessionManagerClient.startWarmerCampaign(campaignId).catch((err) => {
-        console.error(`[Warmer Controller] Gagal mendelegasikan warmer #${campaignId} ke worker:`, err.message);
+        logError('delegateWarmerCampaign', err, { campaignId });
       });
     }
 
-    res.status(201).json({
-      status: 'success',
-      message: 'Kampanye warmer berhasil dimulai.',
-      data: { id: campaignId, name, status: 'RUNNING' }
-    });
+    return sendSuccess(res, { id: campaignId, name, status: 'RUNNING' }, 201, { message: 'Kampanye warmer berhasil dimulai.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('createCampaignWarmer', error, { body: req.body });
+    return sendError(res, 500, 'CREATE_WARMER_CAMPAIGN_ERROR', 'Gagal memulai kampanye warmer.');
   }
 };
 
@@ -132,7 +124,7 @@ export const stopCampaign = async (req, res) => {
   try {
     const existing = await dbGet("SELECT * FROM warmer_campaigns WHERE id = ?", [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Kampanye tidak ditemukan.' });
+      return sendError(res, 404, 'WARMER_CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
     }
 
     if (isSessionManagerClientEnabled()) {
@@ -140,9 +132,10 @@ export const stopCampaign = async (req, res) => {
     } else {
       await warmerService.stopCampaign(id);
     }
-    res.json({ status: 'success', message: 'Kampanye warmer berhasil dihentikan.' });
+    return sendSuccess(res, null, 200, { message: 'Kampanye warmer berhasil dihentikan.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('stopCampaignWarmer', error, { params: req.params });
+    return sendError(res, 500, 'STOP_WARMER_CAMPAIGN_ERROR', 'Gagal menghentikan kampanye warmer.');
   }
 };
 
@@ -151,7 +144,7 @@ export const getCampaignLogs = async (req, res) => {
   try {
     const campaign = await dbGet("SELECT * FROM warmer_campaigns WHERE id = ?", [id]);
     if (!campaign) {
-      return res.status(404).json({ status: 'error', message: 'Kampanye tidak ditemukan.' });
+      return sendError(res, 404, 'WARMER_CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
     }
 
     const logs = await dbAll(
@@ -159,20 +152,18 @@ export const getCampaignLogs = async (req, res) => {
       [id]
     );
 
-    res.json({
-      status: 'success',
-      data: {
-        campaign_id: campaign.id,
-        name: campaign.name,
-        status: campaign.status,
-        sent_count: campaign.sent_count,
-        duration: campaign.duration,
-        started_at: campaign.started_at,
-        logs: logs
-      }
+    return sendSuccess(res, {
+      campaign_id: campaign.id,
+      name: campaign.name,
+      status: campaign.status,
+      sent_count: campaign.sent_count,
+      duration: campaign.duration,
+      started_at: campaign.started_at,
+      logs: logs
     });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getCampaignLogsWarmer', error, { params: req.params });
+    return sendError(res, 500, 'GET_WARMER_LOGS_ERROR', 'Gagal memuat log kampanye warmer.');
   }
 };
 
@@ -181,7 +172,7 @@ export const deleteCampaign = async (req, res) => {
   try {
     const existing = await dbGet("SELECT * FROM warmer_campaigns WHERE id = ?", [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Kampanye tidak ditemukan.' });
+      return sendError(res, 404, 'WARMER_CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
     }
 
     // Pastikan mematikan loop aktif jika sedang berjalan
@@ -193,8 +184,9 @@ export const deleteCampaign = async (req, res) => {
 
     // Hapus kampanye (log juga terhapus otomatis karena ON DELETE CASCADE)
     await dbRun("DELETE FROM warmer_campaigns WHERE id = ?", [id]);
-    res.json({ status: 'success', message: 'Kampanye warmer berhasil dihapus.' });
+    return sendSuccess(res, null, 200, { message: 'Kampanye warmer berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteCampaignWarmer', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_WARMER_CAMPAIGN_ERROR', 'Gagal menghapus kampanye warmer.');
   }
 };

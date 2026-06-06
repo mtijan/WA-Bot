@@ -1,12 +1,15 @@
 import { dbRun, dbAll, dbGet } from '../database.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 export const getTemplates = async (req, res) => {
   try {
     const sql = 'SELECT * FROM message_templates ORDER BY created_at DESC';
     const templates = await dbAll(sql);
-    res.json({ status: 'success', data: templates });
+    return sendSuccess(res, templates);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getTemplates', error);
+    return sendError(res, 500, 'GET_TEMPLATES_ERROR', 'Gagal memuat template.');
   }
 };
 
@@ -23,10 +26,6 @@ export const createTemplate = async (req, res) => {
     poll_question = null, 
     poll_options = null 
   } = req.body;
-
-  if (!name || !content) {
-    return res.status(400).json({ status: 'error', message: 'Name and content are required' });
-  }
 
   try {
     const result = await dbRun(
@@ -46,25 +45,22 @@ export const createTemplate = async (req, res) => {
         poll_options
       ]
     );
-    res.status(201).json({ 
-      status: 'success', 
-      message: 'Template saved', 
-      data: { 
-        id: result.id, 
-        name, 
-        content, 
-        type, 
-        category, 
-        attachment_url, 
-        attachment_name, 
-        contact_name, 
-        contact_number, 
-        poll_question, 
-        poll_options 
-      } 
-    });
+    return sendSuccess(res, { 
+      id: result.id, 
+      name, 
+      content, 
+      type, 
+      category, 
+      attachment_url, 
+      attachment_name, 
+      contact_name, 
+      contact_number, 
+      poll_question, 
+      poll_options 
+    }, 201, { message: 'Template berhasil disimpan.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('createTemplate', error, { body: req.body });
+    return sendError(res, 500, 'CREATE_TEMPLATE_ERROR', 'Gagal menyimpan template.');
   }
 };
 
@@ -73,12 +69,13 @@ export const deleteTemplate = async (req, res) => {
   try {
     const existing = await dbGet('SELECT * FROM message_templates WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Template not found' });
+      return sendError(res, 404, 'TEMPLATE_NOT_FOUND', 'Template tidak ditemukan.');
     }
 
     await dbRun('DELETE FROM message_templates WHERE id = ?', [id]);
-    res.json({ status: 'success', message: 'Template deleted successfully' });
+    return sendSuccess(res, null, 200, { message: 'Template berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteTemplate', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_TEMPLATE_ERROR', 'Gagal menghapus template.');
   }
 };

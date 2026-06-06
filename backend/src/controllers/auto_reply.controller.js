@@ -1,4 +1,6 @@
 import { dbRun, dbAll, dbGet } from '../database.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 export const getAutoReplies = async (req, res) => {
   const { sessionId } = req.query;
@@ -10,27 +12,25 @@ export const getAutoReplies = async (req, res) => {
       params.push(sessionId);
     }
     const replies = await dbAll(query, params);
-    res.json({ status: 'success', data: replies });
+    return sendSuccess(res, replies);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getAutoReplies', error, { query: req.query });
+    return sendError(res, 500, 'GET_AUTO_REPLIES_ERROR', 'Gagal memuat auto-reply.');
   }
 };
 
 export const createAutoReply = async (req, res) => {
   const { session_id, keyword, type, content, options } = req.body;
 
-  if (!session_id || !keyword || !type || !content) {
-    return res.status(400).json({ status: 'error', message: 'Incomplete parameters' });
-  }
-
   try {
     const result = await dbRun(
       'INSERT INTO auto_replies (session_id, keyword, type, content, options) VALUES (?, ?, ?, ?, ?)',
       [session_id, keyword, type, content, options ? JSON.stringify(options) : null]
     );
-    res.status(201).json({ status: 'success', message: 'Auto-reply created', data: { id: result.id } });
+    return sendSuccess(res, { id: result.id }, 201, { message: 'Auto-reply berhasil disimpan.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('createAutoReply', error, { body: req.body });
+    return sendError(res, 500, 'CREATE_AUTO_REPLY_ERROR', 'Gagal menyimpan auto-reply.');
   }
 };
 
@@ -41,25 +41,32 @@ export const updateAutoReply = async (req, res) => {
   try {
     const existing = await dbGet('SELECT * FROM auto_replies WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Auto-reply not found' });
+      return sendError(res, 404, 'AUTO_REPLY_NOT_FOUND', 'Auto-reply tidak ditemukan.');
     }
 
     await dbRun(
       'UPDATE auto_replies SET keyword = ?, type = ?, content = ?, options = ? WHERE id = ?',
       [keyword, type, content, options ? JSON.stringify(options) : null, id]
     );
-    res.json({ status: 'success', message: 'Auto-reply updated' });
+    return sendSuccess(res, null, 200, { message: 'Auto-reply berhasil diperbarui.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('updateAutoReply', error, { params: req.params, body: req.body });
+    return sendError(res, 500, 'UPDATE_AUTO_REPLY_ERROR', 'Gagal memperbarui auto-reply.');
   }
 };
 
 export const deleteAutoReply = async (req, res) => {
   const { id } = req.params;
   try {
+    const existing = await dbGet('SELECT * FROM auto_replies WHERE id = ?', [id]);
+    if (!existing) {
+      return sendError(res, 404, 'AUTO_REPLY_NOT_FOUND', 'Auto-reply tidak ditemukan.');
+    }
+
     await dbRun('DELETE FROM auto_replies WHERE id = ?', [id]);
-    res.json({ status: 'success', message: 'Auto-reply deleted' });
+    return sendSuccess(res, null, 200, { message: 'Auto-reply berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteAutoReply', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_AUTO_REPLY_ERROR', 'Gagal menghapus auto-reply.');
   }
 };

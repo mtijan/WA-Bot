@@ -1,7 +1,9 @@
 import { OpenAI } from 'openai';
 import { dbGet, dbRun, dbAll } from '../database.js';
 import { protectSecret, revealSecret } from '../services/secret.service.js';
-import { resolveKnowledgeBase, getFlowsKnowledgeBase } from '../services/chatbot_ai.service.js';
+import { getFlowsKnowledgeBase } from '../services/chatbot_ai.service.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 export const maskAISettings = (settings) => ({
   ...settings,
@@ -28,18 +30,15 @@ export const getCredentials = async (req, res) => {
   try {
     const rows = await dbAll('SELECT * FROM chatbot_ai_credentials ORDER BY created_at DESC');
     const masked = rows.map(row => maskAICredential(row));
-    res.json({ status: 'success', data: masked });
+    return sendSuccess(res, masked);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getCredentials', error);
+    return sendError(res, 500, 'GET_CREDENTIALS_ERROR', 'Gagal memuat daftar kredensial.');
   }
 };
 
 export const createCredential = async (req, res) => {
   const { name, base_url, api_key, model_name, is_active } = req.body;
-
-  if (!name) {
-    return res.status(400).json({ status: 'error', message: 'Nama kredensial wajib diisi.' });
-  }
 
   try {
     const encryptedKey = api_key ? protectSecret(api_key) : null;
@@ -53,13 +52,10 @@ export const createCredential = async (req, res) => {
       [name, baseUrl, encryptedKey, modelName, isActive]
     );
 
-    res.json({ 
-      status: 'success', 
-      message: 'Kredensial berhasil ditambahkan.', 
-      data: { id: result.id, name, base_url: baseUrl, model_name: modelName, is_active: isActive }
-    });
+    return sendSuccess(res, { id: result.id, name, base_url: baseUrl, model_name: modelName, is_active: isActive }, 200, { message: 'Kredensial berhasil ditambahkan.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('createCredential', error, { body: req.body });
+    return sendError(res, 500, 'CREATE_CREDENTIAL_ERROR', 'Gagal menambahkan kredensial.');
   }
 };
 
@@ -70,7 +66,7 @@ export const updateCredential = async (req, res) => {
   try {
     const existing = await dbGet('SELECT * FROM chatbot_ai_credentials WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Kredensial tidak ditemukan.' });
+      return sendError(res, 404, 'CREDENTIAL_NOT_FOUND', 'Kredensial tidak ditemukan.');
     }
 
     const updates = [];
@@ -106,20 +102,27 @@ export const updateCredential = async (req, res) => {
       );
     }
 
-    res.json({ status: 'success', message: 'Kredensial berhasil diperbarui.' });
+    return sendSuccess(res, null, 200, { message: 'Kredensial berhasil diperbarui.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('updateCredential', error, { params: req.params, body: req.body });
+    return sendError(res, 500, 'UPDATE_CREDENTIAL_ERROR', 'Gagal memperbarui kredensial.');
   }
 };
 
 export const deleteCredential = async (req, res) => {
   const { id } = req.params;
   try {
+    const existing = await dbGet('SELECT * FROM chatbot_ai_credentials WHERE id = ?', [id]);
+    if (!existing) {
+      return sendError(res, 404, 'CREDENTIAL_NOT_FOUND', 'Kredensial tidak ditemukan.');
+    }
+
     await dbRun('DELETE FROM chatbot_ai_credentials WHERE id = ?', [id]);
     await dbRun('UPDATE chatbot_ai_settings SET credential_id = NULL WHERE credential_id = ?', [id]);
-    res.json({ status: 'success', message: 'Kredensial berhasil dihapus.' });
+    return sendSuccess(res, null, 200, { message: 'Kredensial berhasil dihapus.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('deleteCredential', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_CREDENTIAL_ERROR', 'Gagal menghapus kredensial.');
   }
 };
 
@@ -128,13 +131,14 @@ export const toggleCredentialActive = async (req, res) => {
   try {
     const existing = await dbGet('SELECT is_active FROM chatbot_ai_credentials WHERE id = ?', [id]);
     if (!existing) {
-      return res.status(404).json({ status: 'error', message: 'Kredensial tidak ditemukan.' });
+      return sendError(res, 404, 'CREDENTIAL_NOT_FOUND', 'Kredensial tidak ditemukan.');
     }
     const newStatus = existing.is_active === 1 ? 0 : 1;
     await dbRun('UPDATE chatbot_ai_credentials SET is_active = ? WHERE id = ?', [newStatus, id]);
-    res.json({ status: 'success', message: 'Status keaktifan kredensial berhasil diubah.', is_active: newStatus });
+    return sendSuccess(res, { is_active: newStatus }, 200, { message: 'Status keaktifan kredensial berhasil diubah.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('toggleCredentialActive', error, { params: req.params });
+    return sendError(res, 500, 'TOGGLE_CREDENTIAL_ACTIVE_ERROR', 'Gagal mengubah status keaktifan kredensial.');
   }
 };
 
@@ -174,18 +178,15 @@ export const getAISettings = async (req, res) => {
     const masked = maskAISettings(settings);
     masked.flows_knowledge_base = flowsKB;
 
-    res.json({ status: 'success', data: masked });
+    return sendSuccess(res, masked);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getAISettings', error, { params: req.params });
+    return sendError(res, 500, 'GET_AI_SETTINGS_ERROR', 'Gagal memuat pengaturan AI.');
   }
 };
 
 export const saveAISettings = async (req, res) => {
   const { session_id } = req.body;
-
-  if (!session_id) {
-    return res.status(400).json({ status: 'error', message: 'ID Sesi wajib disertakan.' });
-  }
 
   try {
     const existing = await dbGet('SELECT * FROM chatbot_ai_settings WHERE session_id = ?', [session_id]);
@@ -216,7 +217,7 @@ export const saveAISettings = async (req, res) => {
           } else if (item.type === 'boolean') {
             values.push(req.body[item.key] ? 1 : 0);
           } else if (item.type === 'number') {
-            values.push(req.body[item.key] !== null && req.body[item.key] !== undefined ? parseInt(req.body[item.key]) : null);
+            values.push(req.body[item.key] !== null && req.body[item.key] !== undefined ? parseInt(req.body[item.key], 10) : null);
           } else {
             values.push(req.body[item.key] !== undefined ? req.body[item.key] : item.default);
           }
@@ -238,9 +239,9 @@ export const saveAISettings = async (req, res) => {
       const system_instruction = req.body.system_instruction || '';
       const knowledge_base = req.body.knowledge_base || '';
       const knowledge_source = req.body.knowledge_source || 'manual';
-      const delay_seconds = req.body.delay_seconds !== undefined ? parseInt(req.body.delay_seconds) : 2;
+      const delay_seconds = req.body.delay_seconds !== undefined ? parseInt(req.body.delay_seconds, 10) : 2;
       const show_typing = req.body.show_typing !== undefined ? (req.body.show_typing ? 1 : 0) : 1;
-      const credential_id = req.body.credential_id !== undefined && req.body.credential_id !== null ? parseInt(req.body.credential_id) : null;
+      const credential_id = req.body.credential_id !== undefined && req.body.credential_id !== null ? parseInt(req.body.credential_id, 10) : null;
       const chatbot_mode = req.body.chatbot_mode || 'both';
 
       await dbRun(
@@ -263,12 +264,13 @@ export const saveAISettings = async (req, res) => {
         ]
       );
     }
-    res.json({ status: 'success', message: 'Pengaturan Chatbot AI berhasil disimpan.' });
+    return sendSuccess(res, null, 200, { message: 'Pengaturan Chatbot AI berhasil disimpan.' });
   } catch (error) {
     if (error.code === 'SQLITE_CONSTRAINT' || (error.message && error.message.includes('constraint')) || (error.message && error.message.includes('FOREIGN KEY'))) {
-      return res.status(400).json({ status: 'error', message: 'ID Sesi tidak valid atau tidak terdaftar.' });
+      return sendError(res, 400, 'INVALID_SESSION_ID', 'ID Sesi tidak valid atau tidak terdaftar.');
     }
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('saveAISettings', error, { body: req.body });
+    return sendError(res, 500, 'SAVE_AI_SETTINGS_ERROR', 'Gagal menyimpan pengaturan AI.');
   }
 };
 
@@ -303,12 +305,12 @@ export const testAISettings = async (req, res) => {
         resolvedModelName = cred.model_name;
       }
     } catch (err) {
-      console.error('Gagal melakukan resolusi kredensial untuk pengetesan:', err);
+      logError('resolveCredentialsForTesting', err, { body: req.body });
     }
   }
 
   if (!resolvedKey) {
-    return res.status(400).json({ status: 'error', message: 'API Key wajib disertakan atau dipilih untuk melakukan uji coba.' });
+    return sendError(res, 400, 'API_KEY_REQUIRED', 'API Key wajib disertakan atau dipilih untuk melakukan uji coba.');
   }
 
   try {
@@ -334,13 +336,11 @@ export const testAISettings = async (req, res) => {
 
     const reply = response.choices[0]?.message?.content;
     if (reply === undefined || reply === null || reply.trim() === '') {
-      return res.status(400).json({
-        status: 'error',
-        message: `Koneksi API berhasil, tetapi model '${resolvedModelName || 'gpt-4o-mini'}' mengembalikan respon kosong. Silakan ganti model ke 'gpt-4o-mini' atau 'MiniMax-M2.7-highspeed' di pengaturan.`
-      });
+      return sendError(res, 400, 'EMPTY_MODEL_RESPONSE', `Koneksi API berhasil, tetapi model '${resolvedModelName || 'gpt-4o-mini'}' mengembalikan respon kosong. Silakan ganti model ke 'gpt-4o-mini' atau 'MiniMax-M2.7-highspeed' di pengaturan.`);
     }
-    res.json({ status: 'success', message: 'Koneksi API SumoPod berhasil terjalin!', reply });
+    return sendSuccess(res, { reply }, 200, { message: 'Koneksi API SumoPod berhasil terjalin!' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: 'Uji coba koneksi gagal: ' + error.message });
+    logError('testAISettings', error, { body: req.body });
+    return sendError(res, 500, 'TEST_AI_SETTINGS_ERROR', 'Uji coba koneksi gagal: ' + error.message);
   }
 };

@@ -9,11 +9,15 @@ import {
   getOfflineDbStatus,
   startOfflineDbDownload
 } from '../controllers/proxy.controller.js';
+import { validateBody } from '../utils/validator.js';
 
 const router = express.Router();
 
 router.get('/', getProxies);
-router.post('/', createProxy);
+router.post('/', validateBody({
+  name: { required: true, type: 'string', min: 1, max: 100 },
+  proxy_url: { required: true, type: 'string', min: 5 }
+}), createProxy);
 router.get('/offline-db/status', getOfflineDbStatus);
 router.post('/offline-db/download', startOfflineDbDownload);
 router.delete('/:id', deleteProxy);
@@ -23,4 +27,3 @@ router.get('/settings/:key', getSetting);
 router.post('/settings/:key', saveSetting);
 
 export default router;
-

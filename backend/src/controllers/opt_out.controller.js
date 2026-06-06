@@ -1,28 +1,35 @@
 import { listOptOuts, recordOptOut, removeOptOut } from '../services/opt_out.service.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
 
 export const getOptOuts = async (req, res) => {
   try {
-    res.json({ status: 'success', data: await listOptOuts() });
+    const list = await listOptOuts();
+    return sendSuccess(res, list);
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    logError('getOptOuts', error);
+    return sendError(res, 500, 'GET_OPT_OUTS_ERROR', 'Gagal memuat suppression list.');
   }
 };
 
 export const createOptOut = async (req, res) => {
   try {
-    const phoneNumber = await recordOptOut(req.body.phone_number, 'MANUAL');
-    res.status(201).json({ status: 'success', data: { phone_number: phoneNumber } });
+    const { phone_number } = req.body;
+    const phoneNumber = await recordOptOut(phone_number, 'MANUAL');
+    return sendSuccess(res, { phone_number: phoneNumber }, 201, { message: 'Nomor ditambahkan ke suppression list.' });
   } catch (error) {
-    res.status(400).json({ status: 'error', message: error.message });
+    logError('createOptOut', error, { body: req.body });
+    return sendError(res, 400, 'CREATE_OPT_OUT_ERROR', error.message || 'Gagal menambahkan nomor ke suppression list.');
   }
 };
 
 export const deleteOptOut = async (req, res) => {
   try {
-    await removeOptOut(req.params.phoneNumber);
-    res.json({ status: 'success', message: 'Nomor dihapus dari suppression list.' });
+    const { phoneNumber } = req.params;
+    await removeOptOut(phoneNumber);
+    return sendSuccess(res, null, 200, { message: 'Nomor dihapus dari suppression list.' });
   } catch (error) {
-    res.status(400).json({ status: 'error', message: error.message });
+    logError('deleteOptOut', error, { params: req.params });
+    return sendError(res, 400, 'DELETE_OPT_OUT_ERROR', error.message || 'Gagal menghapus nomor dari suppression list.');
   }
 };
-
