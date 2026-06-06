@@ -6,7 +6,7 @@ import { runMigrations } from './migrations/index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export const dbPath = join(__dirname, '..', 'database.sqlite');
+export const dbPath = process.env.WA_BOT_DB_PATH || join(__dirname, '..', 'database.sqlite');
 const db = new sqlite3.Database(dbPath);
 
 let resolveDatabaseReady;
