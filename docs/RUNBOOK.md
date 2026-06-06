@@ -353,7 +353,7 @@ Additional hardening evidence recorded on 2026-06-05:
 * Admin HTTPS auth smoke passed: login, Secure cookie, authenticated `/api/auth/me`, and logout.
 * Manual browser smoke over HTTPS passed: login, dashboard, session manager, contact groups, templates, proxy manager, and logout were checked by the operator.
 
-Do not treat this as production-ready. Remaining hardening: external monitoring alerts and encrypted offsite backup copy when storage is available. Media upload is complete, but uploaded media should still be treated as protected runtime data.
+Do not treat this as production-ready. Staging lightweight Telegram alerting is verified, but remaining hardening still includes encrypted offsite backup copy when storage is available and the broader production hardening decisions recorded in the roadmap. Media upload is complete, but uploaded media should still be treated as protected runtime data.
 
 For the full staging note, see `docs/STAGING.md`.
 For the next manual hardening commands, see `docs/deploy/STAGING_HARDENING.commands.md`.

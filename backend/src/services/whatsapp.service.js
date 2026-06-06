@@ -21,6 +21,58 @@ if (!fs.existsSync(SESSIONS_DIR)) {
   fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 }
 
+function getMediaSource(urlOrPath) {
+  if (!urlOrPath) return null;
+  try {
+    if (fs.existsSync(urlOrPath)) {
+      return fs.readFileSync(urlOrPath);
+    }
+  } catch (err) {
+    console.error('[WhatsApp Service] Gagal membaca berkas media lokal:', err);
+  }
+  return { url: urlOrPath };
+}
+
+// -------------------------------------------------------------------
+// Penyaring output konsol dari library libsignal.
+// Library ini mencetak pesan debug langsung ke console.info/warn/error
+// yang tidak bisa dikendalikan melalui konfigurasi logger Baileys.
+// Pesan-pesan ini (misal: "Closing session", "Failed to decrypt message")
+// adalah hal normal saat sinkronisasi riwayat dan bukan masalah serius.
+// -------------------------------------------------------------------
+const LIBSIGNAL_NOISE_PATTERNS = [
+  'Closing session',
+  'Closing open session in favor of incoming prekey bundle',
+  'Failed to decrypt message with any known session',
+  'Session error:',
+  'MessageCounterError',
+  'Key used already or never filled'
+];
+
+function isLibsignalNoise(args) {
+  if (!args || args.length === 0) return false;
+  const first = args[0];
+  if (typeof first !== 'string') return false;
+  return LIBSIGNAL_NOISE_PATTERNS.some(pattern => first.includes(pattern));
+}
+
+const _origConsoleInfo = console.info;
+const _origConsoleWarn = console.warn;
+const _origConsoleError = console.error;
+
+console.info = function (...args) {
+  if (isLibsignalNoise(args)) return;
+  _origConsoleInfo.apply(console, args);
+};
+console.warn = function (...args) {
+  if (isLibsignalNoise(args)) return;
+  _origConsoleWarn.apply(console, args);
+};
+console.error = function (...args) {
+  if (isLibsignalNoise(args)) return;
+  _origConsoleError.apply(console, args);
+};
+
 class WhatsAppService {
   constructor() {
     this.sockets = {};
@@ -557,27 +609,30 @@ class WhatsAppService {
         // Kirim lampiran terlebih dahulu
         if (currentNode.attachment && currentNode.attachment.url) {
           const url = resolveUploadedMediaPath(currentNode.attachment.url);
+          const mediaSource = getMediaSource(url);
           let attachmentPayload = {};
           
-          switch (currentNode.attachment.type) {
-            case 'Image':
-              attachmentPayload = isInteractive 
-                ? { image: { url } } 
-                : { image: { url }, caption: currentNode.message_content };
-              break;
-            case 'Video':
-              attachmentPayload = isInteractive 
-                ? { video: { url } } 
-                : { video: { url }, caption: currentNode.message_content };
-              break;
-            case 'Audio':
-              attachmentPayload = { audio: { url }, mimetype: 'audio/mp4' };
-              break;
-            case 'Document':
-              attachmentPayload = isInteractive 
-                ? { document: { url }, mimetype: 'application/pdf', fileName: 'Document.pdf' } 
-                : { document: { url }, mimetype: 'application/pdf', fileName: 'Document.pdf', caption: currentNode.message_content };
-              break;
+          if (mediaSource) {
+            switch (currentNode.attachment.type) {
+              case 'Image':
+                attachmentPayload = isInteractive 
+                  ? { image: mediaSource } 
+                  : { image: mediaSource, caption: currentNode.message_content };
+                break;
+              case 'Video':
+                attachmentPayload = isInteractive 
+                  ? { video: mediaSource } 
+                  : { video: mediaSource, caption: currentNode.message_content };
+                break;
+              case 'Audio':
+                attachmentPayload = { audio: mediaSource, mimetype: 'audio/mp4' };
+                break;
+              case 'Document':
+                attachmentPayload = isInteractive 
+                  ? { document: mediaSource, mimetype: 'application/pdf', fileName: 'Document.pdf' } 
+                  : { document: mediaSource, mimetype: 'application/pdf', fileName: 'Document.pdf', caption: currentNode.message_content };
+                break;
+            }
           }
 
           if (Object.keys(attachmentPayload).length > 0) {
@@ -752,16 +807,19 @@ class WhatsAppService {
           else detectType = 'document';
         }
 
-        if (detectType === 'image') {
-          mediaPayload = { image: { url }, caption };
-        } else if (detectType === 'video') {
-          mediaPayload = { video: { url }, caption };
-        } else if (detectType === 'audio') {
-          mediaPayload = { audio: { url }, mimetype: 'audio/mp4' };
-        } else {
-          mediaPayload = { document: { url }, mimetype: 'application/pdf', fileName: template.attachment_name || 'Document.pdf', caption };
+        const mediaSource = getMediaSource(url);
+        if (mediaSource) {
+          if (detectType === 'image') {
+            mediaPayload = { image: mediaSource, caption };
+          } else if (detectType === 'video') {
+            mediaPayload = { video: mediaSource, caption };
+          } else if (detectType === 'audio') {
+            mediaPayload = { audio: mediaSource, mimetype: 'audio/mp4' };
+          } else {
+            mediaPayload = { document: mediaSource, mimetype: 'application/pdf', fileName: template.attachment_name || 'Document.pdf', caption };
+          }
+          await sock.sendMessage(jid, mediaPayload);
         }
-        await sock.sendMessage(jid, mediaPayload);
       } else if (type === 'poll') {
         const question = template.poll_question || 'Poll Question';
         let options = [];
@@ -794,25 +852,28 @@ class WhatsAppService {
       let mediaPayload = {};
       const url = resolveUploadedMediaPath(attachmentUrl);
       const caption = text || '';
+      const mediaSource = getMediaSource(url);
 
-      switch (attachmentType) {
-        case 'Image':
-          mediaPayload = { image: { url }, caption };
-          break;
-        case 'Video':
-          mediaPayload = { video: { url }, caption };
-          break;
-        case 'Audio':
-          mediaPayload = { audio: { url }, mimetype: 'audio/mp4' };
-          break;
-        case 'Document':
-          mediaPayload = { document: { url }, mimetype: 'application/pdf', fileName: attachmentName || 'Document.pdf', caption };
-          break;
-        default:
-          mediaPayload = { document: { url }, mimetype: 'application/octet-stream', fileName: attachmentName || 'File', caption };
-          break;
+      if (mediaSource) {
+        switch (attachmentType) {
+          case 'Image':
+            mediaPayload = { image: mediaSource, caption };
+            break;
+          case 'Video':
+            mediaPayload = { video: mediaSource, caption };
+            break;
+          case 'Audio':
+            mediaPayload = { audio: mediaSource, mimetype: 'audio/mp4' };
+            break;
+          case 'Document':
+            mediaPayload = { document: mediaSource, mimetype: 'application/pdf', fileName: attachmentName || 'Document.pdf', caption };
+            break;
+          default:
+            mediaPayload = { document: mediaSource, mimetype: 'application/octet-stream', fileName: attachmentName || 'File', caption };
+            break;
+        }
+        await sock.sendMessage(jid, mediaPayload);
       }
-      await sock.sendMessage(jid, mediaPayload);
     } else {
       throw new Error(`Data pesan tidak lengkap.`);
     }
@@ -913,6 +974,62 @@ class WhatsAppService {
     }
 
     return { message: 'Sync dipaksa. Restart sesi untuk mendapatkan kontak terbaru.' };
+  }
+
+  /**
+   * Perbaikan sesi manual: menghapus cache Signal tanpa menghapus creds.json.
+   * Metode ini dapat dipanggil melalui API jika pengguna ingin memaksa
+   * negosiasi ulang kunci enkripsi tanpa harus scan QR code ulang.
+   * CATATAN: Tidak dilakukan secara otomatis karena error dekripsi dari
+   * sinkronisasi riwayat pesan lama adalah hal normal dan permanen.
+   */
+  async repairSession(sessionId) {
+    console.log(`[WA Server] Menjalankan perbaikan sesi untuk: ${sessionId}`);
+
+    const sock = this.sockets[sessionId];
+    if (sock) {
+      try {
+        console.log(`[WA Server] Menutup socket aktif untuk sesi ${sessionId}...`);
+        if (sock.ws) {
+          sock.ws.close();
+        } else if (typeof sock.end === 'function') {
+          sock.end(undefined);
+        }
+      } catch (err) {
+        // Abaikan
+      }
+      delete this.sockets[sessionId];
+    }
+
+    // Beri jeda agar penutupan selesai
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    const sessionFolder = join(SESSIONS_DIR, sessionId);
+    if (fs.existsSync(sessionFolder)) {
+      try {
+        const files = fs.readdirSync(sessionFolder);
+        let deletedCount = 0;
+        for (const file of files) {
+          // Hanya hapus file Signal session cache, biarkan creds.json tetap utuh
+          if (file !== 'creds.json') {
+            fs.rmSync(join(sessionFolder, file), { recursive: true, force: true });
+            deletedCount++;
+          }
+        }
+        console.log(`[WA Server] Berhasil menghapus ${deletedCount} berkas cache Signal pada folder sesi ${sessionId}. Kredensial utama tetap aman.`);
+      } catch (err) {
+        console.error(`[WA Server] Gagal membersihkan cache Signal pada folder sesi ${sessionId}:`, err);
+      }
+    }
+
+    // Mulai ulang sesi
+    console.log(`[WA Server] Memulai kembali sesi ${sessionId} setelah perbaikan...`);
+    try {
+      await this.initSession(sessionId);
+      console.log(`[WA Server] Sesi ${sessionId} berhasil dihubungkan kembali.`);
+    } catch (err) {
+      console.error(`[WA Server] Gagal memulihkan sesi ${sessionId} setelah perbaikan:`, err);
+    }
   }
 }
 

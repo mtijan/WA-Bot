@@ -1,6 +1,6 @@
 # WA-Bot Monitoring & Alert Template
 
-**Status:** Template siap pakai; local healthcheck aktif di staging, webhook alert baseline tersedia, external alert evidence belum dicatat  
+**Status:** Staging Telegram alert timer installed; healthy timer and forced alert evidence recorded  
 **Last updated:** 2026-06-06
 
 Dokumen ini menjadi acuan monitoring sebelum deploy publik. Targetnya adalah memastikan proses mati, endpoint tidak ready, disk penuh, sesi WhatsApp putus, campaign macet, dan backup gagal bisa diketahui sebelum berdampak ke pengguna.
@@ -187,4 +187,20 @@ Manual checks on the staging VPS confirmed that the deploy baseline is alive. Ke
 | Auth HTTPS smoke | Login, Secure cookie, authenticated `/api/auth/me`, and logout passed |
 | Manual browser smoke HTTPS | Operator confirmed login, dashboard, session manager, contact groups, templates, proxy manager, and logout worked over HTTPS |
 
-Monitoring is still **PARTIAL** because external alerting evidence has not been installed and tested yet. Next required evidence: external API readiness alert, external worker readiness alert, disk/RAM or disk-only alert notification, backup freshness alert notification, and test notification. Use `docs/deploy/EXTERNAL_ALERTING.commands.md` for the lightweight webhook baseline or `docs/deploy/MONITORING_SETUP.commands.md` for Uptime Kuma/Netdata.
+## 9. Telegram Alert Timer Evidence - 2026-06-06
+
+The lightweight alert timer has been installed on staging and is running through systemd.
+
+| Check | Result |
+|-------|--------|
+| Timer | `wa-bot-alertcheck.timer` enabled and active/waiting |
+| Service | `wa-bot-alertcheck.service` runs `npm run monitor:alert` from `/opt/wa-bot/backend` |
+| Schedule | every 1 minute using `OnUnitActiveSec=1min` |
+| Notification channel | Telegram env configured in `/etc/wa-bot/wa-bot.env`; token and chat ID are not recorded in docs |
+| Healthy run at `2026-06-06T06:35:03Z` | `status=ok`; API ready, worker ready, public frontend, public health, disk usage, and backup freshness all OK |
+| Healthy run at `2026-06-06T06:36:30Z` | `status=ok`; API ready, worker ready, public frontend, public health, disk usage, and backup freshness all OK |
+| Forced alert run at `2026-06-06T06:41:19Z` | `WA_BOT_ALERT_API_READY_URL=http://127.0.0.1:3999/health/ready npm run monitor:alert` returned `status=alert`; `api-ready` failed intentionally with `fetch failed`; worker, public frontend, public health, disk usage, and backup freshness remained OK |
+| Disk usage evidence | `11.1%` |
+| Backup freshness evidence | latest backup age `12.2h` |
+
+Staging monitoring baseline is now **DONE for lightweight Telegram alerting**: healthy timer runs and an intentional API readiness failure have both been recorded. Production monitoring can still be expanded later with Uptime Kuma/Netdata for deeper CPU/RAM visibility and with offsite-backup freshness checks once offsite storage exists.
