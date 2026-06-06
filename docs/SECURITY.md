@@ -44,7 +44,7 @@ Implemented backend hardening:
 - Restricted CORS origins controlled by `WA_BOT_ALLOWED_ORIGINS`.
 - Disabled Express `X-Powered-By` response header.
 - Native security headers for CSP, frame denial, MIME sniffing protection, referrer policy, permissions policy, and optional HSTS.
-- Request-size policy controlled by `WA_BOT_JSON_BODY_LIMIT` and `WA_BOT_IMPORT_BODY_LIMIT`; import endpoints can be larger than normal API calls.
+- Request-size policy controlled by `WA_BOT_JSON_BODY_LIMIT` and `WA_BOT_IMPORT_BODY_LIMIT`; normal API calls default to `2mb`, while import endpoints default to `60mb` for large chatbot flow/contact imports.
 - Media upload is implemented. Limits are image <= 5 MB and video <= 10 MB, stored under `backend/uploads/` or `WA_BOT_MEDIA_UPLOAD_DIR`.
 - Masked Chatbot AI key responses with `has_api_key` metadata.
 - Optional AES-256-GCM encryption for newly saved Chatbot AI keys controlled by `WA_BOT_SECRET_ENCRYPTION_KEY`.

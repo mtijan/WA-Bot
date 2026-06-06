@@ -52,7 +52,7 @@ export const config = {
   security: {
     frameAncestors: process.env.WA_BOT_FRAME_ANCESTORS || "'none'",
     jsonBodyLimit: process.env.WA_BOT_JSON_BODY_LIMIT || '2mb',
-    importBodyLimit: process.env.WA_BOT_IMPORT_BODY_LIMIT || '10mb',
+    importBodyLimit: process.env.WA_BOT_IMPORT_BODY_LIMIT || '60mb',
     rateLimitWindowMs: parsePositiveInteger(process.env.WA_BOT_RATE_LIMIT_WINDOW_MS, 60_000),
     rateLimitMax: parsePositiveInteger(process.env.WA_BOT_RATE_LIMIT_MAX, 120)
   },
