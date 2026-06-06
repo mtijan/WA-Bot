@@ -290,6 +290,8 @@ Before public deployment:
 
 Frontend production builds default to `/api`, so the recommended public layout is `https://<domain>` serving `frontend/dist` and proxying `/api` to `http://127.0.0.1:3001/api`. Do not expose backend port `3001` directly.
 
+`frontend/package.json` runs `scripts/assert-production-api-url.mjs` after every production build. This guard fails the build when generated assets contain direct private backend URLs such as `:3001/api`. If staging login fails with `Failed to fetch` and DevTools shows requests to `:3001/api/auth/login`, set `VITE_API_URL=/api` in the frontend env, rebuild, reload the reverse proxy, and hard-refresh the browser cache.
+
 See `docs/SECURITY.md` for the production checklist.
 
 Security checks before VPS exposure:
@@ -352,6 +354,7 @@ Additional hardening evidence recorded on 2026-06-05:
 * Required secret env values were reviewed for placeholders and rotated where needed. Do not print secret values in logs or docs.
 * Admin HTTPS auth smoke passed: login, Secure cookie, authenticated `/api/auth/me`, and logout.
 * Manual browser smoke over HTTPS passed: login, dashboard, session manager, contact groups, templates, proxy manager, and logout were checked by the operator.
+* A staging regression where the frontend bundle called `:3001/api/auth/login` directly was fixed by rebuilding with `VITE_API_URL=/api`; future builds are protected by the frontend production API URL guard.
 
 Do not treat this as production-ready. Staging lightweight Telegram alerting is verified, but remaining hardening still includes encrypted offsite backup copy when storage is available and the broader production hardening decisions recorded in the roadmap. Media upload is complete, but uploaded media should still be treated as protected runtime data.
 

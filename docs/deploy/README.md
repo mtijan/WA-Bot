@@ -58,6 +58,8 @@ npm ci
 npm run build
 ```
 
+`npm run build` includes a production API URL guard. The build fails if the generated bundle contains `:3001/api`, `localhost:3001/api`, or another direct private-backend URL. For staging/production, keep `VITE_API_URL` empty or set it to `/api`; do not set it to `http://localhost:3001/api` or `http://<server-ip>:3001/api`.
+
 4. Install backend dependencies and run migrations:
 
 ```bash
@@ -99,6 +101,7 @@ curl -fsS https://<domain>/api/auth/me
 
 - Backend port `3001` must stay private.
 - Public browser traffic should call `/api`, not `:3001`.
+- If browser login shows `Failed to fetch` after deploy, inspect DevTools Network. A request URL ending in `:3001/api/auth/login` means the frontend was built with the wrong `VITE_API_URL`; set `VITE_API_URL=/api`, rebuild, reload Caddy/Nginx, and hard-refresh the browser.
 - Set `WA_BOT_COOKIE_SECURE=true` only after HTTPS is active.
 - Use long random secrets for admin session, API key, internal token, secret encryption, and backup encryption.
 - Move encrypted backups off the VPS or to a protected volume.
