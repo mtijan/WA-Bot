@@ -1,11 +1,12 @@
 import express from 'express';
-import { getFlows, createFlow, updateFlow, deleteFlow, updateFlowStatus, exportFlows, importFlows } from '../controllers/chatbot.controller.js';
+import { getFlows, getFlowById, createFlow, updateFlow, updateFlowSettings, deleteFlow, updateFlowStatus, exportFlows, importFlows } from '../controllers/chatbot.controller.js';
 import { validateBody } from '../utils/validator.js';
 
 const router = express.Router();
 
 router.get('/', getFlows);
 router.get('/export', exportFlows);
+router.get('/:id', getFlowById);
 router.post('/import', validateBody({
   flows: { required: true, type: 'array' }
 }), importFlows);
@@ -17,6 +18,10 @@ router.put('/:id', validateBody({
   flow_name: { required: true, type: 'string', min: 1, max: 100 },
   keywords: { required: true, type: 'string', min: 1 }
 }), updateFlow);
+router.patch('/:id/settings', validateBody({
+  flow_name: { required: true, type: 'string', min: 1, max: 100 },
+  keywords: { required: true, type: 'string', min: 1 }
+}), updateFlowSettings);
 router.delete('/:id', deleteFlow);
 router.patch('/:id/status', validateBody({
   status: { required: true, type: 'string', allowedValues: ['ACTIVE', 'INACTIVE'] }

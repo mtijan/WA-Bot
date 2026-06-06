@@ -4,11 +4,71 @@ import { logError } from '../logger.js';
 
 export const getFlows = async (req, res) => {
   try {
-    const flows = await dbAll('SELECT * FROM chatbot_flows');
+    const summaryQuery = `SELECT
+        id,
+        flow_name,
+        description,
+        session_ids,
+        target_type,
+        keywords,
+        match_type,
+        case_sensitive,
+        cooldown,
+        delay,
+        status,
+        sent_count,
+        created_at,
+        CASE
+          WHEN json_valid(nodes) THEN json_array_length(nodes)
+          ELSE 0
+        END AS node_count
+      FROM chatbot_flows
+      ORDER BY id DESC`;
+    const fallbackSummaryQuery = `SELECT
+        id,
+        flow_name,
+        description,
+        session_ids,
+        target_type,
+        keywords,
+        match_type,
+        case_sensitive,
+        cooldown,
+        delay,
+        status,
+        sent_count,
+        created_at,
+        0 AS node_count
+      FROM chatbot_flows
+      ORDER BY id DESC`;
+
+    let flows;
+    try {
+      flows = await dbAll(summaryQuery);
+    } catch (error) {
+      logError('getFlowsSummaryQuery', error);
+      flows = await dbAll(fallbackSummaryQuery);
+    }
+
     return sendSuccess(res, flows);
   } catch (error) {
     logError('getFlows', error);
     return sendError(res, 500, 'GET_FLOWS_ERROR', 'Gagal memuat alur chatbot.');
+  }
+};
+
+export const getFlowById = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const flow = await dbGet('SELECT * FROM chatbot_flows WHERE id = ?', [id]);
+    if (!flow) {
+      return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
+    }
+
+    return sendSuccess(res, flow);
+  } catch (error) {
+    logError('getFlowById', error, { params: req.params });
+    return sendError(res, 500, 'GET_FLOW_DETAIL_ERROR', 'Gagal memuat detail alur chatbot.');
   }
 };
 
@@ -70,6 +130,39 @@ export const updateFlow = async (req, res) => {
   } catch (error) {
     logError('updateFlow', error, { params: req.params, body: req.body });
     return sendError(res, 500, 'UPDATE_FLOW_ERROR', 'Gagal memperbarui alur chatbot.');
+  }
+};
+
+export const updateFlowSettings = async (req, res) => {
+  const { id } = req.params;
+  const { flow_name, description, session_ids, target_type, keywords, match_type, case_sensitive, cooldown, delay, status } = req.body;
+
+  try {
+    const existing = await dbGet('SELECT id FROM chatbot_flows WHERE id = ?', [id]);
+    if (!existing) {
+      return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
+    }
+
+    await dbRun(
+      'UPDATE chatbot_flows SET flow_name = ?, description = ?, session_ids = ?, target_type = ?, keywords = ?, match_type = ?, case_sensitive = ?, cooldown = ?, delay = ?, status = ? WHERE id = ?',
+      [
+        flow_name,
+        description || null,
+        JSON.stringify(session_ids || []),
+        target_type,
+        keywords,
+        match_type,
+        case_sensitive ? 1 : 0,
+        cooldown,
+        delay,
+        status,
+        id
+      ]
+    );
+    return sendSuccess(res, null, 200, { message: 'Pengaturan alur chatbot berhasil diperbarui.' });
+  } catch (error) {
+    logError('updateFlowSettings', error, { params: req.params, body: req.body });
+    return sendError(res, 500, 'UPDATE_FLOW_SETTINGS_ERROR', 'Gagal memperbarui pengaturan alur chatbot.');
   }
 };
 

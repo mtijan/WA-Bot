@@ -248,6 +248,13 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Success' }
   /chatbot-flows/{id}:
+    get:
+      tags: [Chatbot Flows]
+      summary: Get chatbot flow detail with nodes
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/Error' }
     put:
       tags: [Chatbot Flows]
       summary: Update a chatbot flow
@@ -267,6 +274,14 @@ paths:
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/Success' }
+  /chatbot-flows/{id}/settings:
+    patch:
+      tags: [Chatbot Flows]
+      summary: Update chatbot flow settings without resending nodes
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/Error' }
   /auto-replies:
     get:
       tags: [Auto Replies]

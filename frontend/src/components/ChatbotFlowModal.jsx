@@ -111,7 +111,7 @@ const ChatbotFlowModal = ({ isOpen, onClose, onSave, flow, sessions, flows = [] 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(formData);
+    onSave(formData, { settingsOnly: activeTab === 'settings' && !!formData.id });
   };
 
   return (

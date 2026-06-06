@@ -1,7 +1,54 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Network, Plus, Search, Play, Pause, Edit, Trash2, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { apiRequest } from '../apiClient';
+import { API_URL } from '../config';
 import ChatbotFlowModal from './ChatbotFlowModal';
+
+const IMPORT_LIMIT_BYTES = 60 * 1024 * 1024;
+
+const formatBytes = (bytes) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / (1024 ** index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+};
+
+const uploadJsonWithProgress = ({ path, payload, onProgress }) => new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  const url = `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
+
+  xhr.open('POST', url);
+  xhr.withCredentials = true;
+  xhr.setRequestHeader('Content-Type', 'application/json');
+
+  xhr.upload.onprogress = (event) => {
+    if (!event.lengthComputable) return;
+    onProgress?.({
+      loaded: event.loaded,
+      total: event.total,
+      percent: Math.min(100, Math.round((event.loaded / event.total) * 100))
+    });
+  };
+
+  xhr.onload = () => {
+    let response;
+    try {
+      response = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+    } catch {
+      response = xhr.responseText;
+    }
+
+    if (xhr.status >= 200 && xhr.status < 300 && response?.status !== 'error') {
+      resolve(response);
+      return;
+    }
+
+    reject(new Error(response?.message || `Request gagal dengan status ${xhr.status}.`));
+  };
+
+  xhr.onerror = () => reject(new Error('Koneksi upload gagal.'));
+  xhr.send(JSON.stringify(payload));
+});
 
 const ChatbotFlows = () => {
   const [flows, setFlows] = useState([]);
@@ -10,6 +57,7 @@ const ChatbotFlows = () => {
   const [editingFlow, setEditingFlow] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [transferStatus, setTransferStatus] = useState(null);
 
   // Confirm Dialog State
   const [confirmDialog, setConfirmDialog] = useState({ 
@@ -39,7 +87,7 @@ const ChatbotFlows = () => {
     const interval = setInterval(() => {
       fetchFlows();
       fetchSessions();
-    }, 5000); // Poll every 5 seconds for real-time updates
+    }, 15000);
 
     return () => clearInterval(interval);
   }, []);
@@ -62,20 +110,47 @@ const ChatbotFlows = () => {
     }
   };
 
-  const handleSaveFlow = async (flowData) => {
+  const handleSaveFlow = async (flowData, options = {}) => {
     try {
       const isEdit = !!flowData.id;
-      const url = isEdit ? `/chatbot-flows/${flowData.id}` : '/chatbot-flows';
-      const method = isEdit ? 'PUT' : 'POST';
+      const settingsOnly = isEdit && options.settingsOnly;
+      const url = settingsOnly ? `/chatbot-flows/${flowData.id}/settings` : (isEdit ? `/chatbot-flows/${flowData.id}` : '/chatbot-flows');
+      const method = settingsOnly ? 'PATCH' : (isEdit ? 'PUT' : 'POST');
+      const payload = settingsOnly ? {
+        flow_name: flowData.flow_name,
+        description: flowData.description,
+        session_ids: flowData.session_ids,
+        target_type: flowData.target_type,
+        keywords: flowData.keywords,
+        match_type: flowData.match_type,
+        case_sensitive: flowData.case_sensitive,
+        cooldown: flowData.cooldown,
+        delay: flowData.delay,
+        status: flowData.status
+      } : flowData;
 
       await apiRequest(url, {
         method,
-        body: JSON.stringify(flowData),
+        body: JSON.stringify(payload),
       });
+
+      if (settingsOnly) {
+        setFlows(prev => prev.map(flow => (
+          flow.id === flowData.id
+            ? {
+                ...flow,
+                ...payload,
+                session_ids: JSON.stringify(payload.session_ids || [])
+              }
+            : flow
+        )));
+      }
 
       setIsModalOpen(false);
       setEditingFlow(null);
-      fetchFlows();
+      if (!settingsOnly) {
+        fetchFlows();
+      }
     } catch (err) {
       alert('Failed to save flow: ' + err.message);
     }
@@ -113,9 +188,26 @@ const ChatbotFlows = () => {
 
   const handleExportFlows = async () => {
     try {
+      setTransferStatus({
+        type: 'export',
+        phase: 'preparing',
+        percent: 20,
+        title: 'Menyiapkan export...',
+        detail: `Mengambil ${flows.length} flow dari server.`
+      });
+
       const data = await apiRequest('/chatbot-flows/export');
+      const serialized = JSON.stringify(data, null, 2);
+      const exportedCount = data?.flows?.length || 0;
+      setTransferStatus({
+        type: 'export',
+        phase: 'download',
+        percent: 80,
+        title: 'Membuat file export...',
+        detail: `${exportedCount} flow siap didownload (${formatBytes(new Blob([serialized]).size)}).`
+      });
       
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const blob = new Blob([serialized], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -123,7 +215,18 @@ const ChatbotFlows = () => {
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setTransferStatus({
+        type: 'export',
+        phase: 'done',
+        percent: 100,
+        title: 'Export selesai',
+        detail: `${exportedCount} flow berhasil diexport (${formatBytes(blob.size)}).`
+      });
+      setTimeout(() => setTransferStatus(null), 2500);
     } catch (err) {
+      setTransferStatus(null);
       alert('Gagal mengekspor flow: ' + err.message);
     }
   };
@@ -131,25 +234,80 @@ const ChatbotFlows = () => {
   const handleImportFlows = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    e.target.value = '';
+
+    if (file.size > IMPORT_LIMIT_BYTES) {
+      alert(`Ukuran file ${formatBytes(file.size)} melebihi batas import ${formatBytes(IMPORT_LIMIT_BYTES)}.`);
+      return;
+    }
+
+    setTransferStatus({
+      type: 'import',
+      phase: 'reading',
+      percent: 0,
+      title: 'Membaca file import...',
+      detail: `${file.name} (${formatBytes(file.size)})`
+    });
 
     const reader = new FileReader();
+    reader.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const percent = Math.min(45, Math.round((event.loaded / event.total) * 45));
+      setTransferStatus({
+        type: 'import',
+        phase: 'reading',
+        percent,
+        title: 'Membaca file import...',
+        detail: `${formatBytes(event.loaded)} dari ${formatBytes(event.total)} terbaca.`
+      });
+    };
     reader.onload = async (event) => {
       try {
         const flowData = JSON.parse(event.target.result);
+        const flowCount = Array.isArray(flowData?.flows) ? flowData.flows.length : 0;
 
-        const json = await apiRequest('/chatbot-flows/import', {
-          method: 'POST',
-          body: JSON.stringify(flowData)
+        setTransferStatus({
+          type: 'import',
+          phase: 'uploading',
+          percent: 50,
+          title: 'Mengupload flow...',
+          detail: `${flowCount} flow siap dikirim ke server.`
         });
 
-        alert(json.message);
+        const json = await uploadJsonWithProgress({
+          path: '/chatbot-flows/import',
+          payload: flowData,
+          onProgress: ({ loaded, total, percent }) => {
+            const adjustedPercent = Math.min(99, 50 + Math.round(percent * 0.49));
+            setTransferStatus({
+              type: 'import',
+              phase: 'uploading',
+              percent: adjustedPercent,
+              title: 'Mengupload flow...',
+              detail: `${formatBytes(loaded)} dari ${formatBytes(total)} terkirim ke server.`
+            });
+          }
+        });
+
+        setTransferStatus({
+          type: 'import',
+          phase: 'done',
+          percent: 100,
+          title: 'Import selesai',
+          detail: json?.message || `${flowCount} flow berhasil diimport.`
+        });
         fetchFlows();
+        setTimeout(() => setTransferStatus(null), 3000);
       } catch (err) {
+        setTransferStatus(null);
         alert('Gagal mengimpor: ' + err.message);
       }
     };
+    reader.onerror = () => {
+      setTransferStatus(null);
+      alert('Gagal membaca file import.');
+    };
     reader.readAsText(file);
-    e.target.value = '';
   };
 
   const openCreateModal = () => {
@@ -214,17 +372,23 @@ const ChatbotFlows = () => {
     return result;
   }, [flows, searchTerm, sortConfig, sessions]);
 
-  const openEditModal = (flow) => {
-    setEditingFlow({
-      ...flow,
-      session_ids: JSON.parse(flow.session_ids || '[]'),
-      nodes: JSON.parse(flow.nodes || '[]')
-    });
-    setIsModalOpen(true);
+  const openEditModal = async (flow) => {
+    try {
+      const json = await apiRequest(`/chatbot-flows/${flow.id}`);
+      const detail = json.data || flow;
+      setEditingFlow({
+        ...detail,
+        session_ids: JSON.parse(detail.session_ids || '[]'),
+        nodes: JSON.parse(detail.nodes || '[]')
+      });
+      setIsModalOpen(true);
+    } catch (err) {
+      alert('Gagal memuat detail flow: ' + err.message);
+    }
   };
 
   const activeFlowsCount = flows.filter(f => f.status === 'ACTIVE').length;
-  const totalNodesCount = flows.reduce((acc, f) => acc + JSON.parse(f.nodes || '[]').length, 0);
+  const totalNodesCount = flows.reduce((acc, f) => acc + (f.node_count || 0), 0);
   const totalConversations = flows.reduce((acc, f) => acc + (f.sent_count || 0), 0);
 
   return (
@@ -238,23 +402,51 @@ const ChatbotFlows = () => {
           <p style={{ color: 'var(--text-muted)' }}>Build conversational trees with custom triggers and responses.</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <label className="btn btn-outline" style={{ cursor: 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-            <Upload size={16} /> Import Flows
+          <label className="btn btn-outline" style={{ cursor: transferStatus ? 'not-allowed' : 'pointer', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '8px', opacity: transferStatus ? 0.65 : 1 }}>
+            <Upload size={16} /> {transferStatus?.type === 'import' ? 'Importing...' : 'Import Flows'}
             <input 
               type="file" 
               accept=".json" 
               style={{ display: 'none' }} 
-              onChange={handleImportFlows} 
+              onChange={handleImportFlows}
+              disabled={!!transferStatus}
             />
           </label>
-          <button className="btn btn-outline" onClick={handleExportFlows} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-            <Download size={16} /> Export Flows
+          <button className="btn btn-outline" onClick={handleExportFlows} disabled={!!transferStatus} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', opacity: transferStatus ? 0.65 : 1 }}>
+            <Download size={16} /> {transferStatus?.type === 'export' ? 'Exporting...' : 'Export Flows'}
           </button>
           <button className="btn btn-primary" onClick={openCreateModal} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
             <Plus size={16} /> Create Chatbot Flow
           </button>
         </div>
       </div>
+
+      {transferStatus && (
+        <div className="card" style={{ marginBottom: '24px', borderColor: transferStatus.phase === 'done' ? 'rgba(16,185,129,0.35)' : 'rgba(99,102,241,0.35)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', marginBottom: '10px' }}>
+            <div>
+              <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>{transferStatus.title}</div>
+              <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{transferStatus.detail}</div>
+            </div>
+            <div style={{ fontWeight: 700, color: transferStatus.phase === 'done' ? 'var(--success)' : 'var(--primary-color)' }}>
+              {transferStatus.percent}%
+            </div>
+          </div>
+          <div style={{ height: '10px', backgroundColor: 'var(--bg-main)', borderRadius: '999px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+            <div
+              style={{
+                height: '100%',
+                width: `${transferStatus.percent}%`,
+                borderRadius: '999px',
+                background: transferStatus.phase === 'done'
+                  ? 'linear-gradient(90deg, #10b981, #34d399)'
+                  : 'linear-gradient(90deg, var(--primary-color), var(--secondary-color))',
+                transition: 'width 0.2s ease'
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
         <div className="card">
@@ -357,7 +549,7 @@ const ChatbotFlows = () => {
             </thead>
             <tbody>
               {filteredAndSortedFlows.map(flow => {
-                const nodeCount = JSON.parse(flow.nodes || '[]').length;
+                const nodeCount = flow.node_count || 0;
                 const keywords = flow.keywords.split(',').map(k => k.trim()).filter(k => k !== '');
                 const sessionIds = JSON.parse(flow.session_ids || '[]');
                 const assignedSessions = sessions.filter(s => sessionIds.includes(s.session_id));
