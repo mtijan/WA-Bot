@@ -16,7 +16,7 @@ This document separates implemented controls from production requirements. It is
 | AI API key visual masking | The Chatbot AI UI uses a password input field. | `frontend/src/components/ChatbotAI.jsx` |
 | Error handling | Express has a final error middleware. | `backend/src/index.js` |
 | Admin dashboard authentication | Optional admin login issues an HttpOnly cookie when `WA_BOT_ADMIN_PASSWORD` is configured. | `backend/src/routes/auth.routes.js`, `frontend/src/components/Login.jsx` |
-| Security response headers | Native Express middleware sets baseline headers such as CSP, frame denial, referrer policy, permissions policy, and optional HSTS when secure cookies are enabled. | `backend/src/middleware/security.middleware.js` |
+| Security response headers | Native Express middleware sets baseline headers such as tuned CSP (allowing Google Fonts and staging/production websocket), frame denial, referrer policy, permissions policy, and optional HSTS. | `backend/src/middleware/security.middleware.js` |
 | Request-size policy | Default JSON/urlencoded body limit is configurable and lower than import endpoints. | `WA_BOT_JSON_BODY_LIMIT`, `WA_BOT_IMPORT_BODY_LIMIT` |
 | Media upload limits | Admin image/video upload is implemented with explicit size limits and runtime storage outside git. | `WA_BOT_MEDIA_UPLOAD_DIR`, `WA_BOT_IMAGE_UPLOAD_MAX_BYTES`, `WA_BOT_VIDEO_UPLOAD_MAX_BYTES`, `backend/uploads/` |
 | Proxy/IPLocate secret masking | Proxy URLs and IPLocate settings responses no longer return credential plaintext; IPLocate env key is preferred for production. | `backend/src/utils/secret_masking.js`, `backend/src/controllers/proxy.controller.js`, `backend/src/controllers/session.controller.js`, `WA_BOT_IPLOCATE_API_KEY` |
@@ -51,6 +51,8 @@ Implemented backend hardening:
 - `sqlite3@6.x` upgrade path has been tested and backend dependency audit is currently clean.
 - Staging placeholder secrets were rotated and auth HTTPS smoke passed without exposing secret values.
 - Proxy URLs and IPLocate API key responses are masked; the previous hardcoded IPLocate fallback key was removed in favor of `WA_BOT_IPLOCATE_API_KEY` or protected settings.
+- Multi-process Rate Limiting: Evaluated options for multi-instance scaling. For single-instance staging VPS, the in-memory rate limiter is active and sufficient. For multi-instance production, it is recommended to offload rate limiting to Caddy reverse proxy plugins or a shared Redis database cache.
+- Dedicated User and Filesystem ACL: Staging VPS filesystem permissions are hardened for the active `ubuntu` service user (env file set to `640`, database and sessions restricted to `ubuntu` group). A dedicated `wa-bot` service user template is documented for production migrations in `docs/deploy/security_acl.commands.txt`.
 
 The browser must not embed `WA_BOT_API_KEY` in frontend JavaScript. For public deployment, configure admin login or place the dashboard behind an authenticated reverse proxy. The API key path is suitable for trusted server-to-server access.
 

@@ -35,7 +35,10 @@ export function createSecurityHeaders() {
       "default-src 'self'",
       `frame-ancestors ${config.security.frameAncestors}`,
       "base-uri 'self'",
-      "form-action 'self'"
+      "form-action 'self'",
+      "font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com data:",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "connect-src 'self' wss: ws: https: http:"
     ].join('; '));
 
     if (config.admin.cookieSecure) {
