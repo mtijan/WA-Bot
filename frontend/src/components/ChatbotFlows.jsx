@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Network, Plus, Search, MessageSquare, Play, Pause, Edit, Trash2, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { useMemo, useState, useEffect } from 'react';
+import { Network, Plus, Search, Play, Pause, Edit, Trash2, Download, Upload, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 import ChatbotFlowModal from './ChatbotFlowModal';
 
@@ -165,7 +165,7 @@ const ChatbotFlows = () => {
     setSortConfig({ key, direction });
   };
 
-  const filteredAndSortedFlows = React.useMemo(() => {
+  const filteredAndSortedFlows = useMemo(() => {
     let result = [...flows];
 
     // 1. Filter by Search Term

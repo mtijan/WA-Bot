@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -141,7 +141,7 @@ const Templates = () => {
       } else {
         window.showError(json.message || 'Gagal menyimpan template.');
       }
-    } catch (err) {
+    } catch {
       window.showError('Kesalahan jaringan saat menyimpan template.');
     } finally {
       setLoading(false);
@@ -163,7 +163,7 @@ const Templates = () => {
           } else {
             window.showError(json.message || 'Gagal menghapus template.');
           }
-        } catch (err) {
+        } catch {
           window.showError('Kesalahan jaringan saat menghapus template.');
         }
       }

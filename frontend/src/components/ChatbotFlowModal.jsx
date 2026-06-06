@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Plus, Trash2, GripVertical, Settings2, MessageSquare, Image, Video, Music, File } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Plus, Trash2, GripVertical, MessageSquare } from 'lucide-react';
 import MediaUploadField from './MediaUploadField';
 
 const ChatbotFlowModal = ({ isOpen, onClose, onSave, flow, sessions, flows = [] }) => {
@@ -21,7 +21,7 @@ const ChatbotFlowModal = ({ isOpen, onClose, onSave, flow, sessions, flows = [] 
 
   const [activeTab, setActiveTab] = useState('settings'); // 'settings' | 'nodes'
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       if (flow) {
         setFormData(flow);

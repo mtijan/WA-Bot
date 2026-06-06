@@ -1,26 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
   RefreshCw, 
   Layers, 
   CheckCircle, 
-  AlertCircle, 
-  Calendar, 
   Trash2, 
   Eye, 
   Send, 
   X, 
   Smartphone,
   MessageSquare,
-  FileText,
-  Paperclip,
-  Clock,
-  ChevronRight
+  FileText
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
-const BulkCampaign = ({ API_URL }) => {
+const BulkCampaign = () => {
   // Campaign list and search state
   const [campaigns, setCampaigns] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,19 +28,9 @@ const BulkCampaign = ({ API_URL }) => {
   const [contactGroups, setContactGroups] = useState([]);
   const [templates, setTemplates] = useState([]);
 
-  // Active campaign progress monitor
-  const [activeCampaignId, setActiveCampaignId] = useState(null);
-  const [progress, setProgress] = useState(null);
-
   // Non-blocking slide-over drawer states
   const [drawerCampaignId, setDrawerCampaignId] = useState(null);
   const [drawerProgress, setDrawerProgress] = useState(null);
-
-  // Advanced name personalization states
-  const [showNamePersonalizationHelper, setShowNamePersonalizationHelper] = useState(false);
-  const [nameFallback, setNameFallback] = useState('Pelanggan');
-  const [nameUseFirst, setNameUseFirst] = useState(false);
-  const [nameCase, setNameCase] = useState('proper');
 
   // --- Create Campaign Form State ---
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -211,27 +196,6 @@ const BulkCampaign = ({ API_URL }) => {
     }
   };
 
-  const fetchProgress = async () => {
-    if (!activeCampaignId) return;
-    try {
-      const json = await apiRequest(`/campaigns/${activeCampaignId}`);
-      if (json.status === 'success') {
-        setProgress(json.data);
-        if (json.data.campaign_status === 'COMPLETED') {
-          setActiveCampaignId(null);
-          fetchCampaigns();
-          if (window.showSuccess) {
-            window.showSuccess('Kampanye pengiriman pesan massal telah selesai!');
-          } else {
-            alert('Kampanye pengiriman pesan massal telah selesai!');
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Gagal memantau progress kampanye:', err);
-    }
-  };
-
   const handleDeleteCampaign = async (campaignId) => {
     triggerConfirm(
       'Hapus Kampanye',
@@ -245,10 +209,6 @@ const BulkCampaign = ({ API_URL }) => {
           });
           if (json.status === 'success') {
             fetchCampaigns();
-            if (progress?.campaign_id === campaignId) {
-              setProgress(null);
-              setActiveCampaignId(null);
-            }
             if (window.showSuccess) {
               window.showSuccess('Kampanye berhasil dihapus');
             }
@@ -311,7 +271,6 @@ const BulkCampaign = ({ API_URL }) => {
     }
 
     setLoading(true);
-    setProgress(null);
 
     // Gunakan sesi pertama yang dipilih untuk saat ini
     const primarySessionId = selectedSessions[0];

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -7,7 +7,6 @@ import {
   FileText, 
   Users, 
   Send, 
-  Shield, 
   Flame, 
   UserMinus, 
   Bot, 
@@ -26,7 +25,7 @@ const Sidebar = ({ authState, onLogout }) => {
     { path: '/templates', name: 'Templates', icon: <FileText size={20} /> },
     { path: '/contacts', name: 'Contacts', icon: <Users size={20} /> },
     { path: '/bulk', name: 'Bulk Messages', icon: <Send size={20} /> },
-    // { path: '/proxies', name: 'Proxies', icon: <Shield size={20} /> },
+    // { path: '/proxies', name: 'Proxies' },
 
     { path: '/warmer', name: 'Warmer', icon: <Flame size={20} /> },
     { path: '/opt-out', name: 'Opt-Out Management', icon: <UserMinus size={20} /> },

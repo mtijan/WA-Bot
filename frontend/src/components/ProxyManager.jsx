@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, ShieldCheck, Activity, RefreshCw, AlertTriangle, Smartphone, Download, FileText, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
@@ -127,7 +127,7 @@ const ProxyManager = () => {
       } else {
         alert('Gagal menyimpan API Key: ' + json.message);
       }
-    } catch (err) {
+    } catch {
       alert('Terjadi kesalahan koneksi.');
     } finally {
       setSavingKey(false);
@@ -150,7 +150,7 @@ const ProxyManager = () => {
       } else {
         alert('Gagal menambahkan proxy: ' + json.message);
       }
-    } catch (err) {
+    } catch {
       alert('Koneksi gagal.');
     }
   };
@@ -172,7 +172,7 @@ const ProxyManager = () => {
           } else {
             alert('Gagal menghapus proxy.');
           }
-        } catch (err) {
+        } catch {
           alert('Koneksi gagal.');
         }
       }
@@ -198,7 +198,7 @@ const ProxyManager = () => {
       } else {
         alert('Gagal menguji proxy: ' + json.message);
       }
-    } catch (err) {
+    } catch {
       alert('Kesalahan koneksi saat menguji proxy.');
     } finally {
       setTestingId(null);
@@ -217,7 +217,7 @@ const ProxyManager = () => {
       } else {
         alert('Gagal memperbarui proxy sesi: ' + json.message);
       }
-    } catch (err) {
+    } catch {
       alert('Gagal memperbarui proxy sesi akibat masalah koneksi.');
     } finally {
       setUpdatingSessionId(null);
@@ -237,7 +237,7 @@ const ProxyManager = () => {
       } else {
         alert('Gagal memulai unduhan: ' + json.message);
       }
-    } catch (err) {
+    } catch {
       alert('Terjadi kesalahan koneksi.');
     } finally {
       setLoadingOfflineDb(false);

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Smartphone, Trash2, Link, LogOut } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Smartphone, Trash2, Link } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
 const SessionManager = () => {
@@ -81,7 +81,7 @@ const SessionManager = () => {
         alert('Gagal membuat sesi baru: ' + json.message);
         setQrSessionId('');
       }
-    } catch (err) {
+    } catch {
       alert('Gagal menghubungi server API.');
       setQrSessionId('');
     } finally {
@@ -110,7 +110,7 @@ const SessionManager = () => {
           } else {
         alert('Gagal menghapus sesi.');
       }
-    } catch (err) {
+    } catch {
       alert('Terjadi kesalahan koneksi.');
     }
     }

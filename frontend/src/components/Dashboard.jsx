@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Smartphone, Send, Users, FileText, Bot, Network, Phone, BarChart2 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 

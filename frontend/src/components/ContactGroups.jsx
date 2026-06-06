@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, 
@@ -6,7 +6,6 @@ import {
   CheckCircle, 
   AlertCircle, 
   Trash2, 
-  Plus, 
   Edit2,
   X,
   RefreshCw

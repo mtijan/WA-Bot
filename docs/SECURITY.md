@@ -1,6 +1,6 @@
 # WA-Bot Pro Security Baseline
 
-**Status:** Internal development baseline  
+**Status:** Security hardening baseline implemented; production risk review still required  
 **Last updated:** 2026-06-06
 
 ## 1. Scope
@@ -21,7 +21,7 @@ This document separates implemented controls from production requirements. It is
 | Media upload limits | Admin image/video upload is implemented with explicit size limits and runtime storage outside git. | `WA_BOT_MEDIA_UPLOAD_DIR`, `WA_BOT_IMAGE_UPLOAD_MAX_BYTES`, `WA_BOT_VIDEO_UPLOAD_MAX_BYTES`, `backend/uploads/` |
 | Proxy/IPLocate secret masking | Proxy URLs and IPLocate settings responses no longer return credential plaintext; IPLocate env key is preferred for production. | `backend/src/utils/secret_masking.js`, `backend/src/controllers/proxy.controller.js`, `backend/src/controllers/session.controller.js`, `WA_BOT_IPLOCATE_API_KEY` |
 | Dependency audit baseline | `sqlite3@6.x` remediation was tested and latest backend audit was clean (`npm run security:audit`, 2026-06-05). | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
-| Staging deploy baseline | HTTP/IP staging is verified, but production hardening is pending. | `docs/STAGING.md` |
+| Staging deploy baseline | Domain HTTPS, secure cookie/CORS, provider firewall, Telegram alert timer, backup/restore timers, ACL baseline, and API/worker readiness are verified. | `docs/STAGING.md` |
 
 ## 3. Known Production Gaps
 
@@ -30,10 +30,10 @@ This document separates implemented controls from production requirements. It is
 | Session credentials are not proven encrypted at-rest | Filesystem access may expose linked WhatsApp sessions. | Apply OS ACLs, encryption at-rest, and session rotation procedures. |
 | Existing Chatbot AI keys may predate field encryption | Older SQLite rows may remain plaintext until saved again. | Configure `WA_BOT_SECRET_ENCRYPTION_KEY` and save each AI configuration again. |
 | Sensitive examples may drift into docs or source code | Secrets can be leaked accidentally. | Use placeholders only and scan before release. |
-| Production alerting is still lightweight | Domain HTTPS, secure cookie, restricted CORS, provider firewall review, manual browser smoke, Telegram alert timer healthy runs, and forced API readiness alert evidence are complete on staging. | Keep the timer active, review alert logs, and add Uptime Kuma/Netdata or equivalent if production needs deeper CPU/RAM/session alerting. |
-| Filesystem ACL needs final dedicated-user review | Current staging ACL baseline is applied for the `ubuntu` service user, but the production template assumes a dedicated `wa-bot` user. | Migrate service user later or keep documenting the `ubuntu` staging exception; protect env, database, sessions, backups, and logs. |
+| Production alerting is lightweight by design | Domain HTTPS, secure cookie, restricted CORS, provider firewall review, manual browser smoke, Telegram alert timer healthy runs, and forced API readiness alert evidence are complete on staging. | Keep the timer active, review alert logs, and add Uptime Kuma/Netdata only if production needs deeper CPU/RAM/session alerting. |
+| Dedicated service user is optional pending ops decision | Current staging ACL baseline is applied for the `ubuntu` service user, and a dedicated `wa-bot` service user template exists. | Migrate service user later only with matching systemd updates; continue protecting env, database, sessions, backups, uploads, and logs. |
 | Offsite backup destination not selected | Local encrypted backups protect against app mistakes, but not VPS loss. | Add offsite/object storage copy when a storage destination is available; keep backup encryption key separate. |
-| Uploaded media lifecycle not finalized | Uploaded files may contain personal or business-sensitive content and can grow storage over time. | Finish retention/deletion policy, include uploads in backup only when needed, and keep `/api/uploads/*` behind admin auth/reverse proxy. |
+| Uploaded media lifecycle needs periodic review | Uploaded files may contain personal or business-sensitive content and can grow storage over time. | Keep uploads behind admin auth/reverse proxy, include them in backup only when needed, and periodically review retention/deletion policy. |
 | Baileys is an unofficial integration | Account restriction and platform-policy risk remain. | Review WhatsApp policy and evaluate the official Business Platform. |
 
 Implemented backend hardening:

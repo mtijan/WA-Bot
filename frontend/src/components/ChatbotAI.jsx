@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Bot, 
   Send, 
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
-function ChatbotAI({ API_URL }) {
+function ChatbotAI() {
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState('');
   

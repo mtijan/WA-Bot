@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -14,12 +14,11 @@ import {
   X,
   Search,
   RefreshCw,
-  Edit2,
   Users
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
-const GroupDetail = ({ API_URL }) => {
+const GroupDetail = () => {
   const { groupId } = useParams();
   const navigate = useNavigate();
 
@@ -282,7 +281,7 @@ const GroupDetail = ({ API_URL }) => {
       const firstCol = parsedFirstLine[0] || '';
       const isFirstRowData = /\d/.test(firstCol) && firstCol.replace(/\D/g, '').length >= 5;
       
-      let headers = [];
+      let headers;
       let startIndex = 1;
       
       if (isFirstRowData) {

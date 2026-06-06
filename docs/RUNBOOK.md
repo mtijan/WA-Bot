@@ -109,7 +109,7 @@ For deployment hardening, the backend can now run by role:
 | Warmer worker | `npm run start:warmer-worker` | Restores sessions and polls SQLite for `RUNNING` warmer campaigns. |
 | Combined worker | `npm run start:worker` | Restores sessions and runs both campaign and warmer workers without HTTP API. |
 
-Recommended production baseline before full IPC is implemented:
+Recommended production/staging baseline:
 
 ```powershell
 Set-Location .\backend
@@ -151,7 +151,7 @@ Readiness endpoints:
 | Campaign worker granular | `GET http://127.0.0.1:3003/internal/health/ready` |
 | Warmer worker granular | `GET http://127.0.0.1:3004/internal/health/ready` |
 
-Current limitation: the internal session-manager API currently covers session list/status/init/delete/proxy update. Other socket-heavy features such as group grabber, single-message sending, campaign sending, and warmer sending still execute in the process that owns Baileys sockets and need further internal delegation before a fully granular production split.
+Current split-process status: the internal session-manager API covers session list/status/init/delete/proxy update plus socket-heavy delegation for Group Grabber, Single Message, group contact verification, campaign processing nudge, and warmer start/stop timer control. Local monolith mode still works without `WA_BOT_SESSION_MANAGER_URL`. Staging readiness has been verified with API ready and worker ready, but browser feature smoke for Group Grabber reload/export, Single Message send, contact verification, one-target campaign, and warmer start/stop must be recorded before marking process architecture DONE.
 
 ## 5. Database Migration
 
@@ -355,6 +355,7 @@ Additional hardening evidence recorded on 2026-06-05:
 * Admin HTTPS auth smoke passed: login, Secure cookie, authenticated `/api/auth/me`, and logout.
 * Manual browser smoke over HTTPS passed: login, dashboard, session manager, contact groups, templates, proxy manager, and logout were checked by the operator.
 * A staging regression where the frontend bundle called `:3001/api/auth/login` directly was fixed by rebuilding with `VITE_API_URL=/api`; future builds are protected by the frontend production API URL guard.
+* Internal socket-heavy delegation was deployed and readiness verified on 2026-06-06: API role ready, worker role ready with 3 active sessions, campaign polling enabled, and warmer polling enabled. Browser feature smoke for the delegated features is still required.
 
 Do not treat this as production-ready. Staging lightweight Telegram alerting is verified, but remaining hardening still includes encrypted offsite backup copy when storage is available and the broader production hardening decisions recorded in the roadmap. Media upload is complete, but uploaded media should still be treated as protected runtime data.
 

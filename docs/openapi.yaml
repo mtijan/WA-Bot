@@ -445,11 +445,6 @@ paths:
       summary: Start downloading offline IPLocate databases
       responses:
         '200': { $ref: '#/components/responses/Success' }
-    post:
-      tags: [Proxies]
-      summary: Create a proxy
-      responses:
-        '200': { $ref: '#/components/responses/Success' }
   /chatbot-ai/settings/{sessionId}:
     get:
       tags: [Chatbot AI]
@@ -576,6 +571,100 @@ paths:
     patch:
       tags: [Internal Process API]
       summary: Assign or clear a session proxy through the session-manager process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/groups/{id}:
+    get:
+      tags: [Internal Process API]
+      summary: List detailed WhatsApp groups from the worker process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/groups/invite-link:
+    post:
+      tags: [Internal Process API]
+      summary: Create a group invite link from the worker process
+      security:
+        - InternalToken: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/groups/metadata:
+    post:
+      tags: [Internal Process API]
+      summary: Fetch live group metadata from the worker process
+      security:
+        - InternalToken: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/groups/force-sync-contacts:
+    post:
+      tags: [Internal Process API]
+      summary: Force contact synchronization from the worker process
+      security:
+        - InternalToken: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/single-message/groups/{id}:
+    get:
+      tags: [Internal Process API]
+      summary: List groups for single-message sending from the worker process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/single-message/send:
+    post:
+      tags: [Internal Process API]
+      summary: Send a single message through the worker process
+      security:
+        - InternalToken: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/contacts/verify-group-contacts:
+    post:
+      tags: [Internal Process API]
+      summary: Verify group contacts through the worker process
+      security:
+        - InternalToken: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/campaigns/{id}/process:
+    post:
+      tags: [Internal Process API]
+      summary: Nudge campaign processing in the worker process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/warmer/campaigns/{id}/start:
+    post:
+      tags: [Internal Process API]
+      summary: Start a warmer campaign timer in the worker process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/warmer/campaigns/{id}/stop:
+    post:
+      tags: [Internal Process API]
+      summary: Stop a warmer campaign in the worker process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /internal/warmer/campaigns/{id}/clear:
+    post:
+      tags: [Internal Process API]
+      summary: Clear a warmer campaign timer in the worker process
       security:
         - InternalToken: []
       parameters: [{ $ref: '#/components/parameters/Id' }]

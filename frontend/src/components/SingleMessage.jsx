@@ -1,25 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Send, 
   Smartphone, 
   Users, 
-  FileText, 
   RefreshCw, 
   Search, 
-  MessageSquare, 
-  Check, 
-  Image, 
-  Video, 
-  Music, 
-  File, 
-  User, 
-  Folder, 
-  CheckCircle 
+  MessageSquare
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 import MediaUploadField from './MediaUploadField';
 
-const SingleMessage = ({ API_URL }) => {
+const SingleMessage = () => {
   const [sessions, setSessions] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState('');
   
@@ -53,7 +44,7 @@ const SingleMessage = ({ API_URL }) => {
   // Status and Loading
   const [loading, setLoading] = useState(false);
 
-  const selectedSessionIdRef = React.useRef(selectedSessionId);
+  const selectedSessionIdRef = useRef(selectedSessionId);
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);

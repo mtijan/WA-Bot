@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle, Info, XCircle, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
@@ -12,10 +12,8 @@ import Warmer from './components/Warmer';
 import Templates from './components/Templates';
 import SingleMessage from './components/SingleMessage';
 import GroupGrabber from './components/GroupGrabber';
-import ProxyManager from './components/ProxyManager';
 import ChatbotAI from './components/ChatbotAI';
 import Login from './components/Login';
-import { API_URL } from './config';
 import { apiRequest } from './apiClient';
 
 function App() {
@@ -87,21 +85,21 @@ function App() {
         <Sidebar authState={authState} onLogout={handleLogout} />
         <main className="main-content">
           <Routes>
-            <Route path="/" element={<Dashboard API_URL={API_URL} />} />
-            <Route path="/devices" element={<SessionManager API_URL={API_URL} />} />
-            <Route path="/bulk" element={<BulkCampaign API_URL={API_URL} />} />
-            <Route path="/chatbot-flows" element={<ChatbotFlows API_URL={API_URL} />} />
-            <Route path="/contacts" element={<ContactGroups API_URL={API_URL} />} />
-            <Route path="/contacts/:groupId" element={<GroupDetail API_URL={API_URL} />} />
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/devices" element={<SessionManager />} />
+            <Route path="/bulk" element={<BulkCampaign />} />
+            <Route path="/chatbot-flows" element={<ChatbotFlows />} />
+            <Route path="/contacts" element={<ContactGroups />} />
+            <Route path="/contacts/:groupId" element={<GroupDetail />} />
             
-            <Route path="/single-message" element={<SingleMessage API_URL={API_URL} />} />
-            <Route path="/group-grabber" element={<GroupGrabber API_URL={API_URL} />} />
-            <Route path="/templates" element={<Templates API_URL={API_URL} />} />
+            <Route path="/single-message" element={<SingleMessage />} />
+            <Route path="/group-grabber" element={<GroupGrabber />} />
+            <Route path="/templates" element={<Templates />} />
             {/* <Route path="/proxies" element={<ProxyManager API_URL={API_URL} />} /> */}
 
-            <Route path="/warmer" element={<Warmer API_URL={API_URL} />} />
+            <Route path="/warmer" element={<Warmer />} />
             <Route path="/opt-out" element={<div className="card"><h2>Opt-Out Management</h2><p>Feature under construction.</p></div>} />
-            <Route path="/chatbot-ai" element={<ChatbotAI API_URL={API_URL} />} />
+            <Route path="/chatbot-ai" element={<ChatbotAI />} />
             <Route path="/auto-reply" element={<Navigate to="/chatbot-ai" replace />} />
             
             {/* Catch-all redirect */}

@@ -1,11 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus,
   Search,
   RefreshCw,
-  Layers,
-  CheckCircle,
-  AlertCircle,
   Clock,
   Flame,
   FileText,
@@ -13,12 +10,11 @@ import {
   Eye,
   Trash2,
   X,
-  Play,
   Pause
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
-const Warmer = ({ API_URL }) => {
+const Warmer = () => {
   // Tabs and general lists
   const [activeTab, setActiveTab] = useState('campaigns'); // 'campaigns' or 'templates'
   const [campaigns, setCampaigns] = useState([]);
@@ -26,7 +22,7 @@ const Warmer = ({ API_URL }) => {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [autoRefresh] = useState(true);
 
   // Modal visibility
   const [showCampaignModal, setShowCampaignModal] = useState(false);
@@ -203,7 +199,7 @@ const Warmer = ({ API_URL }) => {
       } else {
         window.showError(json.message || 'Gagal menyimpan template.');
       }
-    } catch (err) {
+    } catch {
       window.showError('Kesalahan jaringan saat menyimpan template.');
     } finally {
       setLoading(false);
@@ -226,7 +222,7 @@ const Warmer = ({ API_URL }) => {
           } else {
             window.showError(json.message || 'Gagal menghapus template.');
           }
-        } catch (err) {
+        } catch {
           window.showError('Kesalahan jaringan saat menghapus template.');
         }
       }
@@ -273,7 +269,7 @@ const Warmer = ({ API_URL }) => {
       } else {
         window.showError(json.message || 'Gagal memulai kampanye.');
       }
-    } catch (err) {
+    } catch {
       window.showError('Kesalahan jaringan saat meluncurkan kampanye.');
     } finally {
       setLoading(false);
@@ -299,7 +295,7 @@ const Warmer = ({ API_URL }) => {
           } else {
             window.showError(json.message || 'Gagal menghentikan kampanye.');
           }
-        } catch (err) {
+        } catch {
           window.showError('Kesalahan jaringan saat menghentikan kampanye.');
         }
       }
@@ -325,7 +321,7 @@ const Warmer = ({ API_URL }) => {
           } else {
             window.showError(json.message || 'Gagal menghapus kampanye.');
           }
-        } catch (err) {
+        } catch {
           window.showError('Kesalahan jaringan saat menghapus kampanye.');
         }
       }

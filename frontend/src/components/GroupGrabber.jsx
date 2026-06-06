@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Layers, 
-  Smartphone, 
   Copy, 
   Link, 
-  FileSpreadsheet, 
   Download, 
   Users, 
   ShieldAlert, 
@@ -13,12 +11,11 @@ import {
   RefreshCw,
   FileJson,
   CheckCircle,
-  AlertCircle,
   FileText
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
-const GroupGrabber = ({ API_URL }) => {
+const GroupGrabber = () => {
   const [sessions, setSessions] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState('');
   
@@ -34,7 +31,7 @@ const GroupGrabber = ({ API_URL }) => {
   const [roleFilter, setRoleFilter] = useState('all'); // 'all', 'admin', 'member'
   const [sortBy, setSortBy] = useState('name'); // 'name', 'members'
 
-  const selectedSessionIdRef = React.useRef(selectedSessionId);
+  const selectedSessionIdRef = useRef(selectedSessionId);
   useEffect(() => {
     selectedSessionIdRef.current = selectedSessionId;
   }, [selectedSessionId]);
@@ -169,7 +166,7 @@ const GroupGrabber = ({ API_URL }) => {
           } else {
             fails++;
           }
-        } catch (e) {
+        } catch {
           fails++;
         }
       }
@@ -182,46 +179,14 @@ const GroupGrabber = ({ API_URL }) => {
       if (fails > 0) {
         window.showError(`Gagal membuat tautan untuk ${fails} grup.`);
       }
-    } catch (err) {
+    } catch {
       window.showError('Gagal menjalankan pembuatan tautan undangan.');
     } finally {
       setLoading(false);
     }
   };
 
-  // 3. Export Summary CSV
-  const handleExportSummary = () => {
-    const listToExport = selectedGroupIds.length > 0 
-      ? groups.filter(g => selectedGroupIds.includes(g.id))
-      : groups;
-
-    if (listToExport.length === 0) {
-      window.showWarning('Tidak ada data grup yang dapat diekspor.');
-      return;
-    }
-
-    const headers = ['Group Name', 'Group JID', 'Role', 'Members Count', 'Is Community'];
-    const csvRows = [headers.join(',')];
-
-    for (const g of listToExport) {
-      const role = g.isAdmin ? 'Admin' : 'Member';
-      const nameEscaped = `"${g.subject.replace(/"/g, '""')}"`;
-      const row = [nameEscaped, g.id, role, g.size, g.isCommunity ? 'Yes' : 'No'];
-      csvRows.push(row.join(','));
-    }
-
-    const csvContent = "data:text/csv;charset=utf-8," + csvRows.join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `WhatsApp_Groups_Summary_${selectedSessionId}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.showSuccess(`Daftar ${listToExport.length} grup berhasil diekspor.`);
-  };
-
-  // 4. Export Participants CSV
+  // 3. Export Participants CSV
   const handleExportParticipants = async (explicitGroupIds) => {
     const actualGroupIds = (explicitGroupIds && Array.isArray(explicitGroupIds))
       ? explicitGroupIds
@@ -399,7 +364,7 @@ const GroupGrabber = ({ API_URL }) => {
       } else {
         window.showError(json.message || 'Gagal membuat tautan undangan.');
       }
-    } catch (err) {
+    } catch {
       window.showError('Gagal membuat tautan undangan.');
     } finally {
       setGeneratingLinkGroupId(null);
