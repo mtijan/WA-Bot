@@ -19,6 +19,7 @@ const testDbPath = join(testTmpDir, 'test.sqlite');
 
 // Set env var sebelum import apapun dari app agar database.js membaca path ini
 process.env.WA_BOT_DB_PATH = testDbPath;
+process.env.WA_BOT_INTERNAL_TOKEN = 'testing-internal-token-secret-placeholder';
 
 // Nonaktifkan admin auth dan API key agar test bisa mengakses endpoint tanpa kredensial
 // kecuali kita secara eksplisit ingin menguji autentikasi

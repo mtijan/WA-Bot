@@ -355,7 +355,15 @@ class WhatsAppService {
         let matchedFlow = null;
         if (chatbotMode === 'flow' || chatbotMode === 'both') {
           // Check chatbot flows
-          const flows = await dbAll("SELECT * FROM chatbot_flows WHERE status = 'ACTIVE' AND session_ids LIKE ?", [`%${sessionId}%`]);
+          const allActiveFlows = await dbAll("SELECT * FROM chatbot_flows WHERE status = 'ACTIVE'");
+          const flows = allActiveFlows.filter(flow => {
+            try {
+              const ids = JSON.parse(flow.session_ids || '[]');
+              return Array.isArray(ids) && ids.includes(sessionId);
+            } catch (e) {
+              return false;
+            }
+          });
 
           matchedFlow = flows.find(flow => {
             // Evaluasi batasan obrolan (target_type)

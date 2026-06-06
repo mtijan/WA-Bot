@@ -2,10 +2,15 @@ import { dbAll } from '../database.js';
 
 export async function getFlowsKnowledgeBase(sessionId) {
   try {
-    const flows = await dbAll(
-      "SELECT * FROM chatbot_flows WHERE status = 'ACTIVE' AND session_ids LIKE ?", 
-      [`%${sessionId}%`]
-    );
+    const allActiveFlows = await dbAll("SELECT * FROM chatbot_flows WHERE status = 'ACTIVE'");
+    const flows = allActiveFlows.filter(flow => {
+      try {
+        const ids = JSON.parse(flow.session_ids || '[]');
+        return Array.isArray(ids) && ids.includes(sessionId);
+      } catch (e) {
+        return false;
+      }
+    });
     if (flows.length === 0) return '';
     
     let text = "INFORMASI ALUR CHATBOT OTOMATIS YANG TERSEDIA:\n";

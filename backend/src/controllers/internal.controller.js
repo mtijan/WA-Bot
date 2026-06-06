@@ -196,10 +196,10 @@ export const getGroupsInternal = async (req, res) => {
 };
 
 export const sendSingleMessageInternal = async (req, res) => {
-  const { sessionId, target, payload } = req.body;
+  const { sessionId, target, ...payload } = req.body;
 
   try {
-    await whatsappService.sendSingleMessage(sessionId, target, payload || {});
+    await whatsappService.sendSingleMessage(sessionId, target, payload);
     return sendSuccess(res, null, 200, { message: 'Pesan tunggal berhasil dikirim oleh session manager.' });
   } catch (err) {
     logError('sendSingleMessageInternal', err, { body: req.body });
