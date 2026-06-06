@@ -21,6 +21,7 @@ import {
   CornerDownLeft
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
+import MediaUploadField from './MediaUploadField';
 
 const Templates = () => {
   const [templates, setTemplates] = useState([]);
@@ -627,13 +628,19 @@ const Templates = () => {
                     <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                       <label className="form-label">Attachment URL *</label>
                       <input
-                        type="url"
+                        type="text"
                         required
-                        placeholder="https://example.com/file.png"
+                        placeholder="https://example.com/file.png atau path upload"
                         value={attachmentUrl}
                         onChange={(e) => setAttachmentUrl(e.target.value)}
                         className="form-control"
                       />
+                      {(selectedType === 'image' || selectedType === 'video') && (
+                        <MediaUploadField
+                          mediaType={selectedType}
+                          onUploaded={(media) => setAttachmentUrl(media.url)}
+                        />
+                      )}
                     </div>
                     {selectedType === 'document' && (
                       <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>

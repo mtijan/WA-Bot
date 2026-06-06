@@ -27,6 +27,7 @@ tags:
   - name: Proxies
   - name: Chatbot AI
   - name: Opt Outs
+  - name: Uploads
   - name: Internal Process API
 paths:
   /auth/me:
@@ -495,6 +496,26 @@ paths:
           schema: { type: string }
       responses:
         '200': { $ref: '#/components/responses/Success' }
+  /uploads/media:
+    post:
+      tags: [Uploads]
+      summary: Upload an admin image or video attachment
+      description: Accepts image files up to 5 MB and video files up to 10 MB. Uploaded files are runtime data and should remain behind authenticated /api access.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [media]
+              properties:
+                media:
+                  type: string
+                  format: binary
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
   /internal/health/live:
     get:
       tags: [Internal Process API]

@@ -8,6 +8,8 @@ import pino from 'pino';
 import QRCode from 'qrcode';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { dbRun, dbGet, dbAll } from '../database.js';
+import { resolveUploadedMediaPath } from './upload.service.js';
+import { resolveKnowledgeBase } from './chatbot_ai.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -287,34 +289,46 @@ class WhatsAppService {
           return;
         }
         
-        // Check chatbot flows
-        const flows = await dbAll("SELECT * FROM chatbot_flows WHERE status = 'ACTIVE' AND session_ids LIKE ?", [`%${sessionId}%`]);
         const cleanText = text.trim();
         const lowerText = cleanText.toLowerCase();
 
-        const matchedFlow = flows.find(flow => {
-          // Evaluasi batasan obrolan (target_type)
-          const target = flow.target_type || 'ALL';
-          if (target === 'PERSONAL' && isGroup) return false;
-          if (target === 'GROUP' && !isGroup) return false;
+        // Ambil pengaturan Chatbot AI/Mode untuk sesi ini
+        const aiSettings = await dbGet('SELECT * FROM chatbot_ai_settings WHERE session_id = ?', [sessionId]);
+        const chatbotMode = aiSettings ? (aiSettings.chatbot_mode || 'both') : 'both';
 
-          let flowKeywords = flow.keywords.split(',').map(k => k.trim()).filter(k => k !== '');
-          if (flowKeywords.length === 0) return false;
+        if (chatbotMode === 'off') {
+          return; // Chatbot dinonaktifkan sepenuhnya untuk sesi ini
+        }
 
-          if (!flow.case_sensitive) {
-             flowKeywords = flowKeywords.map(k => k.toLowerCase());
-          }
-          const textToMatch = flow.case_sensitive ? cleanText : lowerText;
+        let matchedFlow = null;
+        if (chatbotMode === 'flow' || chatbotMode === 'both') {
+          // Check chatbot flows
+          const flows = await dbAll("SELECT * FROM chatbot_flows WHERE status = 'ACTIVE' AND session_ids LIKE ?", [`%${sessionId}%`]);
 
-          if (flow.match_type === 'EXACT') {
-            return flowKeywords.includes(textToMatch);
-          } else if (flow.match_type === 'STARTS_WITH') {
-            return flowKeywords.some(k => textToMatch.startsWith(k));
-          } else {
-            // CONTAINS (Default)
-            return flowKeywords.some(k => textToMatch.includes(k));
-          }
-        });
+          matchedFlow = flows.find(flow => {
+            // Evaluasi batasan obrolan (target_type)
+            const target = flow.target_type || 'ALL';
+            if (target === 'PERSONAL' && isGroup) return false;
+            if (target === 'GROUP' && !isGroup) return false;
+
+            let flowKeywords = flow.keywords.split(',').map(k => k.trim()).filter(k => k !== '');
+            if (flowKeywords.length === 0) return false;
+
+            if (!flow.case_sensitive) {
+               flowKeywords = flowKeywords.map(k => k.toLowerCase());
+            }
+            const textToMatch = flow.case_sensitive ? cleanText : lowerText;
+
+            if (flow.match_type === 'EXACT') {
+              return flowKeywords.includes(textToMatch);
+            } else if (flow.match_type === 'STARTS_WITH') {
+              return flowKeywords.some(k => textToMatch.startsWith(k));
+            } else {
+              // CONTAINS (Default)
+              return flowKeywords.some(k => textToMatch.includes(k));
+            }
+          });
+        }
 
         if (matchedFlow) {
           console.log(`[Chatbot] Sesi ${sessionId} membalas ke ${senderId} untuk flow: ${matchedFlow.flow_name}`);
@@ -326,74 +340,100 @@ class WhatsAppService {
              await new Promise(r => setTimeout(r, matchedFlow.delay * 1000));
           }
           await this.executeFlowNodes(sock, senderId, matchedFlow);
-        } else {
+        } else if ((chatbotMode === 'ai' || chatbotMode === 'both') && !isGroup) {
           // Fallback ke Chatbot AI (SumoPod API)
-          const aiSettings = await dbGet('SELECT * FROM chatbot_ai_settings WHERE session_id = ? AND is_active = 1', [sessionId]);
-          if (aiSettings && aiSettings.api_key) {
-            console.log(`[Chatbot AI] Sesi ${sessionId} memproses pesan masuk dari ${senderId} via SumoPod AI`);
-            
-            // Tampilkan status "mengetik" jika dikonfigurasi
-            if (aiSettings.show_typing) {
-              try {
-                await sock.presenceSubscribe(senderId);
-                await sock.sendPresenceUpdate('composing', senderId);
-              } catch (e) {
-                // Abaikan jika presence gagal
+          if (aiSettings && aiSettings.is_active === 1) {
+            let apiKeyToUse = null;
+            let baseUrlToUse = aiSettings.base_url || 'https://ai.sumopod.com/v1';
+            let modelNameToUse = aiSettings.model_name || 'gpt-4o-mini';
+
+            if (aiSettings.credential_id) {
+              const cred = await dbGet('SELECT * FROM chatbot_ai_credentials WHERE id = ? AND is_active = 1', [aiSettings.credential_id]);
+              if (cred && cred.api_key) {
+                apiKeyToUse = revealSecret(cred.api_key);
+                baseUrlToUse = cred.base_url || baseUrlToUse;
+                modelNameToUse = cred.model_name || modelNameToUse;
+              } else {
+                console.log(`[Chatbot AI] Sesi ${sessionId} dilewati karena kredensial terikat (#${aiSettings.credential_id}) tidak aktif atau tidak ditemukan.`);
               }
+            } else if (aiSettings.api_key) {
+              apiKeyToUse = revealSecret(aiSettings.api_key);
             }
 
-            try {
-              // Siapkan prompt dengan system prompt dan knowledge base
-              const systemPrompt = [];
-              if (aiSettings.system_instruction) {
-                systemPrompt.push(aiSettings.system_instruction);
-              }
-              if (aiSettings.knowledge_base) {
-                systemPrompt.push("Gunakan informasi berikut sebagai satu-satunya basis pengetahuan untuk menjawab pertanyaan pelanggan. Jika informasi tidak ada di basis pengetahuan ini, jawablah secara sopan bahwa Anda tidak mengetahuinya atau tawarkan bantuan lain:\n" + aiSettings.knowledge_base);
-              }
-
-              // Gabungkan system prompt menjadi instruksi sistem utama
-              const finalSystemPrompt = systemPrompt.join("\n\n");
-
-              // Gunakan pustaka OpenAI secara dinamis
-              const { OpenAI } = await import('openai');
-              const openai = new OpenAI({
-                apiKey: revealSecret(aiSettings.api_key),
-                baseURL: aiSettings.base_url || 'https://ai.sumopod.com/v1'
-              });
-
-              const response = await openai.chat.completions.create({
-                model: aiSettings.model_name || 'glm-5-turbo',
-                messages: [
-                  ...(finalSystemPrompt ? [{ role: 'system', content: finalSystemPrompt }] : []),
-                  { role: 'user', content: cleanText }
-                ],
-                temperature: 0.7
-              });
-
-              const aiReply = response.choices[0].message.content;
-
-              // Terapkan delay sebelum mengirim pesan balasan
-              const delay = aiSettings.delay_seconds || 2;
-              if (delay > 0) {
-                await new Promise(r => setTimeout(r, delay * 1000));
-              }
-
-              // Hentikan status mengetik
+            if (apiKeyToUse) {
+              console.log(`[Chatbot AI] Sesi ${sessionId} memproses pesan masuk dari ${senderId} via SumoPod AI`);
+              
               if (aiSettings.show_typing) {
                 try {
-                  await sock.sendPresenceUpdate('paused', senderId);
+                  await sock.presenceSubscribe(senderId);
+                  await sock.sendPresenceUpdate('composing', senderId);
                 } catch (e) {
                   // Abaikan jika presence gagal
                 }
               }
 
-              if (aiReply) {
-                await sock.sendMessage(senderId, { text: aiReply.trim() });
-                console.log(`[Chatbot AI] Sukses membalas ke ${senderId}`);
-              }
-            } catch (aiErr) {
-              console.error('[Chatbot AI Error]', aiErr);
+              try {
+                const systemPrompt = [];
+                if (aiSettings.system_instruction) {
+                  systemPrompt.push(aiSettings.system_instruction);
+                }
+                const resolvedKb = await resolveKnowledgeBase(aiSettings);
+                if (resolvedKb) {
+                  systemPrompt.push(
+                    "Anda adalah asisten virtual yang ramah dan membantu untuk menjawab pertanyaan pelanggan.\n\n" +
+                    "Gunakan informasi berikut sebagai basis pengetahuan untuk menjawab pertanyaan pelanggan. Informasi ini berisi catatan manual dan alur chatbot otomatis (yang terdiri dari nama 'Alur' dan 'Isi Pesan').\n\n" +
+                    "Aturan menjawab:\n" +
+                    "1. Jika pelanggan bertanya tentang topik yang relevan dengan salah satu Alur (misalnya tentang pendaftaran, biaya, beasiswa, akreditasi, dll), berikan informasi, link, dan kontak yang tertera di bawah Alur tersebut secara ramah. Jangan katakan bahwa Anda tidak mengetahuinya jika ada alur yang membahas topik tersebut; cukup arahkan mereka menggunakan informasi di alur tersebut.\n" +
+                    "2. Jika pertanyaan benar-benar di luar topik yang disediakan di bawah ini, jawablah secara sopan bahwa Anda belum memiliki informasi tersebut dan tawarkan mereka untuk menghubungi customer service.\n" +
+                    "3. Jangan sebutkan kata teknis seperti 'database', 'alur', atau 'knowledge base' kepada pelanggan.\n\n" +
+                    "Berikut adalah basis pengetahuan Anda:\n" +
+                    resolvedKb
+                  );
+                }
+
+                const finalSystemPrompt = systemPrompt.join("\n\n");
+
+                const { OpenAI } = await import('openai');
+                const openai = new OpenAI({
+                  apiKey: apiKeyToUse,
+                  baseURL: baseUrlToUse,
+                  timeout: 15000
+                });
+
+                const response = await openai.chat.completions.create({
+                  model: modelNameToUse || 'gpt-4o-mini',
+                  messages: [
+                    ...(finalSystemPrompt ? [{ role: 'system', content: finalSystemPrompt }] : []),
+                    { role: 'user', content: cleanText }
+                  ],
+                  temperature: 0.7
+                });
+
+                const aiReply = response.choices[0]?.message?.content;
+
+                // Terapkan delay sebelum mengirim pesan balasan
+                const delay = aiSettings.delay_seconds || 2;
+                if (delay > 0) {
+                  await new Promise(r => setTimeout(r, delay * 1000));
+                }
+
+                // Hentikan status mengetik
+                if (aiSettings.show_typing) {
+                  try {
+                    await sock.sendPresenceUpdate('paused', senderId);
+                  } catch (e) {
+                    // Abaikan jika presence gagal
+                  }
+                }
+
+                if (aiReply && aiReply.trim() !== '') {
+                  await sock.sendMessage(senderId, { text: aiReply.trim() });
+                  console.log(`[Chatbot AI] Sukses membalas ke ${senderId}`);
+                } else {
+                  console.warn(`[Chatbot AI Warning] Model '${modelNameToUse}' mengembalikan respon kosong untuk pesan '${cleanText}'`);
+                }
+              } catch (aiErr) {
+                console.error('[Chatbot AI Error]', aiErr);
               if (aiSettings.show_typing) {
                 try {
                   await sock.sendPresenceUpdate('paused', senderId);
@@ -404,6 +444,7 @@ class WhatsAppService {
             }
           }
         }
+      }
 
       } catch (err) {
         console.error('Error handling messages.upsert:', err);
@@ -515,7 +556,7 @@ class WhatsAppService {
 
         // Kirim lampiran terlebih dahulu
         if (currentNode.attachment && currentNode.attachment.url) {
-          const url = currentNode.attachment.url;
+          const url = resolveUploadedMediaPath(currentNode.attachment.url);
           let attachmentPayload = {};
           
           switch (currentNode.attachment.type) {
@@ -698,7 +739,7 @@ class WhatsAppService {
       if (type === 'text') {
         await sock.sendMessage(jid, { text: content });
       } else if (type === 'media' || type === 'image' || type === 'video' || type === 'document') {
-        const url = template.attachment_url;
+        const url = resolveUploadedMediaPath(template.attachment_url);
         const caption = content;
         let mediaPayload = {};
 
@@ -751,7 +792,7 @@ class WhatsAppService {
       await sock.sendMessage(jid, { text });
     } else if (messageType === 'media' && attachmentUrl) {
       let mediaPayload = {};
-      const url = attachmentUrl;
+      const url = resolveUploadedMediaPath(attachmentUrl);
       const caption = text || '';
 
       switch (attachmentType) {

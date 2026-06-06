@@ -69,5 +69,10 @@ export const config = {
   },
   integrations: {
     iplocateApiKey: process.env.WA_BOT_IPLOCATE_API_KEY || ''
+  },
+  uploads: {
+    mediaDir: process.env.WA_BOT_MEDIA_UPLOAD_DIR || '',
+    imageMaxBytes: parsePositiveInteger(process.env.WA_BOT_IMAGE_UPLOAD_MAX_BYTES, 5 * 1024 * 1024),
+    videoMaxBytes: parsePositiveInteger(process.env.WA_BOT_VIDEO_UPLOAD_MAX_BYTES, 10 * 1024 * 1024)
   }
 };

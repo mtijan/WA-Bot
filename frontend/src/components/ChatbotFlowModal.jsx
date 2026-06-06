@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Plus, Trash2, GripVertical, Settings2, MessageSquare, Image, Video, Music, File } from 'lucide-react';
+import MediaUploadField from './MediaUploadField';
 
 const ChatbotFlowModal = ({ isOpen, onClose, onSave, flow, sessions, flows = [] }) => {
   const [formData, setFormData] = useState(
@@ -301,7 +302,7 @@ const ChatbotFlowModal = ({ isOpen, onClose, onSave, flow, sessions, flows = [] 
 
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label className="form-label">Attachment (Optional)</label>
-                          <div style={{ display: 'flex', gap: '12px' }}>
+                          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
                             <select className="form-control" style={{ width: '150px' }} value={node.attachment.type} onChange={(e) => updateNodeAttachment(index, 'type', e.target.value)}>
                               <option value="">None</option>
                               <option value="Image">Image</option>
@@ -310,16 +311,24 @@ const ChatbotFlowModal = ({ isOpen, onClose, onSave, flow, sessions, flows = [] 
                               <option value="Document">Document</option>
                             </select>
                             {node.attachment.type && (
-                              <input 
-                                type="url" 
-                                name={`media_url_${index}`}
-                                id={`media_url_${index}`}
-                                className="form-control" 
-                                value={node.attachment.url} 
-                                onChange={(e) => updateNodeAttachment(index, 'url', e.target.value)} 
-                                placeholder="Enter Direct Media URL (https://...)" 
-                                autoComplete="off"
-                              />
+                              <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                                <input 
+                                  type="text" 
+                                  name={`media_url_${index}`}
+                                  id={`media_url_${index}`}
+                                  className="form-control" 
+                                  value={node.attachment.url} 
+                                  onChange={(e) => updateNodeAttachment(index, 'url', e.target.value)} 
+                                  placeholder="Enter Direct Media URL (https://...)" 
+                                  autoComplete="off"
+                                />
+                                {(node.attachment.type === 'Image' || node.attachment.type === 'Video') && (
+                                  <MediaUploadField
+                                    mediaType={node.attachment.type}
+                                    onUploaded={(media) => updateNodeAttachment(index, 'url', media.url)}
+                                  />
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>

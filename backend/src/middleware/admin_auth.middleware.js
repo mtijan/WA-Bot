@@ -13,7 +13,11 @@ function base64UrlDecode(value) {
 }
 
 function getSessionSecret() {
-  return config.admin.sessionSecret;
+  return process.env.WA_BOT_ADMIN_SESSION_SECRET
+    || process.env.WA_BOT_SECRET_ENCRYPTION_KEY
+    || process.env.WA_BOT_ADMIN_PASSWORD
+    || process.env.WA_BOT_API_KEY
+    || config.admin.sessionSecret;
 }
 
 function getCookie(req, name) {
@@ -46,11 +50,11 @@ function signPayload(payload) {
 }
 
 export function isAdminAuthEnabled() {
-  return Boolean(config.admin.password);
+  return Boolean(process.env.WA_BOT_ADMIN_PASSWORD || config.admin.password);
 }
 
 export function getAdminUsername() {
-  return config.admin.username;
+  return process.env.WA_BOT_ADMIN_USERNAME || config.admin.username;
 }
 
 export function createAdminSessionToken(username = getAdminUsername()) {
@@ -98,12 +102,13 @@ export function getAdminSession(req) {
 }
 
 export function validateAdminCredentials(username, password) {
-  return secretsMatch(username, getAdminUsername()) && secretsMatch(password, config.admin.password);
+  const configuredPassword = process.env.WA_BOT_ADMIN_PASSWORD || config.admin.password;
+  return secretsMatch(username, getAdminUsername()) && secretsMatch(password, configuredPassword);
 }
 
 export function createAdminAuthMiddleware() {
   return (req, res, next) => {
-    const apiKey = config.apiKey;
+    const apiKey = process.env.WA_BOT_API_KEY || config.apiKey;
     if (apiKey && secretsMatch(req.get('X-API-Key'), apiKey)) {
       req.auth = { type: 'api-key' };
       return next();
@@ -117,7 +122,7 @@ export function createAdminAuthMiddleware() {
 
     const session = getAdminSession(req);
     if (!session) {
-      return sendError(res, 401, 'ADMIN_AUTH_REQUIRED', 'Login admin diperlukan untuk mengakses API.');
+      return sendError(res, 401, 'ADMIN_AUTH_REQUIRED', 'Login admin diperlukan untuk accessing API.');
     }
 
     req.auth = { type: 'admin-session', username: session.sub };

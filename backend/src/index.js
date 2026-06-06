@@ -12,6 +12,7 @@ import proxyRoutes from './routes/proxy.routes.js';
 import chatbotAiRoutes from './routes/chatbot_ai.routes.js';
 import optOutRoutes from './routes/opt_out.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import uploadRoutes from './routes/upload.routes.js';
 import { dbGet, dbAll } from './database.js';
 import { config } from './config.js';
 import { logger, logError } from './logger.js';
@@ -56,6 +57,7 @@ app.use('/api/group-grabber', groupGrabberRoutes);
 app.use('/api/proxies', proxyRoutes);
 app.use('/api/chatbot-ai', chatbotAiRoutes);
 app.use('/api/opt-outs', optOutRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 // Endpoint statistik dashboard real-time
 app.get('/api/dashboard/stats', async (req, res) => {

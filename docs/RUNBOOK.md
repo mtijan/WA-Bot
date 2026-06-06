@@ -74,6 +74,9 @@ Copy `backend/.env.example` into your deployment secret-management workflow. The
 | `WA_BOT_INTERNAL_TOKEN` | Shared secret for the internal process control API. Required for `/internal/sessions/*`. |
 | `WA_BOT_INTERNAL_PORT` | Optional internal listener port. Defaults by role: `sessions/worker=3002`, `campaign-worker=3003`, `warmer-worker=3004`. |
 | `WA_BOT_SESSION_MANAGER_URL` | Internal session-manager base URL used by API-only mode, for example `http://127.0.0.1:3002/internal`. |
+| `WA_BOT_MEDIA_UPLOAD_DIR` | Optional media upload directory. Defaults to `backend/uploads/media`. Keep it outside the frontend webroot. |
+| `WA_BOT_IMAGE_UPLOAD_MAX_BYTES` | Optional image upload limit. Defaults to `5242880` bytes / 5 MB. |
+| `WA_BOT_VIDEO_UPLOAD_MAX_BYTES` | Optional video upload limit. Defaults to `10485760` bytes / 10 MB. |
 
 Do not ship the backend API key inside frontend JavaScript. Public browser deployments should use an authenticated reverse proxy or server-side session layer.
 
@@ -211,9 +214,11 @@ Stop write-heavy operations before backup. Copy these artifacts to protected sto
 ```text
 backend/database.sqlite
 backend/sessions/
+backend/uploads/
 ```
 
 Session auth files contain sensitive linked-device credentials. Protect backups with encryption and restricted access.
+Uploaded media may contain business or personal data. Include `backend/uploads/` in backups only when preserving template/chatbot assets is required, and define retention before production use.
 
 Create a timestamped local backup from `backend/`:
 
@@ -271,6 +276,7 @@ Before public deployment:
 - configure rate limiting;
 - apply filesystem ACLs and encryption at-rest;
 - keep SQLite and session files outside any static webroot;
+- keep uploaded media under the authenticated `/api/uploads` path and out of git;
 - use a process manager such as PM2 only after log rotation is configured;
 - run API and worker roles as separate PM2/systemd processes when validating deploy architecture;
 - verify consent, opt-out, and data-retention rules.
@@ -333,7 +339,7 @@ Additional hardening evidence recorded on 2026-06-05:
 * Admin HTTPS auth smoke passed: login, Secure cookie, authenticated `/api/auth/me`, and logout.
 * Manual browser smoke over HTTPS passed: login, dashboard, session manager, contact groups, templates, proxy manager, and logout were checked by the operator.
 
-Do not treat this as production-ready. Remaining hardening: external monitoring alerts, deploy the latest repo hardening changes to staging, and encrypted offsite backup copy when storage is available.
+Do not treat this as production-ready. Remaining hardening: external monitoring alerts and encrypted offsite backup copy when storage is available. The current media upload feature is still partial and must be completed before using uploaded assets in staging campaigns.
 
 For the full staging note, see `docs/STAGING.md`.
 For the next manual hardening commands, see `docs/deploy/STAGING_HARDENING.commands.md`.

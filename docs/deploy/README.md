@@ -35,6 +35,7 @@ Use this directory as a starting point, not as copy-paste without review. Replac
 ```
 
 Do not place `backend/database.sqlite`, `backend/sessions/`, backups, or `.env` files inside a public static webroot.
+Do not commit or publicly serve `backend/uploads/`; uploaded media is runtime data and should stay behind authenticated `/api/uploads` access.
 
 ## Deployment Order
 
@@ -104,11 +105,15 @@ curl -fsS https://<domain>/api/auth/me
 
 ## Current Staging Shortcut
 
-For environment-specific staging notes, keep a local-only `docs/STAGING.md` and do not commit real IP addresses, SSH users, secrets, or provider details. The current verified baseline is HTTP/IP only; do not enable `WA_BOT_COOKIE_SECURE=true` until HTTPS is working.
+For environment-specific staging notes, keep a local-only `docs/STAGING.md` and do not commit real IP addresses, SSH users, secrets, or provider details.
 
 Recommended staging order from here:
 
-1. Configure domain/TLS with the generic Caddy template.
-2. `BACKUP_SCHEDULE.commands.md`
-3. `MONITORING_SETUP.commands.md`
-4. Browser smoke test and evidence update
+Current staging has already reached domain HTTPS with secure cookie/CORS, UFW, provider firewall review, local backup/restore timers, local healthcheck, logrotate, HTTP/HTTPS smoke, auth HTTPS smoke, and manual browser smoke.
+
+Recommended staging order from here:
+
+1. Finish the current partial media upload feature if it is the active workstream.
+2. `MONITORING_SETUP.commands.md` with an external alert destination.
+3. Offsite backup copy later when storage exists.
+4. Evidence update for each release candidate.

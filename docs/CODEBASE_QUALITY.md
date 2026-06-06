@@ -11,6 +11,7 @@
 | Structured logger | Pino logger exists for bootstrap/runtime/internal error paths. | `backend/src/logger.js` |
 | Error response helper | Shared helpers exist for consistent success/error JSON envelopes. | `backend/src/utils/http_response.js` |
 | Secret masking helper | Shared masking helper exists for proxy URLs and partial secret display. | `backend/src/utils/secret_masking.js` |
+| Media upload foundation | Backend upload modules have started for image/video attachment uploads; frontend integration is pending. | `backend/src/services/upload.service.js`, `backend/src/controllers/upload.controller.js`, `backend/src/routes/upload.routes.js`, `docs/MEDIA_UPLOAD_WORKLOG.md` |
 | Frontend API client | Central API request helper exists; auth flow, dashboard stats, session manager, contact groups, proxy manager, and message templates use it. | `frontend/src/apiClient.js`, `frontend/src/components/Dashboard.jsx`, `frontend/src/components/SessionManager.jsx`, `frontend/src/components/ContactGroups.jsx`, `frontend/src/components/ProxyManager.jsx`, `frontend/src/components/Templates.jsx` |
 | Auth response helper migration | Admin auth controller uses `sendSuccess` / `sendError`. | `backend/src/controllers/auth.controller.js` |
 
@@ -31,6 +32,7 @@
 | Backend logs still use `console.*` in services/controllers. | Replace high-volume runtime logs first: WhatsApp service, campaign worker, warmer worker. |
 | Frontend components still call `fetch` directly. | Move API calls gradually into `apiRequest` or resource-specific API modules. |
 | Error response contract is not fully enforced. | Add backend integration tests for common error envelopes. |
+| Media upload feature is partial. | Finish frontend upload UI, review upload-controller response helper usage, then run backend syntax checks and frontend build. |
 
 Do not mark item 7 as DONE until the remaining work above is migrated and verified.
 
@@ -45,7 +47,8 @@ Do not mark item 7 as DONE until the remaining work above is migrated and verifi
 | 2026-06-05 | Frontend contact group API calls | `frontend/src/components/ContactGroups.jsx` uses `apiRequest` for group list/create/update/delete and orphan cleanup; `npm run build` passed. |
 | 2026-06-05 | Frontend proxy manager API calls | `frontend/src/components/ProxyManager.jsx` uses `apiRequest` for proxy/session/IPLocate/offline-db API calls; `npm run build` passed. |
 | 2026-06-05 | Proxy/IPLocate secret masking | Proxy URL responses and IPLocate setting responses are masked; hardcoded IPLocate fallback key was removed; backend syntax checks, `npm run build`, and `npm run security:audit` passed. |
+| 2026-06-05 | Media upload backend foundation | `multer`, upload config, upload service/controller/routes, runtime `.gitignore`, and WhatsApp uploaded-path resolver were started. Frontend UI and verification are still pending; see `docs/MEDIA_UPLOAD_WORKLOG.md`. |
 
 ## Current Priority Note
 
-As of 2026-06-05, staging VPS baseline is verified with domain HTTPS, secure cookie/CORS, UFW, local backup/restore timers, local healthcheck, logrotate, HTTP/HTTPS smoke, and auth HTTPS smoke. Continue codebase-quality migration while the remaining production blockers wait on provider firewall review, external alerting, manual browser smoke evidence, and offsite backup later when a storage destination is available.
+As of 2026-06-05, staging VPS baseline is verified with domain HTTPS, secure cookie/CORS, UFW, provider firewall review, local backup/restore timers, local healthcheck, logrotate, HTTP/HTTPS smoke, auth HTTPS smoke, and manual browser smoke. Continue codebase-quality migration while the remaining production blockers wait on external alerting and offsite backup later when a storage destination is available. The active feature workstream is partial media upload; see `docs/MEDIA_UPLOAD_WORKLOG.md`.

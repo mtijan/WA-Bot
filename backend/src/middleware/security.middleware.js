@@ -47,9 +47,8 @@ export function createSecurityHeaders() {
 }
 
 export function createApiKeyAuth() {
-  const configuredKey = config.apiKey;
-
   return (req, res, next) => {
+    const configuredKey = process.env.WA_BOT_API_KEY || config.apiKey;
     if (!configuredKey) return next();
 
     const suppliedKey = req.get('X-API-Key');
@@ -62,11 +61,11 @@ export function createApiKeyAuth() {
 }
 
 export function createRateLimiter() {
-  const windowMs = config.security.rateLimitWindowMs;
-  const maxRequests = config.security.rateLimitMax;
   const requestBuckets = new Map();
 
   return (req, res, next) => {
+    const windowMs = Number.parseInt(process.env.WA_BOT_RATE_LIMIT_WINDOW_MS) || config.security.rateLimitWindowMs;
+    const maxRequests = Number.parseInt(process.env.WA_BOT_RATE_LIMIT_MAX) || config.security.rateLimitMax;
     const now = Date.now();
     const key = req.ip || req.socket.remoteAddress || 'unknown';
     const current = requestBuckets.get(key);

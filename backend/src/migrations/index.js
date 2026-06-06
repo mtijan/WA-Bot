@@ -264,6 +264,58 @@ const migrations = [
         'CREATE INDEX IF NOT EXISTS idx_opt_out_contacts_phone_number ON opt_out_contacts (phone_number)'
       ]);
     }
+  },
+  {
+    id: '003_chatbot_ai_credentials_table',
+    description: 'Create chatbot_ai_credentials table and relate to chatbot_ai_settings.',
+    up: async (db) => {
+      await exec(db, [
+        `CREATE TABLE IF NOT EXISTS chatbot_ai_credentials (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          base_url TEXT DEFAULT 'https://ai.sumopod.com/v1',
+          api_key TEXT,
+          model_name TEXT DEFAULT 'glm-5-turbo',
+          is_active INTEGER DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`
+      ]);
+
+      await addColumnIfMissing(db, 'chatbot_ai_settings', 'credential_id', 'INTEGER');
+
+      const oldSettings = await all(db, 'SELECT session_id, base_url, api_key, model_name FROM chatbot_ai_settings');
+      for (const row of oldSettings) {
+        if (row.api_key) {
+          let existingCred = await get(db, 'SELECT id FROM chatbot_ai_credentials WHERE api_key = ? AND base_url = ?', [row.api_key, row.base_url]);
+          let credentialId;
+          if (existingCred) {
+            credentialId = existingCred.id;
+          } else {
+            const name = `Kredensial Sesi ${row.session_id}`;
+            const result = await run(db, 
+              `INSERT INTO chatbot_ai_credentials (name, base_url, api_key, model_name, is_active) VALUES (?, ?, ?, ?, 1)`,
+              [name, row.base_url, row.api_key, row.model_name]
+            );
+            credentialId = result.id;
+          }
+          await run(db, 'UPDATE chatbot_ai_settings SET credential_id = ? WHERE session_id = ?', [credentialId, row.session_id]);
+        }
+      }
+    }
+  },
+  {
+    id: '004_add_knowledge_source_to_settings',
+    description: 'Add knowledge_source column to chatbot_ai_settings table.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'chatbot_ai_settings', 'knowledge_source', "TEXT DEFAULT 'manual'");
+    }
+  },
+  {
+    id: '005_add_chatbot_mode_to_settings',
+    description: 'Add chatbot_mode column to chatbot_ai_settings table.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'chatbot_ai_settings', 'chatbot_mode', "TEXT DEFAULT 'both'");
+    }
   }
 ];
 

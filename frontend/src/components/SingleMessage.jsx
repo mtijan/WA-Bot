@@ -14,9 +14,9 @@ import {
   File, 
   User, 
   Folder, 
-  AlertCircle, 
   CheckCircle 
 } from 'lucide-react';
+import MediaUploadField from './MediaUploadField';
 
 const SingleMessage = ({ API_URL }) => {
   const [sessions, setSessions] = useState([]);
@@ -734,6 +734,12 @@ const SingleMessage = ({ API_URL }) => {
                     className="form-control"
                     style={{ borderRadius: '8px', height: '38px' }}
                   />
+                  {(attachmentType === 'Image' || attachmentType === 'Video') && (
+                    <MediaUploadField
+                      mediaType={attachmentType}
+                      onUploaded={(media) => setAttachmentUrl(media.url)}
+                    />
+                  )}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

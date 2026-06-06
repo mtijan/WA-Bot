@@ -20,6 +20,7 @@ backend/*.sqlite
 backend/*.sqlite-*
 backend/sessions/
 backend/data/
+backend/uploads/
 backend/backups/
 backend/encrypted_backups/
 backend/restore_drills/

@@ -4,7 +4,7 @@
 **Last updated:** 2026-06-05  
 **Target:** Ubuntu 24.04 staging/production VPS
 
-This command sheet schedules encrypted runtime backups for `backend/database.sqlite` and `backend/sessions/`. It does not restore over live data. Restore drills are non-destructive and write into `WA_BOT_RESTORE_DRILL_DIR`.
+This command sheet schedules encrypted runtime backups for `backend/database.sqlite`, `backend/sessions/`, and runtime files included by the backup script. If media upload is enabled, decide whether `backend/uploads/` must be preserved as business assets. It does not restore over live data. Restore drills are non-destructive and write into `WA_BOT_RESTORE_DRILL_DIR`.
 
 Run these commands **inside the VPS** as the sudo user.
 
@@ -160,4 +160,5 @@ Record these into `docs/STAGING.md`, `docs/MONITORING.md`, and the release check
 * encrypted file count;
 * restore drill log result;
 * SQLite table count from restore drill;
+* whether uploaded media under `backend/uploads/` is included, excluded, or governed by a separate retention rule;
 * offsite copy destination or explicit staging exception/deferred decision.

@@ -12,9 +12,11 @@ class WarmerService {
   }
 
   // Pulihkan semua kampanye warmer yang berstatus RUNNING saat server dinyalakan
-  async initWarmerEngine() {
+  async initWarmerEngine(isInitial = false) {
     try {
-      console.log('[Warmer Worker] Menginisialisasi mesin warmer...');
+      if (isInitial) {
+        console.log('[Warmer Worker] Menginisialisasi mesin warmer...');
+      }
       const runningCampaigns = await dbAll("SELECT * FROM warmer_campaigns WHERE status = 'RUNNING'");
       
       const now = new Date();
@@ -49,11 +51,11 @@ class WarmerService {
   async startPollingWorker(intervalMs = config.runtime.warmerWorkerPollMs) {
     if (this.pollingTimer) return;
 
-    await this.initWarmerEngine();
+    await this.initWarmerEngine(true);
 
     const safeInterval = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 30000;
     this.pollingTimer = setInterval(() => {
-      this.initWarmerEngine().catch((err) => {
+      this.initWarmerEngine(false).catch((err) => {
         console.error('[Warmer Worker] Gagal polling kampanye warmer:', err);
       });
     }, safeInterval);
