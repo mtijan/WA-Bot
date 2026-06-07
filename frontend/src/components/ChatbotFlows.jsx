@@ -389,7 +389,8 @@ const ChatbotFlows = () => {
 
   const activeFlowsCount = flows.filter(f => f.status === 'ACTIVE').length;
   const totalNodesCount = flows.reduce((acc, f) => acc + (f.node_count || 0), 0);
-  const totalConversations = flows.reduce((acc, f) => acc + (f.trigger_count || 0), 0);
+  const totalTriggeredCount = flows.reduce((acc, f) => acc + (f.trigger_count || 0), 0);
+  const totalFailedCount = flows.reduce((acc, f) => acc + (f.failed_count || 0), 0);
 
   return (
     <div>
@@ -448,7 +449,7 @@ const ChatbotFlows = () => {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
         <div className="card">
           <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Total Flows</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{flows.length}</div>
@@ -462,8 +463,12 @@ const ChatbotFlows = () => {
           <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{totalNodesCount}</div>
         </div>
         <div className="card">
-          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Conversations</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{totalConversations}</div>
+          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Triggered</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--info)' }}>{totalTriggeredCount}</div>
+        </div>
+        <div className="card">
+          <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Failed</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: totalFailedCount > 0 ? 'var(--danger)' : 'var(--text-main)' }}>{totalFailedCount}</div>
         </div>
       </div>
 
@@ -543,9 +548,7 @@ const ChatbotFlows = () => {
                 <th style={{ padding: '16px 24px', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-muted)' }}>Trigger Keywords</th>
                 <th style={{ padding: '16px 24px', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-muted)' }}>Status</th>
                 <th style={{ padding: '16px 24px', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-muted)' }}>Nodes</th>
-                <th style={{ padding: '16px 24px', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-muted)' }}>Triggered</th>
                 <th style={{ padding: '16px 24px', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-muted)' }}>Sent</th>
-                <th style={{ padding: '16px 24px', textAlign: 'left', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-muted)' }}>Failed</th>
                 <th style={{ padding: '16px 24px', textAlign: 'right', fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-muted)' }}>Actions</th>
               </tr>
             </thead>
@@ -643,22 +646,6 @@ const ChatbotFlows = () => {
                       </span>
                     </td>
                     <td style={{ padding: '16px 24px' }}>
-                      <span 
-                        className="badge" 
-                        style={{
-                          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                          border: '1px solid rgba(59, 130, 246, 0.2)',
-                          color: 'var(--info)',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          fontSize: '0.75rem',
-                          fontWeight: 600
-                        }}
-                      >
-                        {flow.trigger_count || 0} runs
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 24px' }}>
                       <span
                         className="badge"
                         style={{ 
@@ -672,22 +659,6 @@ const ChatbotFlows = () => {
                         }}
                       >
                         {flow.sent_count || 0} sent
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 24px' }}>
-                      <span
-                        className="badge"
-                        style={{
-                          backgroundColor: (flow.failed_count || 0) > 0 ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-main)',
-                          border: (flow.failed_count || 0) > 0 ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid var(--border-color)',
-                          color: (flow.failed_count || 0) > 0 ? 'var(--danger)' : 'var(--text-muted)',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          fontSize: '0.75rem',
-                          fontWeight: 600
-                        }}
-                      >
-                        {flow.failed_count || 0} failed
                       </span>
                     </td>
                     <td style={{ padding: '16px 24px', textAlign: 'right' }}>
