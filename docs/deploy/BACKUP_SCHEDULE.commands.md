@@ -128,6 +128,43 @@ sudo systemctl enable --now wa-bot-restore-drill.timer
 systemctl list-timers 'wa-bot-*' --no-pager
 ```
 
+## 6.1 Create Daily Pruner Service & Timer
+
+Jadwalkan pembersihan log lama (`delivery_logs`, `warmer_logs`, file ekspor usang) dan perampingan ukuran database SQLite (`VACUUM`) secara otomatis setiap hari pada pukul **02:00** (30 menit sebelum skrip backup harian berjalan pada pukul **02:30**):
+
+```bash
+sudo tee /etc/systemd/system/wa-bot-prune.service >/dev/null <<'EOF'
+[Unit]
+Description=WA-Bot automatic database and logs prune
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/wa-bot/backend
+EnvironmentFile=/etc/wa-bot/wa-bot.env
+ExecStart=/usr/bin/npm run logs:prune:apply
+User=ubuntu
+Group=ubuntu
+EOF
+
+sudo tee /etc/systemd/system/wa-bot-prune.timer >/dev/null <<'EOF'
+[Unit]
+Description=Run WA-Bot database and logs prune daily
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+Unit=wa-bot-prune.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now wa-bot-prune.timer
+systemctl list-timers 'wa-bot-*' --no-pager
+```
+
+
 ## 7. Check Logs
 
 ```bash

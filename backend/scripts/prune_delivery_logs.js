@@ -131,6 +131,17 @@ try {
   if (!shouldApply) {
     console.log('[Logs Pruner] Dry-run selesai. Jalankan kembali dengan --apply untuk menghapus data secara permanen.');
   } else {
+    console.log('[Logs Pruner] Pembersihan data selesai. Menjalankan VACUUM untuk merampingkan ukuran database...');
+    await new Promise((resolveVacuum) => {
+      db.run('VACUUM', (err) => {
+        if (err) {
+          console.error('[Logs Pruner] Gagal merampingkan database (VACUUM):', err.message);
+        } else {
+          console.log('[Logs Pruner] Database berhasil dirampingkan (VACUUM).');
+        }
+        resolveVacuum();
+      });
+    });
     console.log('[Logs Pruner] Pembersihan data selesai.');
   }
 } catch (error) {
