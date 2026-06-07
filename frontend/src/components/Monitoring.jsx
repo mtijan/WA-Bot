@@ -5,7 +5,6 @@ import {
   Smartphone,
   Send,
   Flame,
-  Database,
   Cpu,
   CheckCircle,
   XCircle,
@@ -13,7 +12,6 @@ import {
   RefreshCw,
   Network,
   TrendingUp,
-  TrendingDown,
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
@@ -79,38 +77,11 @@ const ProgressBar = ({ value, max, color = '#6366f1', height = 8 }) => {
           transition: 'width 0.6s cubic-bezier(0.34,1.56,0.64,1)',
         }} />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4, fontSize: '0.75rem', color: '#64748b' }}>
-        {pct}%
-      </div>
     </div>
   );
 };
 
-// --- Mini Bar Chart ---
-const MiniBarChart = ({ data }) => {
-  if (!data || data.length === 0) {
-    return (
-      <div style={{ height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '0.8rem' }}>
-        Tidak ada data dalam 12 jam terakhir
-      </div>
-    );
-  }
-  const maxVal = Math.max(...data.map(d => (d.sent || 0) + (d.failed || 0)), 1);
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 60, paddingTop: 8 }}>
-      {data.map((d, i) => (
-        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, height: '100%', justifyContent: 'flex-end' }}
-          title={`Jam ${d.hour}:00 - Terkirim: ${d.sent}, Gagal: ${d.failed}`}>
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', gap: 1 }}>
-            {d.failed > 0 && <div style={{ width: '100%', height: `${(d.failed / maxVal) * 100}%`, backgroundColor: '#ef4444', borderRadius: '2px 2px 0 0', minHeight: 2 }} />}
-            {d.sent > 0 && <div style={{ width: '100%', height: `${(d.sent / maxVal) * 100}%`, backgroundColor: '#10b981', borderRadius: d.failed > 0 ? 0 : '2px 2px 0 0', minHeight: 2 }} />}
-          </div>
-          <span style={{ fontSize: '0.6rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>{d.hour}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
+
 
 // --- Stat Row (light theme) ---
 const StatRow = ({ label, value, color }) => (
@@ -356,7 +327,6 @@ const Monitoring = () => {
           <div>
             <div style={{ marginBottom: 6, fontSize: '0.8rem', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
               <span>Koneksi Aktif</span>
-              <span style={{ fontWeight: 700, color: '#059669' }}>{sessionConnectedPct}%</span>
             </div>
             <ProgressBar value={data?.sessions?.connected || 0} max={data?.sessions?.total || 1} color="#10b981" height={10} />
           </div>
@@ -464,7 +434,7 @@ const Monitoring = () => {
       </div>
 
       {/* ---- ROW 3: Delivery 24 Jam ---- */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginBottom: 16 }}>
 
         {/* Summary */}
         <Card>
@@ -472,56 +442,11 @@ const Monitoring = () => {
             <IconBox color="#059669" bg="#d1fae5"><TrendingUp size={18} /></IconBox>
             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>Pengiriman 24 Jam</h3>
           </div>
-          <div style={{ textAlign: 'center', padding: '10px 0' }}>
-            <div style={{ fontSize: '2.8rem', fontWeight: 700, color: '#6366f1', lineHeight: 1 }}>
-              {data?.delivery_today?.success_rate ?? 100}%
-            </div>
-            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: 5 }}>Tingkat Keberhasilan</div>
-          </div>
           <ProgressBar value={data?.delivery_today?.sent || 0} max={data?.delivery_today?.total || 1} color="#10b981" height={10} />
           <div>
             <StatRow label="Total Pengiriman" value={data?.delivery_today?.total || 0} />
             <StatRow label="Terkirim" value={data?.delivery_today?.sent || 0} color="#059669" />
             <StatRow label="Gagal" value={data?.delivery_today?.failed || 0} color="#dc2626" />
-          </div>
-        </Card>
-
-        {/* Chart per Jam */}
-        <Card>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <IconBox color="#6366f1" bg="#ede9fe"><Database size={18} /></IconBox>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>Aktivitas per Jam (12 jam terakhir)</h3>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, fontSize: '0.75rem', color: '#94a3b8' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#10b981', display: 'inline-block' }} />
-                Terkirim
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#ef4444', display: 'inline-block' }} />
-                Gagal
-              </span>
-            </div>
-          </div>
-          <MiniBarChart data={data?.delivery_by_hour || []} />
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1, padding: '10px 14px', borderRadius: 10, backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <TrendingUp size={16} color="#059669" />
-              <div>
-                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Puncak Terkirim</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#059669' }}>
-                  {Math.max(...(data?.delivery_by_hour?.map(d => d.sent || 0) || [0]))} pesan
-                </div>
-              </div>
-            </div>
-            <div style={{ flex: 1, padding: '10px 14px', borderRadius: 10, backgroundColor: '#fef2f2', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <TrendingDown size={16} color="#dc2626" />
-              <div>
-                <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Puncak Gagal</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#dc2626' }}>
-                  {Math.max(...(data?.delivery_by_hour?.map(d => d.failed || 0) || [0]))} pesan
-                </div>
-              </div>
-            </div>
           </div>
         </Card>
       </div>
