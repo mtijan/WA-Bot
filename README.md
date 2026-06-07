@@ -3,7 +3,7 @@
 WhatsApp Multi-Account & Bulk Messaging System -- platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
 **Status:** Internal baseline, belum production-ready  
-**Versi dokumen:** 2.8.2
+**Versi dokumen:** 2.8.4
 
 ---
 
@@ -132,6 +132,12 @@ npm run test:smoke
 cd qa_tests
 npm test
 ```
+
+## Staging Status
+
+Staging di `https://stagingwabot.web.id/` sudah lolos browser feature smoke pada 2026-06-07 untuk login/logout, Devices/Session Manager, manual Repair, Single Message text/media, Templates media, Chatbot Flow import/export/edit/settings/nodes/metrics/media, Group Grabber reload/export, contact verification, one-target campaign, warmer start/stop, dan proteksi API/dashboard setelah logout.
+
+Catatan performa: full export Chatbot Flow membawa semua `nodes`; staging pernah menghasilkan file sekitar 49 MB dan membutuhkan sekitar 14.57 detik dari VPS. Ini normal untuk full export besar.
 
 ---
 

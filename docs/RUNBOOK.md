@@ -1,7 +1,7 @@
 # WA-Bot Pro Operations Runbook
 
 **Status:** Internal baseline  
-**Last updated:** 2026-06-06
+**Last updated:** 2026-06-07
 
 ## 1. Local Start
 
@@ -153,7 +153,7 @@ Readiness endpoints:
 | Campaign worker granular | `GET http://127.0.0.1:3003/internal/health/ready` |
 | Warmer worker granular | `GET http://127.0.0.1:3004/internal/health/ready` |
 
-Current split-process status: the internal session-manager API covers session list/status/init/delete/proxy update plus socket-heavy delegation for Group Grabber, Single Message, group contact verification, campaign processing nudge, and warmer start/stop timer control. Local monolith mode still works without `WA_BOT_SESSION_MANAGER_URL`. Staging readiness has been verified with API ready and worker ready, but browser feature smoke for Group Grabber reload/export, Single Message send, contact verification, one-target campaign, and warmer start/stop must be recorded before marking process architecture DONE.
+Current split-process status: the internal session-manager API covers session list/status/init/delete/proxy update plus socket-heavy delegation for Group Grabber, Single Message, group contact verification, campaign processing nudge, and warmer start/stop timer control. Local monolith mode still works without `WA_BOT_SESSION_MANAGER_URL`. Staging readiness has been verified with API ready and worker ready, and browser feature smoke passed on 2026-06-07 for Group Grabber reload/export, Single Message text/media, contact verification, one-target campaign, warmer start/stop, Chatbot Flow import/export/edit/settings/nodes/metrics/media, manual session Repair, login/logout, and protected API/dashboard access.
 
 ## 5. Database Migration
 
@@ -366,9 +366,10 @@ Additional hardening evidence recorded on 2026-06-05:
 * Admin HTTPS auth smoke passed: login, Secure cookie, authenticated `/api/auth/me`, and logout.
 * Manual browser smoke over HTTPS passed: login, dashboard, session manager, contact groups, templates, proxy manager, and logout were checked by the operator.
 * A staging regression where the frontend bundle called `:3001/api/auth/login` directly was fixed by rebuilding with `VITE_API_URL=/api`; future builds are protected by the frontend production API URL guard.
-* Internal socket-heavy delegation was deployed and readiness verified on 2026-06-06: API role ready, worker role ready with 3 active sessions, campaign polling enabled, and warmer polling enabled. Browser feature smoke for the delegated features is still required.
+* Internal socket-heavy delegation was deployed and readiness verified on 2026-06-06: API role ready, worker role ready with 3 active sessions, campaign polling enabled, and warmer polling enabled. Browser feature smoke for delegated features passed on 2026-06-07.
+* Chatbot Flow large export was measured from the VPS with authenticated curl: HTTP 200, `time=14.570861s`, `size=50929353` (49 MB). A full export includes all nodes, so 10+ seconds is acceptable for current staging data; the frontend now validates export format and shows download progress instead of saving `null` on invalid responses.
 
-Do not treat this as production-ready. Staging lightweight Telegram alerting is verified, but remaining hardening still includes encrypted offsite backup copy when storage is available and the broader production hardening decisions recorded in the roadmap. Media upload is complete, but uploaded media should still be treated as protected runtime data.
+Do not treat this as production-ready. Staging lightweight Telegram alerting, Telegram offsite backup upload, and socket-heavy browser smoke are verified, but remaining work still includes the broader production hardening decisions and platform governance recorded in the roadmap. Media upload is complete, but uploaded media should still be treated as protected runtime data.
 
 For the full staging note, see `docs/STAGING.md`.
 For the next manual hardening commands, see `docs/deploy/STAGING_HARDENING.commands.md`.

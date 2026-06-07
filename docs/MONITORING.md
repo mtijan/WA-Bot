@@ -1,7 +1,7 @@
 # WA-Bot Monitoring & Alert Template
 
-**Status:** Staging Telegram alert timer installed; healthy timer and forced alert evidence recorded  
-**Last updated:** 2026-06-06
+**Status:** Staging Telegram alert timer installed; healthy timer, forced alert evidence, and browser feature smoke evidence recorded  
+**Last updated:** 2026-06-07
 
 Dokumen ini menjadi acuan monitoring sebelum deploy publik. Targetnya adalah memastikan proses mati, endpoint tidak ready, disk penuh, sesi WhatsApp putus, campaign macet, dan backup gagal bisa diketahui sebelum berdampak ke pengguna.
 
@@ -204,3 +204,29 @@ The lightweight alert timer has been installed on staging and is running through
 | Backup freshness evidence | latest backup age `12.2h` |
 
 Staging monitoring baseline is now **DONE for lightweight Telegram alerting**: healthy timer runs and an intentional API readiness failure have both been recorded. Production monitoring can still be expanded later with Uptime Kuma/Netdata for deeper CPU/RAM visibility and with offsite-backup freshness checks once offsite storage exists.
+
+## 10. Browser Feature Smoke Evidence - 2026-06-07
+
+Manual staging browser smoke passed after the split-process socket delegation work and Chatbot Flow large-data updates.
+
+| Check | Result |
+|-------|--------|
+| Login/logout | PASS |
+| Protected dashboard/API after logout | PASS |
+| Dashboard without `Failed to fetch` | PASS |
+| Devices / Session Manager | PASS |
+| Manual session Repair button and trigger | PASS |
+| Single Message text send | PASS |
+| Single Message media upload and send to custom number | PASS |
+| Templates media upload and use | PASS |
+| Chatbot Flow list/actions/metrics/edit/settings/nodes | PASS |
+| Chatbot Flow large import progress | PASS |
+| Chatbot Flow full export valid JSON | PASS |
+| Chatbot Flow node media upload and trigger send | PASS |
+| Chatbot Flow Triggered/Sent/Failed counters | PASS |
+| Group Grabber reload/export CSV correctness | PASS |
+| Contact verification | PASS |
+| One-target campaign | PASS |
+| Warmer start/stop | PASS |
+
+Full Chatbot Flow export performance evidence from authenticated VPS curl: HTTP `200`, `time=14.570861s`, `size=50929353` bytes (49 MB). This is expected for full exports because all flow nodes are included.

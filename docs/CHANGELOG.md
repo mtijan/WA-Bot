@@ -5,6 +5,19 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.4] - 2026-06-07
+
+### Added
+- Evidence browser feature smoke staging PASS untuk login/logout, protected dashboard/API access, manual session Repair, Single Message text/media, Templates media, Chatbot Flow import/export/edit/settings/nodes/metrics/media, Group Grabber reload/export, contact verification, one-target campaign, dan warmer start/stop.
+- Catatan performa full Chatbot Flow export di staging: HTTP 200, sekitar 49 MB, sekitar 14.57 detik dari authenticated VPS curl.
+
+### Changed
+- Roadmap Process architecture dinaikkan menjadi DONE setelah browser smoke socket-heavy lulus.
+- Chatbot Flow table layout dikembalikan ringkas: `Sent` tetap per-flow di tabel, sementara agregat `Triggered` dan `Failed` tampil di kartu laporan atas.
+
+### Fixed
+- Chatbot Flow export frontend sekarang memvalidasi response dan menampilkan download progress, sehingga tidak lagi menyimpan file JSON berisi `null` saat response kosong atau format invalid.
+
 ## [2.8.3] - 2026-06-07
 
 ### Added
