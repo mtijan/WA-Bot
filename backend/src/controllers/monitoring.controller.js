@@ -1,3 +1,4 @@
+import os from 'os';
 import { dbGet, dbAll } from '../database.js';
 import { getReadiness } from '../services/readiness.service.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
@@ -94,6 +95,9 @@ export const getMonitoringStatus = async (req, res) => {
     // --- Memory & Process Runtime ---
     const mem = process.memoryUsage();
     const uptimeSeconds = Math.floor(process.uptime());
+    const sysTotalBytes = os.totalmem();
+    const sysFreeBytes = os.freemem();
+    const sysUsedBytes = sysTotalBytes - sysFreeBytes;
 
     return sendSuccess(res, {
       timestamp: new Date().toISOString(),
@@ -110,6 +114,10 @@ export const getMonitoringStatus = async (req, res) => {
         heap_total_bytes: mem.heapTotal,
         external_bytes: mem.external,
         heap_used_pct: mem.heapTotal > 0 ? Math.round((mem.heapUsed / mem.heapTotal) * 100) : 0,
+        system_total_bytes: sysTotalBytes,
+        system_free_bytes: sysFreeBytes,
+        system_used_bytes: sysUsedBytes,
+        system_used_pct: Math.round((sysUsedBytes / sysTotalBytes) * 100),
       },
 
       sessions: {

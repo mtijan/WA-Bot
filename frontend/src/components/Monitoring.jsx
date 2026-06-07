@@ -376,11 +376,23 @@ const Monitoring = () => {
           </div>
 
           <div>
-            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Heap Memory</div>
+            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Heap Memory (Node.js)</div>
             <ProgressBar value={data?.memory?.heap_used_bytes || 0} max={data?.memory?.heap_total_bytes || 1} color="#7c3aed" height={10} />
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#64748b', marginTop: 6 }}>
               <span>Digunakan: <strong style={{ color: '#0f172a' }}>{formatBytes(data?.memory?.heap_used_bytes || 0)}</strong></span>
               <span>Total: <strong style={{ color: '#0f172a' }}>{formatBytes(data?.memory?.heap_total_bytes || 0)}</strong></span>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>RAM Sistem</div>
+            <ProgressBar value={data?.memory?.system_used_bytes || 0} max={data?.memory?.system_total_bytes || 1} color="#0891b2" height={10} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#64748b', marginTop: 6 }}>
+              <span>Terpakai: <strong style={{ color: '#0f172a' }}>{formatBytes(data?.memory?.system_used_bytes || 0)}</strong></span>
+              <span>Total: <strong style={{ color: '#0f172a' }}>{formatBytes(data?.memory?.system_total_bytes || 0)}</strong></span>
+            </div>
+            <div style={{ textAlign: 'right', fontSize: '0.73rem', color: '#10b981', fontWeight: 600, marginTop: 2 }}>
+              Bebas: {formatBytes(data?.memory?.system_free_bytes || 0)}
             </div>
           </div>
 
