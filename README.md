@@ -1,155 +1,201 @@
 # WA-Bot Pro
 
-WhatsApp Multi-Account & Bulk Messaging System -- platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
+WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
-**Status:** Internal baseline, belum production-ready  
-**Versi dokumen:** 2.8.4
+**Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
+**Versi Dokumen/Sistem:** 2.8.4  
+**Terakhir Diperbarui:** 2026-06-07  
+
+---
+
+## Daftar Isi
+- Fitur Utama
+- Prasyarat Sistem
+- Cara Menjalankan Secara Lokal
+- Arsitektur Sistem & Peran Proses
+- Panduan Pengujian (Testing)
+- Panduan Pemeliharaan (Maintenance)
+- Keamanan & Praktik Terbaik
+- Indeks Dokumentasi Lengkap
+- Lisensi
 
 ---
 
 ## Fitur Utama
 
-- **Multi-Session Management** -- kelola banyak sesi WhatsApp secara simultan melalui satu antarmuka web.
-- **Bulk Campaign** -- kirim pesan massal ke daftar kontak dengan delay acak, personalisasi template (`{{name|first}}`), dan spintax (`{Hi|Hello}`).
-- **Account Warmer** -- simulasi percakapan dua arah antar-sesi untuk memanaskan reputasi pengirim.
-- **Chatbot Flow** -- alur auto-reply interaktif berbasis node dengan dukungan teks, gambar, video, audio, dan template.
-- **Chatbot AI** -- integrasi provider AI (OpenAI, Gemini, dll.) dengan mode operasional per-sesi (off/flow/ai/both).
-- **Group Grabber** -- ekstraksi anggota grup WhatsApp ke CSV 14 kolom dengan resolusi LID-ke-JID.
-- **Single Message** -- kirim pesan individual dengan media attachment dan poll.
-- **Media Upload** -- upload gambar (maks 5 MB) dan video (maks 10 MB) langsung dari UI admin.
-- **Consent & Opt-Out** -- suppression list otomatis untuk kata kunci STOP/UNSUBSCRIBE/BERHENTI.
-- **Admin Dashboard** -- login admin berbasis cookie HttpOnly, visualisasi statistik, dan manajemen proxy.
+- **Multi-Session Management:** Pengelolaan banyak sesi akun WhatsApp secara konkuren dan independen melalui satu antarmuka dashboard.
+- **Bulk Campaign:** Pengiriman pesan massal ke daftar kontak dengan penjadwalan, penundaan acak (random delay) untuk keselamatan akun, personalisasi template (contoh: `{{name|first}}`), dan spintax engine (contoh: `{Hi|Hello}`).
+- **Account Warmer:** Simulasi percakapan otomatis dua arah antar-sesi internal secara berkala untuk memanaskan reputasi pengirim dan mengurangi risiko pemblokiran.
+- **Chatbot Flow:** Alur auto-reply interaktif berbasis node dengan perancang visual yang mendukung teks, gambar, video, audio, dokumen, dan template respons.
+- **Chatbot AI:** Integrasi penyedia AI (seperti OpenAI GPT atau Google Gemini) dengan mode operasional fleksibel per-sesi (off, chatbot flow saja, AI saja, atau kombinasi keduanya).
+- **Group Grabber:** Ekstraksi anggota grup WhatsApp secara instan ke file CSV 14 kolom dengan resolusi LID (Lid-to-Jid resolution) untuk penargetan campaign yang aman.
+- **Single Message Composer:** Pengiriman pesan individual cepat dengan dukungan lampiran media dan pembuatan jajak pendapat (polls).
+- **Media Upload Manager:** Upload gambar (maksimal 5 MB) dan video (maksimal 10 MB) dengan mitigasi Stored XSS melalui validasi MIME tipe dan penamaan acak ekstensi file di server.
+- **Consent & Opt-Out Handling:** Sistem filter daftar pencegahan (suppression list) otomatis jika penerima membalas dengan kata kunci seperti STOP, UNSUBSCRIBE, atau BERHENTI.
+- **Session Auto-Repair & Crypt-Key Reset:** Fitur manual Repair pada UI Session Manager untuk membersihkan cache kunci Signal tanpa menghapus kredensial utama, menyelesaikan masalah gagal dekripsi riwayat WhatsApp.
+- **Database & File Pruner Otomatis:** Script pruner berkala (`npm run logs:prune:apply`) untuk menghapus log pengiriman lama, log warmer, file ekspor lawas, dan berkas cadangan (backup) kedaluwarsa secara otomatis serta melakukan SQLite VACUUM untuk merampingkan ukuran database.
+- **Security Hardening Baseline:** Login dashboard admin berbasis secure cookie HttpOnly, proteksi kunci API server-to-server (X-API-Key), Content Security Policy (CSP) ketat yang mendukung Google Fonts & Websocket staging, serta in-memory API rate limiter.
 
 ---
 
-## Prasyarat
+## Prasyarat Sistem
 
 - Node.js >= 18.16.0
 - npm >= 9.x
-- Sistem operasi: Windows, Linux, macOS
+- Sistem Operasi: Windows, Linux (Ubuntu disarankan untuk staging), macOS
 
 ---
 
-## Menjalankan Lokal
+## Cara Menjalankan Secara Lokal
 
-### Windows
+### Menggunakan Skrip Otomatis
 
+#### Windows:
 ```powershell
 .\run.bat
 ```
 
-### Linux / macOS / WSL
-
+#### Linux / macOS:
 ```bash
+chmod +x run.sh
 ./run.sh
 ```
 
-### Manual
+### Secara Manual
 
+#### Terminal 1 - Backend (API & Session Manager):
 ```bash
-# Terminal 1 -- Backend
 cd backend
 npm install
 npm start
+```
 
-# Terminal 2 -- Frontend
+#### Terminal 2 - Frontend (React Dev Server):
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Endpoint default:
+### Alamat Endpoint Default Lokal:
 
-| Layanan | URL |
-|---------|-----|
-| Backend API | `http://localhost:3001/api` |
-| Frontend Dev | `http://localhost:5173` |
+| Layanan | URL | Deskripsi |
+|---------|-----|-----------|
+| Backend API | `http://localhost:3001/api` | REST API utama |
+| Frontend Dev | `http://localhost:5173` | Halaman dashboard React dev |
 
 ---
 
-## Arsitektur Ringkas
+## Arsitektur Sistem & Peran Proses
 
+### Topologi Hubungan Komponen:
 ```
 Frontend (React/Vite)
        |
-       | /api (reverse proxy)
+       | /api (Caddy / Nginx Reverse Proxy)
        v
-Backend (Express.js)
+Backend (Express.js Monolith atau Split Roles)
   |-- SQLite (database.sqlite)
-  |-- Baileys (WhatsApp WebSocket)
-  |-- Sessions (auth state per-sesi)
-  |-- Uploads (media runtime)
+  |-- Baileys (WhatsApp WebSocket integration)
+  |-- Sessions (kredensial autentikasi WhatsApp)
+  |-- Uploads (media runtime & lampiran)
 ```
 
-Untuk deployment, backend dapat dijalankan per-role:
+### Mode Eksekusi Peran Proses (Process Roles):
+Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan secara terpisah menggunakan systemd atau PM2 dengan perintah berikut:
 
-| Role | Perintah |
-|------|----------|
-| Monolith (default lokal) | `npm start` |
-| API only | `npm run start:api` |
-| Combined worker | `npm run start:worker` |
-| Session manager | `npm run start:sessions` |
-| Campaign worker | `npm run start:campaign-worker` |
-| Warmer worker | `npm run start:warmer-worker` |
-
----
-
-## Dokumentasi
-
-| Dokumen | Deskripsi |
-|---------|-----------|
-| `sdlc_documentation.md` | Master SDLC: SRS, arsitektur, test plan, roadmap |
-| `docs/html/index.html` | Portal dokumentasi HTML interaktif |
-| `docs/RUNBOOK.md` | Panduan operasional harian |
-| `docs/SECURITY.md` | Baseline keamanan dan production checklist |
-| `docs/PRIVACY.md` | Kebijakan messaging, consent, dan retensi data |
-| `docs/MONITORING.md` | Template monitoring dan alert |
-| `docs/STAGING.md` | Catatan staging VPS (local-only) |
-| `docs/CHANGELOG.md` | Riwayat perubahan per versi |
-| `docs/CODEBASE_QUALITY.md` | Baseline kualitas kode dan aturan migrasi |
-| `docs/MEDIA_UPLOAD_WORKLOG.md` | Riwayat implementasi media upload |
-| `docs/SECURITY_AUDIT.md` | Hasil audit dependensi |
-| `docs/deploy/README.md` | Template deploy VPS (systemd, PM2, Caddy, Nginx) |
-| `docs/openapi.yaml` | Spesifikasi OpenAPI 3.0 |
-| `checklist.html` | Developer checklist interaktif |
-| `HANDOFF.md` | Handoff note (local-only) |
-| `AGENTS.md` | Agent context (local-only) |
+- **Monolith Mode (API + Workers):** `npm start`
+- **API Server Only:** `npm run start:api` (Express HTTP server saja, dapat mendelegasikan sesi ke manajer sesi internal lewat `WA_BOT_SESSION_MANAGER_URL`)
+- **Combined Worker:** `npm run start:worker` (Menjalankan session manager, polling campaign, dan polling warmer secara bersamaan tanpa HTTP API publik)
+- **Session Manager Only:** `npm run start:sessions` (Menjalankan manajer sesi Baileys saja)
+- **Campaign Worker Only:** `npm run start:campaign-worker` (Memproses antrean pengiriman pesan campaign massal)
+- **Warmer Worker Only:** `npm run start:warmer-worker` (Memproses simulasi chat pemanasan reputasi akun)
 
 ---
 
-## Testing
+## Panduan Pengujian (Testing)
 
+### Pengujian Unit & Integrasi Backend
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, engine enkripsi, pruner logs, dan isolasi sesi flow) menggunakan SQLite memori tanpa memerlukan server berjalan.
 ```bash
-# Backend integration & unit tests (54 test cases)
 cd backend
 npm test
+```
 
-# Deploy smoke test
+### Smoke Test Peluncuran (Deploy Smoke Test)
+Menjalankan pengujian cepat pasca-deploy untuk memastikan keandalan API publik dan respons delegasi internal:
+```bash
 cd backend
 npm run test:smoke
-
-# Browser QA suite
-cd qa_tests
-npm test
 ```
 
-## Staging Status
+### Pengujian Integrasi Sistem QA
+Melakukan simulasi QA menyeluruh (verifikasi skema database 16 tabel dan pengujian endpoint API melalui Axios). Memerlukan server backend API berjalan di port `3001`.
+```bash
+# Terminal 1:
+cd backend && npm run start:api
 
-Staging di `https://stagingwabot.web.id/` sudah lolos browser feature smoke pada 2026-06-07 untuk login/logout, Devices/Session Manager, manual Repair, Single Message text/media, Templates media, Chatbot Flow import/export/edit/settings/nodes/metrics/media, Group Grabber reload/export, contact verification, one-target campaign, warmer start/stop, dan proteksi API/dashboard setelah logout.
-
-Catatan performa: full export Chatbot Flow membawa semua `nodes`; staging pernah menghasilkan file sekitar 49 MB dan membutuhkan sekitar 14.57 detik dari VPS. Ini normal untuk full export besar.
+# Terminal 2:
+cd qa_tests && npm test
+```
 
 ---
 
-## Keamanan
+## Panduan Pemeliharaan (Maintenance)
 
-- Jangan ekspos port backend `3001` ke internet publik. Gunakan reverse proxy (Caddy/Nginx).
-- Jangan masukkan `WA_BOT_API_KEY` atau secret lain ke dalam JavaScript frontend.
-- Perlakukan `backend/database.sqlite`, `backend/sessions/`, dan `backend/uploads/` sebagai data sensitif.
-- Lihat `docs/SECURITY.md` untuk production checklist lengkap.
+### 1. Pencadangan Data (Backup & Restore)
+- **Backup Terenkripsi:** Membuat salinan basis data dan sesi Baileys terkompresi serta terenkripsi dengan AES-256-GCM.
+  ```bash
+  cd backend
+  npm run backup:encrypted
+  ```
+- **Restore Drill:** Simulasi pemulihan dari berkas cadangan terenkripsi terakhir untuk memastikan integritas data.
+  ```bash
+  cd backend
+  npm run restore:drill
+  ```
+- **Offsite Backup:** Pada staging VPS, salinan berkas cadangan terenkripsi otomatis dikirimkan ke Telegram melalui integrasi bot Telegram.
+
+### 2. Pembersihan Rutin (Log & File Pruning)
+Script pruner akan menghapus log pengiriman lama yang melebihi retensi, log warmer, file CSV hasil ekspor lawas, serta berkas backup kedaluwarsa.
+```bash
+cd backend
+npm run logs:prune:apply
+```
+
+---
+
+## Keamanan & Praktik Terbaik
+
+- **Jangan Ekspos Port 3001:** Port API backend `3001` tidak boleh dibuka ke internet publik. Gunakan reverse proxy (seperti Caddy atau Nginx) untuk mengamankan lalu lintas data.
+- **Frontend Build Guard:** Frontend memiliki mekanisme proteksi build (`assert-production-api-url.mjs`) yang akan menghentikan build jika aset produksi kedapatan memanggil URL private backend `:3001/api`. Selalu set `VITE_API_URL=/api` saat membangun aset produksi.
+- **Isolasi Database & Kredensial:** Batasi hak akses direktori `backend/sessions/`, `backend/database.sqlite`, dan `.env` menggunakan izin sistem operasi ketat (rekomendasi chmod `640` / `600`).
+- **AES-GCM Key Encryption:** Konfigurasikan `WA_BOT_SECRET_ENCRYPTION_KEY` di environment untuk memastikan kunci API Chatbot AI tersimpan dalam bentuk terenkripsi di database SQLite.
+- **Monitoring Mandiri:** Pantau performa melalui endpoint kesiapan `/health/ready` (untuk API publik) dan `/internal/health/ready` (untuk internal workers). Netdata diatur hanya mendengarkan di localhost (`127.0.0.1:19999`) dan diakses aman menggunakan SSH Tunneling.
+
+---
+
+## Indeks Dokumentasi Lengkap
+
+Seluruh dokumentasi teknis tersimpan di dalam folder `docs/`. Anda dapat merujuk ke dokumen berikut untuk pemahaman mendalam:
+
+| Berkas Dokumen | Tujuan & Deskripsi |
+|----------------|---------------------|
+| [sdlc_documentation.md](file:///d:/Self%20Project/WA-Bot/sdlc_documentation.md) | Dokumen master SDLC: SRS, arsitektur, test plan, dan peta jalan VPS. |
+| [docs/RUNBOOK.md](file:///d:/Self%20Project/WA-Bot/docs/RUNBOOK.md) | Panduan operasional harian, tata cara pemulihan darurat, pruner, dan backup. |
+| [docs/SECURITY.md](file:///d:/Self%20Project/WA-Bot/docs/SECURITY.md) | Kebijakan keamanan, kontrol aktif, backend hardening, dan checklist rilis. |
+| [docs/PRIVACY.md](file:///d:/Self%20Project/WA-Bot/docs/PRIVACY.md) | Kebijakan pesan, aturan persetujuan (consent), penanganan opt-out, dan retensi log. |
+| [docs/MONITORING.md](file:///d:/Self%20Project/WA-Bot/docs/MONITORING.md) | Metrik yang harus dipantau, batas ambang sumber daya (thresholds), dan respons alert. |
+| [docs/STAGING.md](file:///d:/Self%20Project/WA-Bot/docs/STAGING.md) | Catatan dan bukti verifikasi lingkungan staging VPS. |
+| [docs/CODEBASE_QUALITY.md](file:///d:/Self%20Project/WA-Bot/docs/CODEBASE_QUALITY.md) | Panduan migrasi logger Pino, response helper, dan struktur config. |
+| [docs/MEDIA_UPLOAD_WORKLOG.md](file:///d:/Self%20Project/WA-Bot/docs/MEDIA_UPLOAD_WORKLOG.md) | Catatan log implementasi fitur pengunggahan media di backend & frontend. |
+| [docs/deploy/README.md](file:///d:/Self%20Project/WA-Bot/docs/deploy/README.md) | Template konfigurasi server (PM2, systemd, Caddy, logrotate). |
+| [docs/openapi.yaml](file:///d:/Self%20Project/WA-Bot/docs/openapi.yaml) | Spesifikasi OpenAPI 3.0 untuk endpoints REST API. |
+| [checklist.html](file:///d:/Self%20Project/WA-Bot/checklist.html) | Halaman referensi interaktif status roadmap development. |
+| [AGENTS.md](file:///d:/Self%20Project/WA-Bot/AGENTS.md) | Catatan serah terima (handoff context) untuk agen AI berikutnya. |
 
 ---
 
 ## Lisensi
 
-Proyek internal. Lihat ketentuan penggunaan yang berlaku.
+Proyek internal eksklusif. Dilarang mendistribusikan ulang kode sumber tanpa persetujuan tertulis pemilik lisensi.
