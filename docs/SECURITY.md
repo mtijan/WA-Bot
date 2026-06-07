@@ -1,7 +1,7 @@
 # WA-Bot Pro Security Baseline
 
 **Status:** Security hardening baseline implemented; production risk review still required  
-**Last updated:** 2026-06-06
+**Last updated:** 2026-06-07
 
 ## 1. Scope
 
@@ -20,8 +20,12 @@ This document separates implemented controls from production requirements. It is
 | Request-size policy | Default JSON/urlencoded body limit is configurable and lower than import endpoints. | `WA_BOT_JSON_BODY_LIMIT`, `WA_BOT_IMPORT_BODY_LIMIT` |
 | Media upload limits | Admin image/video upload is implemented with explicit size limits and runtime storage outside git. | `WA_BOT_MEDIA_UPLOAD_DIR`, `WA_BOT_IMAGE_UPLOAD_MAX_BYTES`, `WA_BOT_VIDEO_UPLOAD_MAX_BYTES`, `backend/uploads/` |
 | Proxy/IPLocate secret masking | Proxy URLs and IPLocate settings responses no longer return credential plaintext; IPLocate env key is preferred for production. | `backend/src/utils/secret_masking.js`, `backend/src/controllers/proxy.controller.js`, `backend/src/controllers/session.controller.js`, `WA_BOT_IPLOCATE_API_KEY` |
-| Dependency audit baseline | `sqlite3@6.x` remediation was tested and latest backend audit was clean (`npm run security:audit`, 2026-06-05). | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
+| Dependency audit baseline | `sqlite3@6.x` remediation was tested and latest backend audit was clean (`npm run security:audit`, 2026-06-07). | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
 | Staging deploy baseline | Domain HTTPS, secure cookie/CORS, provider firewall, Telegram alert timer, backup/restore timers, ACL baseline, and API/worker readiness are verified. | `docs/STAGING.md` |
+| Upload extension spoofing | Whitelisted MIME-type mapping forces server-side file extension generation (Stored XSS mitigation). | `backend/src/services/upload.service.js` |
+| Timing attacks mitigation | Secure timing-safe comparisons (`crypto.timingSafeEqual`) are enforced for all token and admin credentials. | `backend/src/middleware/` |
+| WhatsApp session state integrity | Disconnected sessions are correctly marked as `DISCONNECTED` in SQLite upon socket close events. | `backend/src/services/whatsapp.service.js` |
+| Session manual repair | Admin can manually clear Signal crypt-key cache without wiping credentials, resolving history sync decrypt bugs. | `backend/src/services/whatsapp.service.js`, `frontend/src/components/SessionManager.jsx` |
 
 ## 3. Known Production Gaps
 
