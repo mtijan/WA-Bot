@@ -9,6 +9,7 @@ export const getCampaigns = async (req, res) => {
     const sql = `
       SELECT 
         c.id, c.name, c.session_id, c.message, c.status, c.created_at,
+        c.attachment_url, c.attachment_type, c.attachment_name,
         COUNT(dl.id) as total_targets,
         SUM(CASE WHEN dl.status = 'SENT' THEN 1 ELSE 0 END) as sent,
         SUM(CASE WHEN dl.status = 'FAILED' THEN 1 ELSE 0 END) as failed,
@@ -27,7 +28,7 @@ export const getCampaigns = async (req, res) => {
 };
 
 export const createCampaign = async (req, res) => {
-  const { session_id, name, message, targets, delay_ms_min, delay_ms_max } = req.body;
+  const { session_id, name, message, targets, delay_ms_min, delay_ms_max, attachment_url, attachment_type, attachment_name } = req.body;
 
   try {
     const campaignId = await campaignService.createCampaign(
@@ -36,7 +37,10 @@ export const createCampaign = async (req, res) => {
       targets,
       delay_ms_min || 3000,
       delay_ms_max || 8000,
-      name
+      name,
+      attachment_url || null,
+      attachment_type || null,
+      attachment_name || null
     );
 
     if (isSessionManagerClientEnabled()) {

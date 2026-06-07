@@ -334,6 +334,15 @@ const migrations = [
         await run(db, 'UPDATE chatbot_flows SET sent_count = 0');
       }
     }
+  },
+  {
+    id: '007_add_campaign_attachments',
+    description: 'Add attachment fields (url, type, name) to campaigns table.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'campaigns', 'attachment_url', 'TEXT');
+      await addColumnIfMissing(db, 'campaigns', 'attachment_type', 'TEXT');
+      await addColumnIfMissing(db, 'campaigns', 'attachment_name', 'TEXT');
+    }
   }
 ];
 

@@ -1,7 +1,7 @@
 # WA-Bot Pro Messaging and Privacy Baseline
 
 **Status:** Operational policy template  
-**Last updated:** 2026-06-01
+**Last updated:** 2026-06-06
 
 ## 1. Purpose
 
@@ -29,13 +29,26 @@ Maintain a record for every contact source:
 
 Automated enforcement is implemented for private inbound keywords `STOP`, `UNSUBSCRIBE`, and `BERHENTI`. Bulk campaigns skip suppressed numbers. Single-message sending rejects suppressed numbers unless the caller uses an explicit override for a lawful and necessary message. Review the suppression list through `/api/opt-outs`.
 
+Chatbot AI hanya membalas pesan pribadi (personal chat). Pesan grup (`isGroup = true`) secara otomatis diabaikan untuk mencegah loop respons tak terbatas. Chatbot Flow bersifat session-scoped; flow yang ditugaskan ke satu sesi tidak akan merespons pesan dari sesi lain.
+
 ## 4. Retention
 
 - Use `WA_BOT_LOG_RETENTION_DAYS` to define the delivery-log retention period.
-- Run `npm run logs:prune` in `backend/` to preview deletions.
+- Run `npm run logs:prune` in `backend/` to preview deletions. Pruner mencakup `delivery_logs`, `warmer_logs`, file ekspor `ExportWAContacts_*`, dan folder backup usang.
 - Run `npm run logs:prune:apply` only after reviewing the dry-run count and confirming a backup exists.
 - Review contact data separately and remove records that no longer have a valid purpose.
 
-## 5. Platform Risk
+## 5. Media Upload Lifecycle
+
+Uploaded media (gambar, video) disimpan di `backend/uploads/` atau `WA_BOT_MEDIA_UPLOAD_DIR` dan merupakan data runtime. Media upload dibatasi: gambar maksimal 5 MB, video maksimal 10 MB.
+
+Panduan pengelolaan:
+
+- Jangan masukkan `backend/uploads/` ke dalam git.
+- Lindungi direktori upload di balik reverse proxy dan autentikasi admin (`/api/uploads`).
+- Sertakan dalam backup hanya jika preservasi aset template/chatbot diperlukan.
+- Tinjau dan hapus file upload yang sudah tidak diperlukan secara berkala.
+
+## 6. Platform Risk
 
 Baileys is an unofficial WhatsApp integration. Do not use automation to evade platform controls. Evaluate the official WhatsApp Business Platform for business-critical production use.

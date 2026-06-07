@@ -63,6 +63,8 @@ Copy `backend/.env.example` into your deployment secret-management workflow. The
 | `WA_BOT_ALLOWED_ORIGINS` | Comma-separated browser origins accepted by CORS. |
 | `WA_BOT_RATE_LIMIT_WINDOW_MS` | Rate-limit window in milliseconds. |
 | `WA_BOT_RATE_LIMIT_MAX` | Maximum API requests per client IP per window. |
+| `WA_BOT_JSON_BODY_LIMIT` | Default JSON/urlencoded request body limit for normal API calls. Defaults to `2mb`. |
+| `WA_BOT_IMPORT_BODY_LIMIT` | Larger request body limit for import endpoints such as Chatbot Flow import. Defaults to `60mb`. |
 | `WA_BOT_SECRET_ENCRYPTION_KEY` | Encrypts newly saved Chatbot AI provider keys using AES-256-GCM. |
 | `WA_BOT_LOG_RETENTION_DAYS` | Delivery-log retention used by the cleanup script. |
 | `WA_BOT_BACKUP_DIR` | Optional protected destination for timestamped runtime-data backups. |
@@ -176,6 +178,15 @@ Current migration module:
 ```text
 backend/src/migrations/index.js
 ```
+
+Latest schema note: migration `006_chatbot_flow_delivery_metrics` adds accurate Chatbot Flow counters. Historical `sent_count` values are copied into `trigger_count`, then `sent_count` starts from `0` so future counts represent successfully sent node messages only. `failed_count` records node send failures.
+
+Chatbot Flow large-data behavior:
+
+- `GET /api/chatbot-flows` returns lightweight metadata and `node_count`; it should not include large `nodes` JSON.
+- `GET /api/chatbot-flows/:id` returns full flow detail for editing.
+- `PATCH /api/chatbot-flows/:id/settings` updates status/device/settings metadata without resending large `nodes`.
+- Import endpoints use `WA_BOT_IMPORT_BODY_LIMIT`; staging should keep this at `60mb` unless there is a deliberate security decision to lower it.
 
 Migration evidence to record for release candidates:
 

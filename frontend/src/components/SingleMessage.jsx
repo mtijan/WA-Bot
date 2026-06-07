@@ -723,10 +723,15 @@ const SingleMessage = () => {
                     className="form-control"
                     style={{ borderRadius: '8px', height: '38px' }}
                   />
-                  {(attachmentType === 'Image' || attachmentType === 'Video') && (
+                  {(attachmentType === 'Image' || attachmentType === 'Video' || attachmentType === 'Audio' || attachmentType === 'Document') && (
                     <MediaUploadField
                       mediaType={attachmentType}
-                      onUploaded={(media) => setAttachmentUrl(media.url)}
+                      onUploaded={(media) => {
+                        setAttachmentUrl(media.url);
+                        if (attachmentType === 'Document' && media.file_name && !attachmentName) {
+                          setAttachmentName(media.file_name);
+                        }
+                      }}
                     />
                   )}
                 </div>

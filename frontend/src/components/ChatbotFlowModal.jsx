@@ -322,7 +322,7 @@ const ChatbotFlowModal = ({ isOpen, onClose, onSave, flow, sessions, flows = [] 
                                   placeholder="Enter Direct Media URL (https://...)" 
                                   autoComplete="off"
                                 />
-                                {(node.attachment.type === 'Image' || node.attachment.type === 'Video') && (
+                                {(node.attachment.type === 'Image' || node.attachment.type === 'Video' || node.attachment.type === 'Audio' || node.attachment.type === 'Document') && (
                                   <MediaUploadField
                                     mediaType={node.attachment.type}
                                     onUploaded={(media) => updateNodeAttachment(index, 'url', media.url)}

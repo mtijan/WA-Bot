@@ -366,12 +366,42 @@ async function runE2eUiTests() {
 
       // TC-SEC-03: Khusus halaman chatbot-ai, verifikasi input API Key dalam mode masked
       if (pageItem.route === '/chatbot-ai') {
+        let hasPasswordInput = await page.$('input[type="password"]').then(el => !!el);
+        let openedModal = false;
+
+        if (!hasPasswordInput) {
+          // Klik tombol '+ Tambah Kredensial' untuk memunculkan input password di modal
+          const buttons = await page.$$('button');
+          for (const btn of buttons) {
+            const text = await page.evaluate(el => el.textContent, btn);
+            if (text && text.includes('Tambah Kredensial')) {
+              await btn.click();
+              await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 500))); // Tunggu modal merender
+              openedModal = true;
+              break;
+            }
+          }
+        }
+
         const typeAttribute = await page.$eval('input[type="password"]', el => el.type).catch(() => 'not-found');
         console.log(`   TC-SEC-03: Memeriksa tipe field API Key... (Tipe terdeteksi: ${typeAttribute})`);
         if (typeAttribute !== 'password') {
           console.warn('   [WARNING] Field API Key tidak terproteksi dengan tipe password!');
         } else {
           console.log('   Status: Input API Key terproteksi dengan mode masked (tipe password) sukses.');
+        }
+
+        if (openedModal) {
+          // Klik tombol 'Batal' untuk menutup modal kembali
+          const buttons = await page.$$('button');
+          for (const btn of buttons) {
+            const text = await page.evaluate(el => el.textContent, btn);
+            if (text && text.includes('Batal')) {
+              await btn.click();
+              await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 500)));
+              break;
+            }
+          }
         }
       }
 

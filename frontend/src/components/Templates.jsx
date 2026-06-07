@@ -663,10 +663,15 @@ const Templates = () => {
                         onChange={(e) => setAttachmentUrl(e.target.value)}
                         className="form-control"
                       />
-                      {(selectedType === 'image' || selectedType === 'video') && (
+                      {(selectedType === 'image' || selectedType === 'video' || selectedType === 'audio' || selectedType === 'document') && (
                         <MediaUploadField
                           mediaType={selectedType}
-                          onUploaded={(media) => setAttachmentUrl(media.url)}
+                          onUploaded={(media) => {
+                            setAttachmentUrl(media.url);
+                            if (selectedType === 'document' && media.file_name && !attachmentName) {
+                              setAttachmentName(media.file_name);
+                            }
+                          }}
                         />
                       )}
                     </div>

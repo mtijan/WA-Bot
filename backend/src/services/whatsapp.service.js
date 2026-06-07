@@ -33,6 +33,51 @@ function getMediaSource(urlOrPath) {
   return { url: urlOrPath };
 }
 
+function getMimeTypeFromUrl(url, defaultMime = 'application/octet-stream') {
+  if (!url) return defaultMime;
+  const ext = url.split('.').pop().toLowerCase();
+  const map = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'webp': 'image/webp',
+    'gif': 'image/gif',
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'mov': 'video/quicktime',
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'ogg': 'audio/ogg',
+    'm4a': 'audio/mp4',
+    'aac': 'audio/aac',
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'txt': 'text/plain',
+    'csv': 'text/csv',
+    'zip': 'application/zip'
+  };
+  return map[ext] || defaultMime;
+}
+
+function getFileNameFromUrl(url, defaultName = 'Document.pdf') {
+  if (!url) return defaultName;
+  try {
+    const parts = url.split('/');
+    const lastPart = parts[parts.length - 1];
+    if (lastPart) {
+      return decodeURIComponent(lastPart).split(/[?#]/)[0] || defaultName;
+    }
+  } catch (err) {
+    // ignore
+  }
+  return defaultName;
+}
+
 export function parseSpintax(text) {
   if (typeof text !== 'string') return text;
 
@@ -182,6 +227,7 @@ class WhatsAppService {
         try {
           const qrDataUrl = await QRCode.toDataURL(qr);
           this.qrCodes[sessionId] = qrDataUrl;
+          await dbRun('UPDATE sessions SET status = ?, phone_number = NULL WHERE session_id = ?', ['DISCONNECTED', sessionId]);
         } catch (err) {
           console.error('Gagal membuat Base64 QR Code:', err);
         }
@@ -298,8 +344,16 @@ class WhatsAppService {
     });
 
     sock.ev.on('messages.upsert', async (m) => {
+      // Debug: log paling awal untuk konfirmasi event messages.upsert diterima
+      console.log(`[Chatbot Debug] >>> messages.upsert diterima, type=${m.type}, jumlah=${m.messages?.length}`);
+
+      // Lewati hanya jika ini history sync (append), proses semua lainnya termasuk undefined
+      if (m.type === 'append') return;
+
       try {
         const msg = m.messages[0];
+        if (!msg) return;
+        console.log(`[Chatbot Debug] msg.key=${JSON.stringify(msg.key)}, hasMessage=${!!msg.message}, fromMe=${msg.key?.fromMe}`);
         if (!msg.message || msg.key.fromMe) return;
 
         const senderId = msg.key.remoteJid;
@@ -322,23 +376,41 @@ class WhatsAppService {
           }
         }
         
+        // Unwrap pesan dari container Baileys (ephemeral, viewOnce, senderKeyDistribution, dll.)
+        // Baileys sering membungkus pesan di layer ekstra sehingga Object.keys()[0]
+        // bisa mengembalikan key wrapper, bukan tipe pesan sebenarnya.
+        let innerMessage = msg.message;
+        const wrapperKeys = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'documentWithCaptionMessage'];
+        for (const wk of wrapperKeys) {
+          if (innerMessage[wk]?.message) {
+            innerMessage = innerMessage[wk].message;
+          }
+        }
+
+        // Ambil kunci pesan sebenarnya, lewati key metadata seperti senderKeyDistributionMessage
+        // dan messageContextInfo yang bukan tipe pesan teks/media.
+        const skipKeys = ['senderKeyDistributionMessage', 'messageContextInfo', 'protocolMessage'];
+        const allKeys = Object.keys(innerMessage);
+        const messageType = allKeys.find(k => !skipKeys.includes(k)) || allKeys[0];
+
+        console.log(`[Chatbot Debug] Pesan masuk dari ${senderId}, type=${m.type}, messageType=${messageType}, allKeys=${allKeys.join(',')}`);
+
         // Extract text message
-        const messageType = Object.keys(msg.message)[0];
         let text = '';
         if (messageType === 'conversation') {
-          text = msg.message.conversation;
+          text = innerMessage.conversation;
         } else if (messageType === 'extendedTextMessage') {
-          text = msg.message.extendedTextMessage.text;
+          text = innerMessage.extendedTextMessage?.text;
         } else if (messageType === 'imageMessage') {
-          text = msg.message.imageMessage.caption;
+          text = innerMessage.imageMessage?.caption;
         } else if (messageType === 'videoMessage') {
-          text = msg.message.videoMessage.caption;
+          text = innerMessage.videoMessage?.caption;
         } else if (messageType === 'buttonsResponseMessage') {
-          text = msg.message.buttonsResponseMessage.selectedButtonId;
+          text = innerMessage.buttonsResponseMessage?.selectedButtonId;
         } else if (messageType === 'templateButtonReplyMessage') {
-          text = msg.message.templateButtonReplyMessage.selectedId;
+          text = innerMessage.templateButtonReplyMessage?.selectedId;
         } else if (messageType === 'interactiveResponseMessage') {
-          const nativeFlow = msg.message.interactiveResponseMessage.nativeFlowResponseMessage;
+          const nativeFlow = innerMessage.interactiveResponseMessage?.nativeFlowResponseMessage;
           if (nativeFlow) {
             try {
               const params = JSON.parse(nativeFlow.paramsJson);
@@ -348,6 +420,8 @@ class WhatsAppService {
             }
           }
         }
+
+        console.log(`[Chatbot Debug] Extracted text: "${text || '(kosong)'}"`);
         
         if (!text) return;
 
@@ -668,14 +742,19 @@ class WhatsAppService {
                   ? { video: mediaSource } 
                   : { video: mediaSource, caption: messageContentParsed };
                 break;
-              case 'Audio':
-                attachmentPayload = { audio: mediaSource, mimetype: 'audio/mp4' };
+              case 'Audio': {
+                const mimeType = getMimeTypeFromUrl(url, 'audio/mp4');
+                attachmentPayload = { audio: mediaSource, mimetype: mimeType };
                 break;
-              case 'Document':
+              }
+              case 'Document': {
+                const mimeType = getMimeTypeFromUrl(url, 'application/pdf');
+                const fileName = getFileNameFromUrl(url, 'Document.pdf');
                 attachmentPayload = isInteractive 
-                  ? { document: mediaSource, mimetype: 'application/pdf', fileName: 'Document.pdf' } 
-                  : { document: mediaSource, mimetype: 'application/pdf', fileName: 'Document.pdf', caption: messageContentParsed };
+                  ? { document: mediaSource, mimetype: mimeType, fileName: fileName } 
+                  : { document: mediaSource, mimetype: mimeType, fileName: fileName, caption: messageContentParsed };
                 break;
+              }
             }
           }
 
@@ -847,7 +926,67 @@ class WhatsAppService {
     }
 
     const { messageType, text, attachmentUrl, attachmentType, attachmentName, templateId } = payload;
-    const parsedText = parseSpintax(text || '');
+
+    // Cari nama kontak jika ada untuk personalisasi {{name}}, [name], {{nama}}, [nama]
+    let targetName = '';
+    if (!jid.endsWith('@g.us')) {
+      try {
+        let cleanNum = target.replace(/\D/g, '');
+        let altNum = cleanNum;
+        if (cleanNum.startsWith('62')) {
+          altNum = '0' + cleanNum.slice(2);
+        } else if (cleanNum.startsWith('0')) {
+          altNum = '62' + cleanNum.slice(1);
+        }
+
+        // 1. Cari di tabel contacts (database manual)
+        const contactRow = await dbGet(
+          'SELECT name FROM contacts WHERE phone_number = ? OR phone_number = ? OR phone_number = ? LIMIT 1',
+          [target, cleanNum, altNum]
+        );
+        if (contactRow && contactRow.name) {
+          targetName = contactRow.name;
+        }
+
+        // 2. Jika tidak ada, cari di tabel whatsapp_contacts (synced contacts)
+        if (!targetName) {
+          const waContactRow = await dbGet(
+            'SELECT name, notify, verified_name FROM whatsapp_contacts WHERE jid = ? OR jid = ? LIMIT 1',
+            [jid, `${cleanNum}@s.whatsapp.net`]
+          );
+          if (waContactRow) {
+            targetName = waContactRow.name || waContactRow.verified_name || waContactRow.notify || '';
+          }
+        }
+
+        // 3. Jika masih tidak ada, cari di cache memory sock.contacts
+        if (!targetName && sock.contacts) {
+          const memContact = sock.contacts[jid] || sock.contacts[`${cleanNum}@s.whatsapp.net`];
+          if (memContact) {
+            targetName = memContact.name || memContact.notify || memContact.verifiedName || '';
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching contact name for single message personalization:', err);
+      }
+    }
+
+    let displayName = targetName;
+    if (!displayName || displayName.startsWith('Contact-')) {
+      displayName = '';
+    }
+
+    const formatMessageText = (rawText) => {
+      if (!rawText) return '';
+      const withName = rawText
+        .replace(/\{\{name\}\}/gi, displayName)
+        .replace(/\[name\]/gi, displayName)
+        .replace(/\{\{nama\}\}/gi, displayName)
+        .replace(/\[nama\]/gi, displayName);
+      return parseSpintax(withName);
+    };
+
+    const parsedText = formatMessageText(text || '');
 
     if (messageType === 'template' && templateId) {
       const template = await dbGet("SELECT * FROM message_templates WHERE id = ?", [templateId]);
@@ -856,7 +995,7 @@ class WhatsAppService {
       }
 
       const type = template.type || 'text';
-      const content = parseSpintax(template.content || '');
+      const content = formatMessageText(template.content || '');
 
       if (type === 'text') {
         await sock.sendMessage(jid, { text: content });
@@ -881,21 +1020,21 @@ class WhatsAppService {
           } else if (detectType === 'video') {
             mediaPayload = { video: mediaSource, caption };
           } else if (detectType === 'audio') {
-            mediaPayload = { audio: mediaSource, mimetype: 'audio/mp4' };
+            mediaPayload = { audio: mediaSource, mimetype: getMimeTypeFromUrl(url, 'audio/mp4') };
           } else {
-            mediaPayload = { document: mediaSource, mimetype: 'application/pdf', fileName: template.attachment_name || 'Document.pdf', caption };
+            mediaPayload = { document: mediaSource, mimetype: getMimeTypeFromUrl(url, 'application/pdf'), fileName: template.attachment_name || getFileNameFromUrl(url, 'Document.pdf'), caption };
           }
           await sock.sendMessage(jid, mediaPayload);
         }
       } else if (type === 'poll') {
-        const question = parseSpintax(template.poll_question || 'Poll Question');
+        const question = formatMessageText(template.poll_question || 'Poll Question');
         let options = [];
         try {
           options = JSON.parse(template.poll_options || '[]');
         } catch (e) {
           options = (template.poll_options || '').split(',').map(o => o.trim()).filter(Boolean);
         }
-        options = options.map(o => parseSpintax(o));
+        options = options.map(o => formatMessageText(o));
         await sock.sendMessage(jid, {
           poll: {
             name: question,
@@ -931,13 +1070,13 @@ class WhatsAppService {
             mediaPayload = { video: mediaSource, caption };
             break;
           case 'Audio':
-            mediaPayload = { audio: mediaSource, mimetype: 'audio/mp4' };
+            mediaPayload = { audio: mediaSource, mimetype: getMimeTypeFromUrl(url, 'audio/mp4') };
             break;
           case 'Document':
-            mediaPayload = { document: mediaSource, mimetype: 'application/pdf', fileName: attachmentName || 'Document.pdf', caption };
+            mediaPayload = { document: mediaSource, mimetype: getMimeTypeFromUrl(url, 'application/pdf'), fileName: attachmentName || getFileNameFromUrl(url, 'Document.pdf'), caption };
             break;
           default:
-            mediaPayload = { document: mediaSource, mimetype: 'application/octet-stream', fileName: attachmentName || 'File', caption };
+            mediaPayload = { document: mediaSource, mimetype: getMimeTypeFromUrl(url, 'application/octet-stream'), fileName: attachmentName || getFileNameFromUrl(url, 'File'), caption };
             break;
         }
         await sock.sendMessage(jid, mediaPayload);

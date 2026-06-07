@@ -13,18 +13,31 @@ const MediaUploadField = ({ mediaType = 'image', onUploaded }) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const isVideo = mediaType.toLowerCase() === 'video';
-    const maxSize = isVideo ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
-    const maxSizeMb = isVideo ? 10 : 5;
+    const typeLower = mediaType.toLowerCase();
+    let maxSize = 5 * 1024 * 1024; // Default to 5MB (for image & document)
+    let maxSizeMb = 5;
+
+    if (typeLower === 'video') {
+      maxSize = 10 * 1024 * 1024; // 10MB
+      maxSizeMb = 10;
+    } else if (typeLower === 'audio') {
+      maxSize = 2 * 1024 * 1024; // 2MB
+      maxSizeMb = 2;
+    }
 
     // Client-side validation
-    if (isVideo && !file.type.startsWith('video/')) {
+    if (typeLower === 'video' && !file.type.startsWith('video/')) {
       setError('Hanya file video yang diizinkan.');
       setSuccess(false);
       return;
     }
-    if (!isVideo && !file.type.startsWith('image/')) {
+    if (typeLower === 'image' && !file.type.startsWith('image/')) {
       setError('Hanya file gambar yang diizinkan.');
+      setSuccess(false);
+      return;
+    }
+    if (typeLower === 'audio' && !file.type.startsWith('audio/')) {
+      setError('Hanya file audio yang diizinkan.');
       setSuccess(false);
       return;
     }
@@ -67,6 +80,8 @@ const MediaUploadField = ({ mediaType = 'image', onUploaded }) => {
     }
   };
 
+  const typeLower = mediaType.toLowerCase();
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -101,7 +116,12 @@ const MediaUploadField = ({ mediaType = 'image', onUploaded }) => {
           type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
-          accept={mediaType.toLowerCase() === 'video' ? 'video/*' : 'image/*'}
+          accept={
+            typeLower === 'video' ? 'video/*' :
+            typeLower === 'audio' ? 'audio/*' :
+            typeLower === 'document' ? '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar' :
+            'image/*'
+          }
           style={{ display: 'none' }}
         />
 

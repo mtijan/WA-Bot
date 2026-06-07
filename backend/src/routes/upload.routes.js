@@ -36,11 +36,11 @@ router.post('/media', (req, res, next) => {
     if (!err) return next();
 
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return sendError(res, 413, 'MEDIA_FILE_TOO_LARGE', 'Video maksimal 10MB dan gambar maksimal 5MB.');
+      return sendError(res, 413, 'MEDIA_FILE_TOO_LARGE', 'Berkas melebihi batas ukuran maksimal (Video 10MB, Gambar/Dokumen 5MB, Audio 2MB).');
     }
 
     if (err.message === 'MEDIA_TYPE_NOT_ALLOWED') {
-      return sendError(res, 400, 'MEDIA_TYPE_NOT_ALLOWED', 'Hanya gambar dan video yang diizinkan.');
+      return sendError(res, 400, 'MEDIA_TYPE_NOT_ALLOWED', 'Hanya gambar, video, audio, dan dokumen yang diizinkan.');
     }
 
     return next(err);

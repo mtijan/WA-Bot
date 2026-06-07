@@ -52,14 +52,14 @@ class CampaignService {
     console.log(`[Campaign Worker] Polling aktif setiap ${safeInterval}ms.`);
   }
 
-  async createCampaign(sessionId, message, targets, delayMin = 3000, delayMax = 8000, name = '') {
+  async createCampaign(sessionId, message, targets, delayMin = 3000, delayMax = 8000, name = '', attachmentUrl = null, attachmentType = null, attachmentName = null) {
     // Pastikan nomor target unik untuk menghindari pengiriman dobel
     const uniqueTargets = [...new Set(targets.map(num => num.trim()).filter(Boolean))];
 
     // Buat kampanye utama
     const campaignResult = await dbRun(
-      'INSERT INTO campaigns (session_id, name, message, status) VALUES (?, ?, ?, ?)',
-      [sessionId, name || null, message, 'PENDING']
+      'INSERT INTO campaigns (session_id, name, message, status, attachment_url, attachment_type, attachment_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [sessionId, name || null, message, 'PENDING', attachmentUrl, attachmentType, attachmentName]
     );
     const campaignId = campaignResult.id;
 
@@ -164,7 +164,18 @@ class CampaignService {
           .replace(/\[nama\]/gi, displayName);
 
         try {
-          await whatsappService.sendMessage(campaign.session_id, log.target_number, personalizedMessage);
+          if (campaign.attachment_url) {
+            const payload = {
+              messageType: 'media',
+              text: personalizedMessage,
+              attachmentUrl: campaign.attachment_url,
+              attachmentType: campaign.attachment_type,
+              attachmentName: campaign.attachment_name
+            };
+            await whatsappService.sendSingleMessage(campaign.session_id, log.target_number, payload);
+          } else {
+            await whatsappService.sendMessage(campaign.session_id, log.target_number, personalizedMessage);
+          }
           
           // Sukses kirim
           await dbRun('UPDATE delivery_logs SET status = ? WHERE id = ?', ['SENT', log.id]);
@@ -217,6 +228,9 @@ class CampaignService {
       name: campaign.name,
       session_id: campaign.session_id,
       campaign_status: campaign.status,
+      attachment_url: campaign.attachment_url,
+      attachment_type: campaign.attachment_type,
+      attachment_name: campaign.attachment_name,
       metrics,
       logs
     };

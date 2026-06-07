@@ -14,6 +14,7 @@ import {
   FileText
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
+import MediaUploadField from './MediaUploadField';
 
 const BulkCampaign = () => {
   // Campaign list and search state
@@ -46,6 +47,11 @@ const BulkCampaign = () => {
   const [delayMax, setDelayMax] = useState(9);
   const [maxRetries, setMaxRetries] = useState(3);
   const [computedTargets, setComputedTargets] = useState([]);
+
+  // Campaign Media/Attachment State
+  const [attachmentUrl, setAttachmentUrl] = useState('');
+  const [attachmentType, setAttachmentType] = useState('Image');
+  const [attachmentName, setAttachmentName] = useState('');
 
   // Template Modal
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
@@ -285,7 +291,10 @@ const BulkCampaign = () => {
           message: messageContent,
           targets: computedTargets,
           delay_ms_min: delayMin * 1000,
-          delay_ms_max: delayMax * 1000
+          delay_ms_max: delayMax * 1000,
+          attachment_url: attachmentUrl || null,
+          attachment_type: attachmentType || null,
+          attachment_name: attachmentType === 'Document' ? (attachmentName || null) : null
         })
       });
       if (json.status === 'success' || json.status === 'queued') {
@@ -317,6 +326,9 @@ const BulkCampaign = () => {
     setPastedNumbers('');
     setDelayMin(3);
     setDelayMax(9);
+    setAttachmentUrl('');
+    setAttachmentType('Image');
+    setAttachmentName('');
   };
 
   const handleSessionToggle = (sessionId) => {
@@ -777,19 +789,56 @@ const BulkCampaign = () => {
                 </div>
 
                 {/* Attachment settings */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '14px', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.01)' }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.825rem', color: 'var(--text-main)' }}>Attachment Settings (Optional)</div>
+                  
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Attachment Type</label>
-                    <select className="form-control">
-                      <option>Image</option>
-                      <option>Document</option>
-                      <option>Video</option>
-                      <option>Audio</option>
-                    </select>
+                    <label className="form-label">Attachment URL</label>
+                    <input 
+                      type="text" 
+                      className="form-control"
+                      placeholder="Enter direct URL or upload media file"
+                      value={attachmentUrl}
+                      onChange={(e) => setAttachmentUrl(e.target.value)}
+                    />
+                    {(attachmentType === 'Image' || attachmentType === 'Video' || attachmentType === 'Audio' || attachmentType === 'Document') && (
+                      <MediaUploadField
+                        mediaType={attachmentType}
+                        onUploaded={(media) => {
+                          setAttachmentUrl(media.url);
+                          if (attachmentType === 'Document' && media.file_name && !attachmentName) {
+                            setAttachmentName(media.file_name);
+                          }
+                        }}
+                      />
+                    )}
                   </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Select File (Optional)</label>
-                    <input type="file" style={{ fontSize: '0.8rem', padding: '8px 4px' }} />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Attachment Type</label>
+                      <select 
+                        className="form-control"
+                        value={attachmentType}
+                        onChange={(e) => setAttachmentType(e.target.value)}
+                      >
+                        <option value="Image">Image</option>
+                        <option value="Document">Document</option>
+                        <option value="Video">Video</option>
+                        <option value="Audio">Audio</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Filename (For Document)</label>
+                      <input 
+                        type="text" 
+                        className="form-control"
+                        placeholder="e.g. Catalog.pdf"
+                        value={attachmentName}
+                        disabled={attachmentType !== 'Document'}
+                        onChange={(e) => setAttachmentName(e.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -985,9 +1034,9 @@ const BulkCampaign = () => {
           right: 0,
           width: '420px',
           height: '100vh',
-          backgroundColor: 'rgba(20,21,23,0.96)', // Ultra dark glass
+          backgroundColor: 'var(--bg-card)', // Match main UI light theme background
           borderLeft: '1px solid var(--border-color)',
-          boxShadow: '-10px 0 40px rgba(0,0,0,0.5)',
+          boxShadow: '-10px 0 40px rgba(0,0,0,0.08)',
           zIndex: 1050,
           display: 'flex',
           flexDirection: 'column',
@@ -1024,7 +1073,7 @@ const BulkCampaign = () => {
           </div>
 
           {/* Metadata Sleek Box */}
-          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px' }}>
+          <div style={{ background: 'var(--bg-main)', border: '1px solid var(--border-color)', padding: '12px 16px', borderRadius: '8px', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
               <span style={{ color: 'var(--text-muted)' }}>Nama Kampanye:</span>
               <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{drawerProgress.name || `Campaign #${drawerProgress.campaign_id}`}</span>
@@ -1082,13 +1131,13 @@ const BulkCampaign = () => {
 
           {/* Dynamic Scrollable logs */}
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', minHeight: 0 }}>
-            <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-light)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Delivery Logs</h4>
+            <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Delivery Logs</h4>
             <div style={{ 
               flex: 1, 
               overflowY: 'auto', 
               border: '1px solid var(--border-color)', 
               borderRadius: '8px', 
-              backgroundColor: 'rgba(0,0,0,0.1)',
+              backgroundColor: 'var(--bg-main)',
               padding: '12px'
             }}>
               {(!drawerProgress.logs || drawerProgress.logs.length === 0) ? (
@@ -1106,8 +1155,8 @@ const BulkCampaign = () => {
                         style={{ 
                           padding: '8px 10px', 
                           borderRadius: '6px', 
-                          backgroundColor: 'rgba(255,255,255,0.01)',
-                          border: '1px solid rgba(255,255,255,0.02)',
+                          backgroundColor: 'var(--bg-card)',
+                          border: '1px solid var(--border-color)',
                           display: 'flex',
                           flexDirection: 'column',
                           gap: '4px'

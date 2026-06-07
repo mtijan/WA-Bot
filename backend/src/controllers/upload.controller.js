@@ -10,7 +10,7 @@ export const uploadMedia = async (req, res) => {
   const spec = getMediaSpec(file.mimetype);
   if (!spec) {
     deleteFileIfExists(file.path);
-    return sendError(res, 400, 'MEDIA_TYPE_NOT_ALLOWED', 'Hanya gambar dan video yang diizinkan.');
+    return sendError(res, 400, 'MEDIA_TYPE_NOT_ALLOWED', 'Hanya gambar, video, audio, dan dokumen yang diizinkan.');
   }
 
   if (file.size > spec.maxBytes) {
