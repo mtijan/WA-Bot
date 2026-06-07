@@ -80,13 +80,14 @@ export const getMonitoringStatus = async (req, res) => {
     }
 
     // --- Chatbot Flows ---
+    // Kolom status berisi nilai 'active' / lainnya (bukan is_active boolean)
     const chatbotStats = await dbGet(
       `SELECT
         COUNT(*) as total,
-        SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
-        SUM(trigger_count) as total_triggers,
-        SUM(sent_count) as total_sent,
-        SUM(failed_count) as total_failed
+        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+        COALESCE(SUM(trigger_count), 0) as total_triggers,
+        COALESCE(SUM(sent_count), 0) as total_sent,
+        COALESCE(SUM(failed_count), 0) as total_failed
        FROM chatbot_flows`
     );
 
