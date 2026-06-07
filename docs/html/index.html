@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Dokumentasi teknis lengkap proyek WA-Bot Pro - WhatsApp Multi-Account & Bulk Messaging System. Berisi SDLC, arsitektur sistem, API reference, database schema, dan strategi pengujian.">
+  <title>WA-Bot Pro - Pusat Dokumentasi Teknis</title>
+  <link rel="stylesheet" href="shared-styles.css">
+  <link rel="icon" type="image/png" href="../images/media__1780078071701.png">
+  <style>
+    /* Custom helper styles unique to index.html dashboard grid and hero layout */
+    .hero {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 5rem 2rem 3rem;
+    }
+
+    .hero__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      padding: 0.4rem 1rem;
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--color-text-accent);
+      margin-bottom: 1.5rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .hero__badge::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: var(--accent-emerald);
+      border-radius: 50%;
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .hero h1 {
+      font-size: clamp(2.5rem, 5vw, 3.5rem);
+      font-weight: 800;
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+      line-height: 1.15;
+    }
+
+    .hero__subtitle {
+      font-size: 1.15rem;
+      color: var(--text-secondary);
+      max-width: 680px;
+      margin: 0 auto 2rem;
+      line-height: 1.7;
+    }
+
+    .hero__meta {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .hero__meta-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .hero__meta-item svg {
+      width: 16px;
+      height: 16px;
+      opacity: 0.6;
+    }
+
+    /* Container for index page */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem 4rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Section Title */
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 2rem;
+      padding-left: 1rem;
+      border-left: 3px solid var(--accent-indigo);
+    }
+
+    /* Card Grid */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 4rem;
+    }
+
+    /* Document Card */
+    .doc-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-lg);
+      padding: 2rem;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .doc-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--gradient-primary);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .doc-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-hover);
+      transform: translateY(-4px);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px var(--glow-blue);
+    }
+
+    .doc-card:hover::before { opacity: 1; }
+
+    .doc-card__icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.25rem;
+      font-size: 1.5rem;
+    }
+
+    .doc-card__icon--blue { background: rgba(59, 130, 246, 0.12); color: var(--color-title); }
+    .doc-card__icon--violet { background: rgba(139, 92, 246, 0.12); color: #a78bfa; }
+    .doc-card__icon--emerald { background: rgba(16, 185, 129, 0.12); color: #34d399; }
+    .doc-card__icon--amber { background: rgba(245, 158, 11, 0.12); color: #fbbf24; }
+    .doc-card__icon--rose { background: rgba(244, 63, 94, 0.12); color: #fb7185; }
+    .doc-card__icon--cyan { background: rgba(6, 182, 212, 0.12); color: #22d3ee; }
+
+    .doc-card__title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+    }
+
+    .doc-card__desc {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      flex: 1;
+    }
+
+    .doc-card__tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1.25rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border-glass);
+    }
+
+    .doc-card__tag {
+      font-size: 0.72rem;
+      padding: 0.25rem 0.65rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-glass);
+      border-radius: 100px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .doc-card__arrow {
+      position: absolute;
+      top: 2rem;
+      right: 2rem;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.04);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      color: var(--text-muted);
+    }
+
+    .doc-card:hover .doc-card__arrow {
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--color-text-accent);
+      transform: translateX(3px);
+    }
+
+    /* Stats Bar */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 3rem;
+    }
+
+    .stat-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-md);
+      padding: 1.25rem 1.5rem;
+      text-align: center;
+    }
+
+    .stat-item__value {
+      font-size: 2rem;
+      font-weight: 800;
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .stat-item__label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Quick Links Footer */
+    .quick-links {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-lg);
+      padding: 2rem;
+      margin-top: 2rem;
+    }
+
+    .quick-links h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .quick-links__list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .quick-links__item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: all 0.2s ease;
+    }
+
+    .quick-links__item:hover {
+      border-color: var(--accent-indigo);
+      color: var(--color-text-accent);
+      background: rgba(99, 102, 241, 0.08);
+    }
+
+    /* Footer styling */
+    footer {
+      text-align: center;
+      padding: 3rem 2rem;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border-glass);
+      margin-top: 2rem;
+    }
+
+    footer a {
+      color: var(--accent-blue);
+      text-decoration: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero { padding: 3rem 1rem 2rem; }
+      .container { padding: 0 1rem 3rem; }
+      .card-grid { grid-template-columns: 1fr; }
+      .hero__meta { gap: 1rem; }
+      .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" aria-label="Toggle Theme">
+    <svg class="icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+    <svg class="icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+  </button>
+  
+  <!-- Skip-to-content Link for screen readers (a11y) -->
+  <a href="#main-content" class="skip-link">Lompat ke konten utama</a>
+
+  <!-- Ambient Background -->
+  <div class="bg-orb bg-orb--blue"></div>
+  <div class="bg-orb bg-orb--violet"></div>
+  <div class="bg-orb bg-orb--emerald"></div>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero__badge">Dokumentasi Resmi v2.8.4</div>
+    <h1>WA-Bot Pro Documentation</h1>
+    <p class="hero__subtitle">
+      Pusat dokumentasi teknis lengkap untuk WhatsApp Multi-Account & Bulk Messaging System.
+      Mencakup siklus hidup pengembangan perangkat lunak (SDLC), arsitektur sistem, referensi API,
+      skema database, dan strategi pengujian sesuai standar IEEE.
+    </p>
+    <div class="hero__meta">
+      <div class="hero__meta-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Terakhir diperbarui: 7 Juni 2026
+      </div>
+      <div class="hero__meta-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Standar: ISO/IEC/IEEE 29148, IEEE 1016, ISO/IEC/IEEE 29119
+      </div>
+      <div class="hero__meta-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        Lisensi: Private / Internal
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <main id="main-content" class="container">
+
+    <!-- Stats -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-item__value">22</div>
+        <div class="stat-item__label">Functional Requirements</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-item__value">10+</div>
+        <div class="stat-item__label">Diagram UML / Mermaid</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-item__value">16</div>
+        <div class="stat-item__label">Tabel Data Dictionary</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-item__value">54</div>
+        <div class="stat-item__label">Test Cases Passed</div>
+      </div>
+    </div>
+
+    <!-- Document Revision History -->
+    <h2 class="section-title">Riwayat Revisi Dokumen</h2>
+    <div class="content-card" style="padding: 1.5rem; margin-bottom: 3rem;">
+      <div class="doc-table-caption">Tabel i -- Catatan Perubahan & Versi Dokumentasi Resmi WA-Bot Pro</div>
+      <div class="doc-table-wrapper" style="margin: 0;">
+        <table class="doc-table">
+          <thead>
+            <tr>
+              <th>Versi</th>
+              <th>Tanggal</th>
+              <th>Penulis</th>
+              <th>Deskripsi Perubahan</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>v1.0.0</code></td>
+              <td>20 Mei 2026</td>
+              <td>Tim Pengembang WA-Bot</td>
+              <td>Rilis inisiasi: dokumentasi modul dasar (Session Management, REST API, & DFD dasar).</td>
+            </tr>
+            <tr>
+              <td><code>v2.0.0</code></td>
+              <td>28 Mei 2026</td>
+              <td>Tim QA & Technical Writer</td>
+              <td>Pembaruan besar: Integrasi Chatbot Flows, Auto-Reply, Manajemen Kontak, dan skema data dictionary SQLite.</td>
+            </tr>
+            <tr>
+              <td><code>v2.1.0</code></td>
+              <td>1 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Rilis pemolesan: Penyelarasan RTM, API Reference, visualisasi 16 tabel database, 23 catatan test case, hardening backend, suppression list opt-out, a11y, dan print styles.</td>
+            </tr>
+            <tr>
+              <td><code>v2.2.0</code></td>
+              <td>4 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Roadmap production-hardening menuju VPS: admin authentication, pemisahan worker, migrasi DB versi, backup terenkripsi, monitoring VPS dengan Telegram alert evidence, dan deploy readiness checklist.</td>
+            </tr>
+            <tr>
+              <td><code>v2.3.0</code></td>
+              <td>4 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Pembaruan SDLC dan source diagram: admin auth cookie, logout menu sidebar, opt-out suppression flow, dan deployment topology VPS.</td>
+            </tr>
+            <tr>
+              <td><code>v2.4.0</code></td>
+              <td>4 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Deploy automation template dan security hardening baseline: reverse proxy <code>/api</code>, PM2/systemd, Nginx/Caddy, security headers, request-size policy, ACL template, dan dependency audit evidence.</td>
+            </tr>
+            <tr>
+              <td><code>v2.5.0</code></td>
+              <td>4 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Codebase quality baseline: central config, structured logger, response helper, frontend API client, dan dokumen migrasi per modul.</td>
+            </tr>
+            <tr>
+              <td><code>v2.6.0</code></td>
+              <td>5 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Staging VPS baseline verified: Caddy HTTP/IP, systemd API/worker, frontend build, API/worker readiness evidence, dan status production hardening pending.</td>
+            </tr>
+            <tr>
+              <td><code>v2.6.1</code></td>
+              <td>5 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Evidence terbaru: UFW aktif, backup/restore timers, local healthcheck timer, logrotate, HTTP smoke, auth-controller response helper migration, dan dashboard API-client migration.</td>
+            </tr>
+            <tr>
+              <td><code>v2.7.0</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Pembaruan stabilitas: penonaktifan loop auto-repair WhatsApp session yang merusak kredensial, penyaringan global verbose log noise libsignal, dan penyelesaian media upload.</td>
+            </tr>
+            <tr>
+              <td><code>v2.7.1</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Anti-regresi staging deploy: frontend production build guard menolak bundle yang memanggil direct private backend <code>:3001/api</code>; staging/production wajib memakai <code>VITE_API_URL=/api</code> atau unset.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.0</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Peningkatan Keandalan & Keamanan: Pemangkas log/file otomatis (pruner) untuk database, warmer_logs, file ekspor, dan backup folder beserta 54 test cases asinkron. CSP tuned dan rate limiter evaluated.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.1</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Smoke test otomatis: Penambahan skrip <code>deploy_smoke_test.js</code> untuk memvalidasi frontend, public API, dan internal API pasca-deploy.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.2</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Chatbot Flow large-data update: import limit 60 MB, import/export progress UI, lightweight list/detail/settings endpoints, dan metrik Triggered/Sent/Failed berbasis migrasi <code>006_chatbot_flow_delivery_metrics</code>.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.4</code></td>
+              <td>7 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Browser feature smoke staging PASS untuk process architecture, Chatbot Flow export validation/progress, layout metrik Chatbot Flow, dan evidence full export besar sekitar 49 MB.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Documentation Cards -->
+    <h2 class="section-title">Dokumentasi Proyek</h2>
+    <div class="card-grid">
+
+      <!-- Card 1: SDLC Overview -->
+      <a href="sdlc.html" class="doc-card" id="card-sdlc">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        </div>
+        <h3 class="doc-card__title">SDLC & Perencanaan</h3>
+        <p class="doc-card__desc">Project Charter, penilaian risiko, requirement analysis (SRS), RTM, dan roadmap production-hardening menuju deploy VPS.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">ISO 29148</span>
+          <span class="doc-card__tag">SRS</span>
+          <span class="doc-card__tag">RTM</span>
+          <span class="doc-card__tag">Risk Matrix</span>
+          <span class="doc-card__tag">VPS Roadmap</span>
+        </div>
+      </a>
+
+      <!-- Card 2: Architecture -->
+      <a href="architecture.html" class="doc-card" id="card-architecture">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--violet">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </div>
+        <h3 class="doc-card__title">Arsitektur & Diagram</h3>
+        <p class="doc-card__desc">Data Flow Diagram (DFD Level 0 & 1), Component Diagram UML, Sequence Diagram, Activity Diagram, Flowchart, dan Class Diagram.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">IEEE 1016</span>
+          <span class="doc-card__tag">DFD</span>
+          <span class="doc-card__tag">UML</span>
+          <span class="doc-card__tag">Mermaid</span>
+        </div>
+      </a>
+
+      <!-- Card 3: Database -->
+      <a href="database.html" class="doc-card" id="card-database">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--emerald">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4.03 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg>
+        </div>
+        <h3 class="doc-card__title">Database & ERD</h3>
+        <p class="doc-card__desc">Entity Relationship Diagram (ERD), Data Dictionary fisik seluruh tabel SQLite3, dan skema relasi antar-entitas secara lengkap.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">SQLite3</span>
+          <span class="doc-card__tag">ERD</span>
+          <span class="doc-card__tag">16 Tabel</span>
+          <span class="doc-card__tag">Data Dictionary</span>
+        </div>
+      </a>
+
+      <!-- Card 4: API Reference -->
+      <a href="api-reference.html" class="doc-card" id="card-api">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--amber">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        </div>
+        <h3 class="doc-card__title">API Reference</h3>
+        <p class="doc-card__desc">Spesifikasi RESTful API lengkap meliputi endpoint sesi, kampanye, chatbot flows, auto-reply, warmer, group grabber, dan proxy.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">REST API</span>
+          <span class="doc-card__tag">JSON</span>
+          <span class="doc-card__tag">Express.js</span>
+          <span class="doc-card__tag">7 Modul</span>
+        </div>
+      </a>
+
+      <!-- Card 5: Testing -->
+      <a href="testing.html" class="doc-card" id="card-testing">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--rose">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <h3 class="doc-card__title">Testing & QA</h3>
+        <p class="doc-card__desc">Strategi pengujian sesuai ISO/IEC/IEEE 29119, daftar test case, hasil yang diharapkan, dan batasan cakupan QA otomatis.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">ISO 29119</span>
+          <span class="doc-card__tag">23 Test Cases</span>
+          <span class="doc-card__tag">All Passed</span>
+        </div>
+      </a>
+
+      <!-- Card 6: Deployment -->
+      <a href="deployment.html" class="doc-card" id="card-deployment">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--cyan">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </div>
+        <h3 class="doc-card__title">Deployment &amp; DevOps</h3>
+        <p class="doc-card__desc">Panduan deployment, kebutuhan infrastruktur, Git Flow, coding guidelines, skrip peluncur otomatis, rencana pemeliharaan, dan guard frontend agar build publik memakai <code>/api</code>.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">DevOps</span>
+          <span class="doc-card__tag">run.bat / run.sh</span>
+          <span class="doc-card__tag">PM2</span>
+          <span class="doc-card__tag">Git Flow</span>
+        </div>
+      </a>
+
+      <!-- Card 7: Monitoring -->
+      <a href="monitoring.html" class="doc-card" id="card-monitoring">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--emerald">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <h3 class="doc-card__title">Monitoring &amp; Alert</h3>
+        <p class="doc-card__desc">Target monitoring endpoint, Uptime Kuma setup, Telegram alert baseline, resource thresholds, health queries SQLite, dan evidence staging.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">Health Check</span>
+          <span class="doc-card__tag">Telegram Alert</span>
+          <span class="doc-card__tag">Resource Threshold</span>
+        </div>
+      </a>
+
+      <!-- Card 8: Security -->
+      <a href="security.html" class="doc-card" id="card-security">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--rose">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+        </div>
+        <h3 class="doc-card__title">Security Baseline</h3>
+        <p class="doc-card__desc">Kontrol keamanan aktif, backend hardening, production gaps, minimum checklist, messaging policy, dan incident response.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">CORS</span>
+          <span class="doc-card__tag">CSP</span>
+          <span class="doc-card__tag">Auth</span>
+          <span class="doc-card__tag">Encryption</span>
+        </div>
+      </a>
+
+      <!-- Card 9: Interface Showcase -->
+      <a href="showcase.html" class="doc-card" id="card-showcase">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--violet">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <h3 class="doc-card__title">Galeri Antarmuka</h3>
+        <p class="doc-card__desc">Tangkapan layar (screenshots) interaktif dari aplikasi WA-Bot Pro, menampilkan dashboard, chatbot flow builder, dan metrik.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">Showcase</span>
+          <span class="doc-card__tag">UI/UX</span>
+          <span class="doc-card__tag">Screenshots</span>
+          <span class="doc-card__tag">Flow Builder</span>
+        </div>
+      </a>
+
+    </div>
+
+    <!-- Quick Links -->
+    <div class="quick-links">
+      <h3>Tautan Cepat</h3>
+      <div class="quick-links__list">
+        <a href="../images/2_3_use_case_diagram_requirement_interaction.png" class="quick-links__item" target="_blank">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          Use Case Diagram
+        </a>
+        <a href="../images/3_1_dfd_level_0_context_diagram.png" class="quick-links__item" target="_blank">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          DFD Level 0
+        </a>
+        <a href="../images/3_4_entity_relationship_diagram_erd_data_dictionary.png" class="quick-links__item" target="_blank">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          ERD Diagram
+        </a>
+        <a href="../images/3_8_flowchart_alur_logika_program_utama.png" class="quick-links__item" target="_blank">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          Flowchart
+        </a>
+        <a href="../../checklist.html" class="quick-links__item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Checklist Verifikasi
+        </a>
+        <a href="../../sdlc_documentation.md" class="quick-links__item" target="_blank">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Raw Markdown (SDLC)
+        </a>
+        <a href="security.html" class="quick-links__item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>
+          Security Baseline (HTML)
+        </a>
+        <a href="monitoring.html" class="quick-links__item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Monitoring &amp; Alert (HTML)
+        </a>
+        <a href="showcase.html" class="quick-links__item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          Galeri Antarmuka (HTML)
+        </a>
+        <a href="../SECURITY.md" class="quick-links__item" target="_blank">
+          Security Baseline (MD)
+        </a>
+        <a href="../RUNBOOK.md" class="quick-links__item" target="_blank">
+          Operations Runbook
+        </a>
+        <a href="../openapi.yaml" class="quick-links__item" target="_blank">
+          OpenAPI YAML
+        </a>
+        <a href="../PRIVACY.md" class="quick-links__item" target="_blank">
+          Privacy Baseline
+        </a>
+        <a href="../CHANGELOG.md" class="quick-links__item" target="_blank">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Changelog
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <p>WA-Bot Pro Documentation &mdash; Generated from <code>sdlc_documentation.md</code> v2.8.4</p>
+    <p style="margin-top: 0.5rem;">IP address data powered by <a href="https://iplocate.io" target="_blank" rel="noopener">IPLocate.io</a></p>
+  </footer>
+
+  <script>
+    const toggleBtn = document.querySelector('.theme-toggle');
+    const root = document.documentElement;
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) root.setAttribute('data-theme', savedTheme);
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        const currentTheme = root.getAttribute('data-theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        root.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+      });
+    }
+  </script>
+  <script src="shared-script.js"></script>
+</body>
+</html>

@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Smartphone, 
-  MessageSquare, 
-  FileText, 
-  Users, 
-  Send, 
-  Flame, 
-  UserMinus, 
-  Bot, 
+import {
+  LayoutDashboard,
+  Smartphone,
+  MessageSquare,
+  FileText,
+  Users,
+  Send,
+  Flame,
+  UserMinus,
+  Bot,
   Network,
   Layers,
   LogOut,
@@ -44,9 +44,9 @@ const Sidebar = ({ authState, onLogout }) => {
       height: '100vh'
     }}>
       <div style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div style={{ 
-          width: '32px', 
-          height: '32px', 
+        <div style={{
+          width: '32px',
+          height: '32px',
           background: 'linear-gradient(135deg, var(--primary-color), var(--secondary-color))',
           borderRadius: '8px',
           display: 'flex',
@@ -86,7 +86,7 @@ const Sidebar = ({ authState, onLogout }) => {
           ))}
         </ul>
       </nav>
-      
+
       <div style={{ padding: '18px 16px 24px', borderTop: '1px solid var(--border-color)', position: 'relative' }}>
         {profileMenuOpen && authState?.enabled && (
           <div style={{

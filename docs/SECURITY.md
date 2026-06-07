@@ -25,7 +25,7 @@ This document separates implemented controls from production requirements. It is
 | Upload extension spoofing | Whitelisted MIME-type mapping forces server-side file extension generation (Stored XSS mitigation). | `backend/src/services/upload.service.js` |
 | Timing attacks mitigation | Secure timing-safe comparisons (`crypto.timingSafeEqual`) are enforced for all token and admin credentials. | `backend/src/middleware/` |
 | WhatsApp session state integrity | Disconnected sessions are correctly marked as `DISCONNECTED` in SQLite upon socket close events. | `backend/src/services/whatsapp.service.js` |
-| Session manual repair | Admin can manually clear Signal crypt-key cache without wiping credentials, resolving history sync decrypt bugs. | `backend/src/services/whatsapp.service.js`, `frontend/src/components/SessionManager.jsx` |
+| Session manual repair | Admin can manually clear Signal crypt-key cache without wiping credentials, resolving history sync decrypt bugs. | [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js), [SessionManager.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/SessionManager.jsx), [Tangkapan Layar UI](file:///d:/Self%20Project/WA-Bot/docs/images/media__1780840141270.png) |
 
 ## 3. Known Production Gaps
 

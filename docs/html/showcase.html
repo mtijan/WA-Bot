@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description"
+    content="Galeri tangkapan layar (screenshots) antarmuka aplikasi WA-Bot Pro, menampilkan dashboard, chatbot flow builder, dan metrik.">
+  <title>Galeri Antarmuka - WA-Bot Pro Docs</title>
+  <link rel="stylesheet" href="shared-styles.css">
+  <link rel="icon" type="image/png" href="../images/media__1780078071701.png">
+  <style>
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 2rem;
+      margin: 1.5rem 0;
+    }
+
+    @media (min-width: 900px) {
+      .gallery-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .gallery-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      transition: all 0.3s ease;
+    }
+
+    .gallery-item:hover {
+      border-color: var(--border-hover);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .gallery-item img {
+      width: 100%;
+      height: auto;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      transition: transform 0.3s ease;
+    }
+
+    .gallery-item__title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .gallery-item__desc {
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+  </style>
+</head>
+
+<body>
+  <a href="#main-content" class="skip-link">Lompat ke konten utama</a>
+
+  <div class="bg-orb bg-orb--blue"></div>
+  <div class="bg-orb bg-orb--violet"></div>
+
+  <header class="page-header">
+    <nav class="page-header__nav">
+      <a href="index.html" class="page-header__back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+        Kembali
+      </a>
+      <span class="page-header__breadcrumb"><a href="index.html">Docs</a> / Galeri Antarmuka</span>
+      <button class="theme-toggle" aria-label="Toggle Theme">
+        <svg class="icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+        <svg class="icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+      </button>
+    </nav>
+    <h1>Galeri Antarmuka</h1>
+    <p class="page-header__desc">Tangkapan layar antarmuka sistem WA-Bot Pro dari lingkungan produksi dan staging.</p>
+  </header>
+
+  <main id="main-content" class="container" style="max-width: 1200px; margin: 0 auto; padding: 0 2rem 4rem;">
+
+    <div class="gallery-grid">
+
+      <!-- Item 1: Real-time Dashboard -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/dashboard.png" target="_blank">
+          <img src="../images/screenshots/dashboard.png"
+            alt="Real-time Dashboard: Dashboard utama sistem WA-Bot Pro menampilkan data statistik waktu nyata."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Dashboard Utama (Real-time)</div>
+        <div class="gallery-item__desc">
+          Dasbor utama sistem yang menyajikan informasi statistik ringkas mengenai jumlah sesi terhubung, total kampanye aktif, pesan terkirim, serta status pemakaian memori dan kesehatan server secara *real-time*.
+        </div>
+      </div>
+
+      <!-- Item 2: Devices & Session Manager -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/devices.png" target="_blank">
+          <img src="../images/screenshots/devices.png"
+            alt="Devices & Sesi: Manajemen multi-device WhatsApp dengan kontrol scan QR, status, dan opsi manual Repair."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Devices &amp; Session Management</div>
+        <div class="gallery-item__desc">
+          Manajer multi-sesi untuk memindai QR code, memantau status koneksi WhatsApp secara *real-time*, menetapkan proxy khusus pada setiap akun, dan melakukan perbaikan sesi (*manual repair*) jika terjadi kendala dekripsi Signal.
+        </div>
+      </div>
+
+      <!-- Item 3: Chatbot Flow Builder -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/chatbot_flows.png" target="_blank">
+          <img src="../images/screenshots/chatbot_flows.png"
+            alt="Chatbot Flows: Panel visual daftar alur chatbot otomatis dilengkapi indikator node-count dan metrik pengiriman."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Chatbot Flow Builder &amp; Delivery Metrics</div>
+        <div class="gallery-item__desc">
+          Manajemen alur percakapan berbasis node-editor interaktif. Dilengkapi pelacakan metrik pengiriman detail per alur (Triggered, Sent, Failed) untuk mengukur kinerja respons pesan otomatis asinkron.
+        </div>
+      </div>
+
+      <!-- Item 4: Chatbot AI Settings -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/chatbot_ai.png" target="_blank">
+          <img src="../images/screenshots/chatbot_ai.png"
+            alt="Chatbot AI Settings: Pengaturan model kecerdasan buatan, masking kunci API, prompt kustom, dan pembatasan chat personal."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Chatbot AI Settings</div>
+        <div class="gallery-item__desc">
+          Pengaturan integrasi LLM (ChatGPT/OpenAI) untuk respon percakapan otomatis cerdas. Menyediakan visual masking kunci API, konfigurasi sistem prompt kustom, pemilihan mode chatbot (Flow/AI/Keduanya), serta pembatasan otomatis hanya untuk chat personal (menghindari grup).
+        </div>
+      </div>
+
+      <!-- Item 5: Single Message Composer -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/single_message.png" target="_blank">
+          <img src="../images/screenshots/single_message.png"
+            alt="Single Message Composer: Antarmuka pengiriman pesan tunggal cepat dengan lampiran media."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Single Message Composer</div>
+        <div class="gallery-item__desc">
+          Komposer pesan instan untuk mengirimkan pesan WhatsApp ke nomor tujuan tunggal secara cepat. Mendukung pemilihan akun pengirim, pesan teks kaya format, serta unggah berkas media gambar maupun video.
+        </div>
+      </div>
+
+      <!-- Item 6: Message Templates -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/templates.png" target="_blank">
+          <img src="../images/screenshots/templates.png"
+            alt="Templates: Manajemen draf template pesan WhatsApp yang dinamis dengan penampung variabel."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Message Templates</div>
+        <div class="gallery-item__desc">
+          Daftar manajemen template pesan dinamis. Membantu admin menyusun draf pesan tetap dengan penampung variabel (placeholder) yang akan digantikan data kontak secara otomatis saat pengiriman massal.
+        </div>
+      </div>
+
+      <!-- Item 7: Contacts & CSV Import-Export -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/contacts.png" target="_blank">
+          <img src="../images/screenshots/contacts.png"
+            alt="Contacts: Manajemen daftar kontak pelanggan dengan fitur import/export CSV."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Contacts &amp; CSV Import-Export</div>
+        <div class="gallery-item__desc">
+          Manajemen buku alamat kontak untuk mengelompokkan nomor tujuan berdasarkan daftar atau kampanye tertentu. Menyediakan fitur impor massal via file CSV dan ekspor data kontak aktif.
+        </div>
+      </div>
+
+      <!-- Item 8: Bulk Message Campaigns -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/bulk.png" target="_blank">
+          <img src="../images/screenshots/bulk.png"
+            alt="Bulk Campaigns: Penyusunan jadwal pengiriman kampanye pesan massal dengan pengaturan jeda pengiriman."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Bulk Messages Campaign</div>
+        <div class="gallery-item__desc">
+          Mesin pengirim pesan massal dengan opsi penyebaran sesi pengirim, penyesuaian jeda waktu dinamis (*delay seconds*) untuk menghindari pemblokiran nomor, dan penjadwalan kampanye.
+        </div>
+      </div>
+
+      <!-- Item 9: Account Warmer & Simulator -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/warmer.png" target="_blank">
+          <img src="../images/screenshots/warmer.png"
+            alt="Warmer: Mesin simulasi pemanasan nomor WhatsApp baru dengan timer start/stop otomatis."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Account Warmer &amp; Simulator</div>
+        <div class="gallery-item__desc">
+          Simulator interaksi pesan antar nomor terafiliasi secara asinkron. Fitur ini berfungsi untuk menaikkan reputasi nomor baru melalui pengiriman pesan terjadwal berkelanjutan dengan kontrol *timer* start/stop otomatis.
+        </div>
+      </div>
+
+      <!-- Item 10: Opt-Out & Suppression Management -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/opt_out.png" target="_blank">
+          <img src="../images/screenshots/opt_out.png"
+            alt="Opt-Out: Daftar hitam nomor telepon yang meminta berhenti berlangganan."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Opt-Out &amp; Suppression Management</div>
+        <div class="gallery-item__desc">
+          Daftar nomor telepon yang meminta dikecualikan dari kampanye massal (*opt-out*). Sistem akan menyaring kata kunci inbound seperti "STOP" atau "UNSUBSCRIBE" untuk memasukkan nomor ke daftar hitam secara otomatis.
+        </div>
+      </div>
+
+      <!-- Item 11: Group Participant Grabber -->
+      <div class="gallery-item">
+        <a href="../images/screenshots/group_grabber.png" target="_blank">
+          <img src="../images/screenshots/group_grabber.png"
+            alt="Group Grabber: Pengekstrak data anggota grup WhatsApp terpilih langsung ke file CSV."
+            loading="lazy">
+        </a>
+        <div class="gallery-item__title">Group Participant Grabber</div>
+        <div class="gallery-item__desc">
+          Pengekstrak peserta grup WhatsApp secara otomatis. Admin dapat memilih grup dari sesi mana pun yang terhubung, memuat daftar anggotanya, dan langsung mengekspor daftar nomor tersebut menjadi berkas CSV.
+        </div>
+      </div>
+
+      <!-- Item 12: High-Fidelity Dashboard Mockup -->
+      <div class="gallery-item">
+        <a href="../images/dashboard_ui_hifi_1780075490151.png" target="_blank">
+          <img src="../images/dashboard_ui_hifi_1780075490151.png"
+            alt="Visualisasi dasbor produksi bertema gelap premium dengan ornamen gradasi HSL neon." loading="lazy">
+        </a>
+        <div class="gallery-item__title">High-Fidelity Dashboard Mockup</div>
+        <div class="gallery-item__desc">
+          Desain rencana antarmuka dashboard utama bertema gelap premium yang menyajikan statistik akumulatif pengiriman pesan massal, grafik lalu lintas pengiriman, dan status server internal.
+        </div>
+      </div>
+
+      <!-- Item 13: High-Fidelity Bulk Composer Mockup -->
+      <div class="gallery-item">
+        <a href="../images/bulk_message_ui_hifi_1780075507599.png" target="_blank">
+          <img src="../images/bulk_message_ui_hifi_1780075507599.png"
+            alt="Antarmuka bulk composer dengan dukungan input template dinamis." loading="lazy">
+        </a>
+        <div class="gallery-item__title">High-Fidelity Bulk Composer Mockup</div>
+        <div class="gallery-item__desc">
+          Desain rencana antarmuka komposer pesan massal (*bulk message*) yang mendukung input template dinamis, pemilih berkas lampiran media, dan pemilihan multisesi pengirim secara bersamaan.
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <footer class="doc-footer">
+    <p>WA-Bot Pro Documentation v2.8.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+  </footer>
+
+  <script>
+    const toggleBtn = document.querySelector('.theme-toggle');
+    const root = document.documentElement;
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) root.setAttribute('data-theme', savedTheme);
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        const currentTheme = root.getAttribute('data-theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        root.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+      });
+    }
+  </script>
+  <script src="shared-script.js"></script>
+</body>
+
+</html>

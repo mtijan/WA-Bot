@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Panduan monitoring, alert, dan observabilitas sistem WA-Bot Pro. Mencakup target monitoring, Uptime Kuma, Telegram alert, threshold resource, health query SQLite, dan evidence staging.">
+  <title>Monitoring & Alert - WA-Bot Pro Docs</title>
+  <link rel="stylesheet" href="shared-styles.css">
+  <link rel="icon" type="image/png" href="../images/media__1780078071701.png">
+  <style>
+    .monitor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin: 1.25rem 0;
+    }
+
+    .monitor-card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+    }
+
+    .monitor-card__icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .monitor-card__icon--green { background: rgba(16,185,129,0.12); color: #34d399; }
+    .monitor-card__icon--blue { background: rgba(59,130,246,0.12); color: var(--color-title); }
+    .monitor-card__icon--amber { background: rgba(245,158,11,0.12); color: #fbbf24; }
+    .monitor-card__icon--red { background: rgba(244,63,94,0.12); color: #fb7185; }
+
+    .monitor-card__title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 0.3rem;
+    }
+
+    .monitor-card__desc {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .code-block {
+      background: rgba(13, 17, 23, 0.9);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      margin: 0.75rem 0;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.7;
+      color: #e5e7eb;
+      overflow-x: auto;
+    }
+
+    .evidence-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .evidence-badge--ok {
+      background: rgba(16,185,129,0.15);
+      color: #34d399;
+      border: 1px solid rgba(16,185,129,0.25);
+    }
+
+    .evidence-badge--pending {
+      background: rgba(245,158,11,0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245,158,11,0.25);
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Lompat ke konten utama</a>
+
+  <div class="bg-orb bg-orb--blue"></div>
+  <div class="bg-orb bg-orb--violet"></div>
+
+  <header class="page-header">
+    <nav class="page-header__nav">
+      <a href="index.html" class="page-header__back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Kembali
+      </a>
+      <span class="page-header__breadcrumb"><a href="index.html">Docs</a> / Monitoring &amp; Alert</span>
+      <button class="theme-toggle" aria-label="Toggle Theme">
+        <svg class="icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        <svg class="icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+      </button>
+    </nav>
+    <h1>Monitoring &amp; Alert</h1>
+    <p class="page-header__desc">Panduan monitoring endpoint, resource, backup, dan alert sistem WA-Bot Pro untuk menjamin ketersediaan layanan dan deteksi dini masalah operasional.</p>
+  </header>
+
+  <div class="doc-layout-grid">
+    <nav class="toc-sidebar" aria-label="Daftar Isi Halaman">
+      <div class="toc-sidebar__title">Daftar Isi</div>
+      <ul class="toc-sidebar__list" style="font-size: 0.8rem;">
+        <li class="toc-sidebar__item"><a href="#targets" class="toc-sidebar__link">Target Monitoring</a></li>
+        <li class="toc-sidebar__item"><a href="#uptime-kuma" class="toc-sidebar__link">Uptime Kuma Setup</a></li>
+        <li class="toc-sidebar__item"><a href="#telegram-alert" class="toc-sidebar__link">Telegram Alert Baseline</a></li>
+        <li class="toc-sidebar__item"><a href="#resource-thresholds" class="toc-sidebar__link">Resource Thresholds</a></li>
+        <li class="toc-sidebar__item"><a href="#process-monitoring" class="toc-sidebar__link">Process Monitoring</a></li>
+        <li class="toc-sidebar__item"><a href="#health-queries" class="toc-sidebar__link">Health Queries SQLite</a></li>
+        <li class="toc-sidebar__item"><a href="#alert-response" class="toc-sidebar__link">Alert Response Runbook</a></li>
+        <li class="toc-sidebar__item"><a href="#staging-evidence" class="toc-sidebar__link">Staging Evidence</a></li>
+      </ul>
+    </nav>
+
+    <main id="main-content" class="doc-layout-main">
+
+      <!-- ==================== TARGET MONITORING ==================== -->
+      <div class="content-card" id="targets">
+        <h3 class="content-card__title" style="font-size: 1.25rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
+          Target Monitoring
+          <a href="#targets" class="section-anchor">#</a>
+        </h3>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Daftar seluruh endpoint dan resource yang harus dipantau sebelum deploy publik. Setiap target memiliki URL/command, nilai yang diharapkan, dan kondisi alert.
+        </p>
+
+        <div class="doc-table-caption">Tabel Monitoring Targets</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead><tr><th>Target</th><th>URL / Command</th><th>Expected</th><th>Alert Jika</th></tr></thead>
+            <tbody>
+              <tr><td>API liveness</td><td><code>GET http://127.0.0.1:3001/health</code></td><td>HTTP <code>200</code></td><td>HTTP bukan <code>200</code> selama 2-3 menit</td></tr>
+              <tr><td>API readiness</td><td><code>GET http://127.0.0.1:3001/health/ready</code></td><td>JSON <code>status=ready</code></td><td>HTTP <code>503</code> atau <code>status!=ready</code></td></tr>
+              <tr><td>Session manager readiness</td><td><code>GET http://127.0.0.1:3002/internal/health/ready</code></td><td>JSON <code>status=ready</code></td><td>HTTP <code>503</code> atau proses tidak merespons</td></tr>
+              <tr><td>Combined worker readiness</td><td><code>GET http://127.0.0.1:3002/internal/health/ready</code></td><td>JSON <code>status=ready</code></td><td>Worker tidak merespons</td></tr>
+              <tr><td>Campaign worker readiness</td><td><code>GET http://127.0.0.1:3003/internal/health/ready</code></td><td>JSON <code>status=ready</code></td><td>Worker granular tidak merespons</td></tr>
+              <tr><td>Warmer worker readiness</td><td><code>GET http://127.0.0.1:3004/internal/health/ready</code></td><td>JSON <code>status=ready</code></td><td>Worker granular tidak merespons</td></tr>
+              <tr><td>Public frontend</td><td><code>https://&lt;domain&gt;/</code></td><td>HTTP <code>200</code></td><td>HTTP bukan <code>200</code></td></tr>
+              <tr><td>Public API via reverse proxy</td><td><code>https://&lt;domain&gt;/api/auth/me</code></td><td>HTTP <code>200</code></td><td>HTTP bukan <code>200</code> / reverse proxy rusak</td></tr>
+              <tr><td>Disk usage</td><td>OS monitor</td><td><code>&lt;80%</code></td><td><code>&gt;=80%</code> warning, <code>&gt;=90%</code> critical</td></tr>
+              <tr><td>RAM usage</td><td>OS monitor</td><td>Stabil</td><td>Sustained <code>&gt;=85%</code></td></tr>
+              <tr><td>CPU load</td><td>OS monitor</td><td>Stabil</td><td>Sustained high load selama 10 menit</td></tr>
+              <tr><td>Backup freshness</td><td>Backup directory timestamp</td><td>Recent backup exists</td><td>Tidak ada backup dalam jadwal</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ==================== UPTIME KUMA ==================== -->
+      <div class="content-card" id="uptime-kuma">
+        <h3 class="content-card__title" style="font-size: 1.25rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Uptime Kuma Setup
+          <a href="#uptime-kuma" class="section-anchor">#</a>
+        </h3>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Konfigurasi yang direkomendasikan untuk monitoring HTTP dengan Uptime Kuma sebagai dashboard status internal.
+        </p>
+
+        <div class="doc-table-caption">Recommended Uptime Kuma Monitors</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead><tr><th>Name</th><th>Type</th><th>URL</th><th>Interval</th><th>Retry</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td><code>wa-bot-api-live</code></td><td>HTTP(s)</td><td><code>http://127.0.0.1:3001/health</code></td><td>60s</td><td>3</td><td>Local/VPS internal monitor</td></tr>
+              <tr><td><code>wa-bot-api-ready</code></td><td>HTTP(s)</td><td><code>http://127.0.0.1:3001/health/ready</code></td><td>60s</td><td>3</td><td>Must return 200</td></tr>
+              <tr><td><code>wa-bot-session-ready</code></td><td>HTTP(s)</td><td><code>http://127.0.0.1:3002/internal/health/ready</code></td><td>60s</td><td>3</td><td>Use when session manager/combined worker is active</td></tr>
+              <tr><td><code>wa-bot-public-frontend</code></td><td>HTTP(s)</td><td><code>https://&lt;domain&gt;/</code></td><td>60s</td><td>3</td><td>Use staging IP only before domain exists</td></tr>
+              <tr><td><code>wa-bot-public-auth</code></td><td>HTTP(s)</td><td><code>https://&lt;domain&gt;/api/auth/me</code></td><td>60s</td><td>3</td><td>Confirms reverse proxy path</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="color:var(--text-secondary); margin-top:1rem; line-height:1.6;">
+          Saluran notifikasi:
+        </p>
+        <ul style="color:var(--text-secondary); padding-left:1.5rem; line-height:1.6; margin-top:0.5rem;">
+          <li>Telegram bot atau email untuk penanganan alert berbiaya rendah.</li>
+          <li>Gunakan akun operator terpisah dari akun admin aplikasi.</li>
+          <li>Eskalasi jika API dan worker keduanya mati selama lebih dari 5 menit.</li>
+        </ul>
+      </div>
+
+      <!-- ==================== TELEGRAM ALERT BASELINE ==================== -->
+      <div class="content-card" id="telegram-alert">
+        <h3 class="content-card__title" style="font-size: 1.25rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L2 22l10-4 10 4L22 2z"/></svg>
+          Telegram Alert Baseline
+          <a href="#telegram-alert" class="section-anchor">#</a>
+        </h3>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Repositori ini menyediakan script alert ringan untuk staging ketika monitoring stack penuh belum terinstal. Script ini memeriksa kesiapan API, worker, ketersediaan URL publik, penggunaan disk, dan kesegaran backup terenkripsi. Jika terjadi kegagalan, script akan mengirimkan notifikasi ke Telegram atau webhook eksternal.
+        </p>
+        <div class="code-block">
+cd /opt/wa-bot/backend
+npm run monitor:alert
+        </div>
+
+        <div class="doc-table-caption">Variabel Env yang Dibutuhkan</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead><tr><th>Variabel</th><th>Tujuan / Deskripsi</th></tr></thead>
+            <tbody>
+              <tr><td><code>WA_BOT_ALERT_TELEGRAM_BOT_TOKEN</code></td><td>Token bot Telegram. Harus dirahasiakan dan jangan dicommit.</td></tr>
+              <tr><td><code>WA_BOT_ALERT_TELEGRAM_CHAT_ID</code></td><td>ID Chat Telegram tujuan. Harus dirahasiakan dan jangan dicommit.</td></tr>
+              <tr><td><code>WA_BOT_ALERT_WEBHOOK_URL</code></td><td>Webhook eksternal opsional. Harus dirahasiakan dan jangan dicommit.</td></tr>
+              <tr><td><code>WA_BOT_ALERT_PUBLIC_URL</code></td><td>URL frontend publik opsional (contoh: <code>https://stagingwabot.web.id/</code>).</td></tr>
+              <tr><td><code>WA_BOT_ALERT_PUBLIC_HEALTH_URL</code></td><td>URL health publik opsional (contoh: <code>https://stagingwabot.web.id/health</code>).</td></tr>
+              <tr><td><code>WA_BOT_ALERT_BACKUP_MAX_AGE_HOURS</code></td><td>Batas usia backup sebelum dianggap stale. Default: <code>36</code>.</td></tr>
+              <tr><td><code>WA_BOT_ALERT_DISK_WARN_PERCENT</code></td><td>Batas peringatan penggunaan disk. Default: <code>80</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="color:var(--text-secondary); margin-top:1rem; line-height:1.6;">
+          Pasang script ini sebagai timer systemd menggunakan panduan di <code>docs/deploy/EXTERNAL_ALERTING.commands.md</code>.
+        </p>
+      </div>
+
+      <!-- ==================== RESOURCE THRESHOLDS ==================== -->
+      <div class="content-card" id="resource-thresholds">
+        <h3 class="content-card__title" style="font-size: 1.25rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+          Resource Thresholds (Netdata)
+          <a href="#resource-thresholds" class="section-anchor">#</a>
+        </h3>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Netdata dipasang secara native pada host (tanpa Docker) untuk memantau sumber daya sistem (CPU, RAM, Disk, dan Network IO). Dashboard Netdata diikat ke localhost (<code>127.0.0.1:19999</code>) demi keamanan, dan diakses dari komputer lokal menggunakan SSH Tunneling:
+        </p>
+        <div class="code-block">
+ssh -L 18181:127.0.0.1:19999 ubuntu@43.157.224.57
+        </div>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Setelah tunnel aktif, akses di komputer lokal melalui: <code>http://localhost:18181/</code>.
+        </p>
+
+        <div class="doc-table-caption">Tabel Ambang Batas Sumber Daya Sistem</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead><tr><th>Resource</th><th>Warning</th><th>Critical</th><th>Tindakan / Solusi</th></tr></thead>
+            <tbody>
+              <tr><td>Disk used</td><td><code>&gt;=80%</code></td><td><code>&gt;=90%</code></td><td>Pangkas log (<code>npm run logs:prune:apply</code>), pindahkan backup keluar VPS, perluas ukuran disk.</td></tr>
+              <tr><td>RAM used</td><td><code>&gt;=85%</code> sustained</td><td><code>&gt;=95%</code> sustained</td><td>Restart proses yang bocor, kurangi sesi aktif, periksa konsumsi memori Baileys.</td></tr>
+              <tr><td>CPU load</td><td>Tinggi sustained 10m</td><td>Tinggi sustained 20m</td><td>Periksa loop worker dan throughput kampanye.</td></tr>
+              <tr><td>SQLite size</td><td>Pertumbuhan tidak wajar</td><td>Risiko disk penuh</td><td>Jalankan pekerjaan pemangkasan log (<code>npm run logs:prune:apply</code>) dan jalankan SQLite VACUUM.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ==================== PROCESS MONITORING ==================== -->
+      <div class="content-card" id="process-monitoring">
+        <h3 class="content-card__title" style="font-size: 1.25rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          Process Monitoring
+          <a href="#process-monitoring" class="section-anchor">#</a>
+        </h3>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Pantau status setiap role runtime secara eksplisit untuk menjamin proses berjalan dengan benar.
+        </p>
+
+        <div class="doc-table-caption">Daftar Proses Runtime</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead><tr><th>Process</th><th>Command</th><th>Must Restart</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr><td>API</td><td><code>npm run start:api</code></td><td>Ya</td><td>Exposes HTTP API only</td></tr>
+              <tr><td>Session manager / worker</td><td><code>npm run start:worker</code> atau <code>npm run start:sessions</code></td><td>Ya</td><td>Pemilik socket Baileys</td></tr>
+              <tr><td>Campaign worker</td><td><code>npm run start:campaign-worker</code></td><td>Ya</td><td>Opsional, split granular</td></tr>
+              <tr><td>Warmer worker</td><td><code>npm run start:warmer-worker</code></td><td>Ya</td><td>Opsional, split granular</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="color:var(--text-secondary); margin-top:1rem; line-height:1.6;">
+          Rekomendasi baseline produksi sebelum split granular penuh:
+        </p>
+        <div class="code-block">
+npm run start:api
+npm run start:worker
+        </div>
+      </div>
+
+      <!-- ==================== HEALTH QUERIES ==================== -->
+      <div class="content-card" id="health-queries">
+        <h3 class="content-card__title" style="font-size: 1.25rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+          Health Queries SQLite
+          <a href="#health-queries" class="section-anchor">#</a>
+        </h3>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Query SQLite untuk investigasi manual atau integrasi ke alert script di masa depan.
+        </p>
+
+        <h4 style="color:var(--color-title); font-size:0.95rem; margin-bottom:0.5rem; font-weight:600;">Sesi Terputus:</h4>
+        <div class="code-block">
+SELECT session_id, phone_number, status
+FROM sessions
+WHERE status != 'CONNECTED';
+        </div>
+
+        <h4 style="color:var(--color-title); font-size:0.95rem; margin:1rem 0 0.5rem; font-weight:600;">Campaign Macet:</h4>
+        <div class="code-block">
+SELECT id, name, session_id, status, created_at
+FROM campaigns
+WHERE status = 'RUNNING'
+  AND datetime(created_at) < datetime('now', '-30 minutes');
+        </div>
+
+        <h4 style="color:var(--color-title); font-size:0.95rem; margin:1rem 0 0.5rem; font-weight:600;">Warmer Melebihi Durasi:</h4>
+        <div class="code-block">
+SELECT id, name, status, started_at, duration
+FROM warmer_campaigns
+WHERE status = 'RUNNING'
+  AND datetime(started_at, '+' || duration || ' minutes') < datetime('now');
+        </div>
+      </div>
+
+      <!-- ==================== ALERT RESPONSE ==================== -->
+      <div class="content-card" id="alert-response">
+        <h3 class="content-card__title" style="font-size: 1.25rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          Alert Response Runbook
+          <a href="#alert-response" class="section-anchor">#</a>
+        </h3>
+
+        <div class="doc-table-caption">Tabel Respons Alert</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead><tr><th>Alert</th><th>First Check</th><th>Recovery</th></tr></thead>
+            <tbody>
+              <tr><td>API down</td><td>Process status, logs, <code>/health/ready</code></td><td>Restart API, periksa env/config</td></tr>
+              <tr><td>Worker down</td><td>Internal readiness endpoint, worker logs</td><td>Restart worker, cek permission sessions</td></tr>
+              <tr><td>Session disconnected</td><td>Dashboard sessions, Baileys logs</td><td>Tunggu reconnect, re-scan QR jika logout</td></tr>
+              <tr><td>Campaign stuck</td><td>Campaign progress, session status</td><td>Pause/requeue setelah verifikasi sesi</td></tr>
+              <tr><td>Disk high</td><td>Ukuran backup/log/database</td><td>Pindahkan backup, jalankan log retention</td></tr>
+              <tr><td>Backup stale</td><td>Timestamp direktori backup</td><td>Jalankan <code>npm run backup:encrypted</code>, cek scheduler</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ==================== STAGING EVIDENCE ==================== -->
+      <div class="content-card" id="staging-evidence">
+        <h3 class="content-card__title" style="font-size: 1.25rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          Staging Evidence
+          <a href="#staging-evidence" class="section-anchor">#</a>
+        </h3>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Evidence monitoring dari staging VPS yang telah diverifikasi. Detail lengkap di <code>docs/STAGING.md</code> (local-only).
+        </p>
+
+        <div class="doc-table-caption">Staging Evidence - 5 Juni 2026</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead><tr><th>Check</th><th>Result</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>API liveness</td><td><code>status=healthy</code></td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>API readiness</td><td><code>status=ready</code>, role <code>api</code></td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>Worker readiness</td><td><code>status=ready</code>, campaign/warmer polling active</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>UFW</td><td>Active: 22/80/443 only</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>Backup timer</td><td><code>wa-bot-backup.timer</code> enabled</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>Restore drill</td><td>SQLite table count 18</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>Healthcheck timer</td><td><code>wa-bot-healthcheck.timer</code> enabled</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>HTTPS smoke</td><td>Domain health, auth, frontend OK</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>Secure cookie/CORS</td><td>Applied on staging</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="doc-table-caption" style="margin-top:1.5rem;">Telegram Alert Timer Evidence - 6 Juni 2026</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead><tr><th>Check</th><th>Result</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Healthy run (06:35 UTC)</td><td><code>status=ok</code>, semua check pass</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>Healthy run (06:36 UTC)</td><td><code>status=ok</code>, semua check pass</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>Forced alert (06:41 UTC)</td><td><code>status=alert</code>, api-ready intentional fail</td><td><span class="evidence-badge evidence-badge--ok">VERIFIED</span></td></tr>
+              <tr><td>Disk usage</td><td>11.1%</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+              <tr><td>Backup freshness</td><td>12.2h (threshold 36h)</td><td><span class="evidence-badge evidence-badge--ok">OK</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="doc-table-caption" style="margin-top:1.5rem;">Browser Feature Smoke Evidence - 7 Juni 2026</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead><tr><th>Check</th><th>Result</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Login/logout dan protected API/dashboard</td><td>Admin flow dan proteksi setelah logout berhasil</td><td><span class="evidence-badge evidence-badge--ok">PASS</span></td></tr>
+              <tr><td>Devices / Manual Repair</td><td>Session Manager tampil, tombol Repair tampil dan bisa dipicu</td><td><span class="evidence-badge evidence-badge--ok">PASS</span></td></tr>
+              <tr><td>Single Message dan Templates media</td><td>Text/media send, upload media, dan template media berhasil</td><td><span class="evidence-badge evidence-badge--ok">PASS</span></td></tr>
+              <tr><td>Chatbot Flow large-data</td><td>List/actions/metrics/edit/settings/nodes/import/export/counters/node media berhasil</td><td><span class="evidence-badge evidence-badge--ok">PASS</span></td></tr>
+              <tr><td>Group Grabber</td><td>Reload/export CSV dan isi CSV benar</td><td><span class="evidence-badge evidence-badge--ok">PASS</span></td></tr>
+              <tr><td>Delegated socket-heavy features</td><td>Contact verification, one-target campaign, warmer start/stop berhasil</td><td><span class="evidence-badge evidence-badge--ok">PASS</span></td></tr>
+              <tr><td>Chatbot Flow full export performance</td><td>HTTP 200, 49 MB, 14.57s dari authenticated VPS curl</td><td><span class="evidence-badge evidence-badge--ok">RECORDED</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout--warning" style="margin-top:1.25rem;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+          <div>Jangan tandai monitoring sebagai production-complete sampai Production Evidence Template di <code>docs/MONITORING.md</code> terisi untuk VPS produksi yang sebenarnya. Monitoring saat ini adalah baseline staging ringan.</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <footer class="doc-footer">
+    <p>WA-Bot Pro Documentation v2.8.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p style="margin-top:0.5rem;">IP address data powered by <a href="https://iplocate.io" target="_blank" rel="noopener">IPLocate.io</a></p>
+  </footer>
+
+  <script>
+    const toggleBtn = document.querySelector('.theme-toggle');
+    const root = document.documentElement;
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) root.setAttribute('data-theme', savedTheme);
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        const currentTheme = root.getAttribute('data-theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        root.setAttribute('data-theme', newTheme);
+        localStorage.setItem('theme', newTheme);
+      });
+    }
+  </script>
+  <script src="shared-script.js"></script>
+</body>
+</html>
