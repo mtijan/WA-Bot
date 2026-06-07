@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Smartphone, Trash2, Link } from 'lucide-react';
+import { Plus, Smartphone, Trash2, Link, RefreshCw } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
 const SessionManager = () => {
@@ -117,6 +117,30 @@ const SessionManager = () => {
   );
 };
 
+  const handleRepairSession = async (sessionId) => {
+    triggerConfirm(
+      'Perbaiki Sesi',
+      `Apakah Anda yakin ingin memperbaiki sesi ${sessionId}? Ini akan membersihkan cache enkripsi Signal tanpa menghapus koneksi Anda.`,
+      'Ya, Perbaiki',
+      'btn-primary',
+      async () => {
+        try {
+          const json = await apiRequest(`/sessions/${sessionId}/repair`, {
+            method: 'POST',
+          });
+          if (json.status === 'success') {
+            alert('Sesi berhasil diperbaiki dan sedang menghubungkan kembali.');
+            fetchSessions();
+          } else {
+            alert('Gagal memperbaiki sesi: ' + json.message);
+          }
+        } catch (err) {
+          alert('Terjadi kesalahan koneksi.');
+        }
+      }
+    );
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -190,6 +214,9 @@ const SessionManager = () => {
                           <Link size={16} /> QR
                         </button>
                       )}
+                      <button className="btn btn-outline" style={{ flex: 1, color: 'var(--primary-color)' }} onClick={() => handleRepairSession(session.session_id)}>
+                        <RefreshCw size={16} /> Repair
+                      </button>
                       <button className="btn btn-outline" style={{ flex: 1, color: 'var(--danger)' }} onClick={() => handleDeleteSession(session.session_id)}>
                         <Trash2 size={16} /> Delete
                       </button>

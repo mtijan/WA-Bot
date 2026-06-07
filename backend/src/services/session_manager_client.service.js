@@ -124,5 +124,9 @@ export const sessionManagerClient = {
 
   async clearWarmerCampaign(campaignId) {
     return request(`/warmer/campaigns/${encodeURIComponent(campaignId)}/clear`, { method: 'POST' });
+  },
+
+  async repairSession(sessionId) {
+    return request(`/sessions/${encodeURIComponent(sessionId)}/repair`, { method: 'POST' });
   }
 };

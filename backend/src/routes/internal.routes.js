@@ -7,6 +7,7 @@ import {
   initSession,
   deleteSession,
   updateSessionProxy,
+  repairSessionInternal,
   getDetailedGroupsInternal,
   getGroupInviteLinkInternal,
   getGroupsMetadataInternal,
@@ -34,6 +35,7 @@ router.get('/sessions/:id', getSession);
 router.post('/sessions/:id/init', initSession);
 router.delete('/sessions/:id', deleteSession);
 router.patch('/sessions/:id/proxy', updateSessionProxy);
+router.post('/sessions/:id/repair', repairSessionInternal);
 
 // Group Grabber
 router.get('/groups/:id', getDetailedGroupsInternal);

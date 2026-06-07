@@ -1,5 +1,5 @@
 import express from 'express';
-import { getSessions, createSession, deleteSession, updateSessionProxy } from '../controllers/session.controller.js';
+import { getSessions, createSession, deleteSession, updateSessionProxy, repairSession } from '../controllers/session.controller.js';
 import { validateBody } from '../utils/validator.js';
 
 const router = express.Router();
@@ -10,5 +10,6 @@ router.post('/', validateBody({
 }), createSession);
 router.delete('/:id', deleteSession);
 router.patch('/:id/proxy', updateSessionProxy);
+router.post('/:id/repair', repairSession);
 
 export default router;

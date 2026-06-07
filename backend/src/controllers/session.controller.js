@@ -138,3 +138,19 @@ export const updateSessionProxy = async (req, res) => {
     return sendError(res, 500, 'UPDATE_SESSION_PROXY_ERROR', err.message || 'Gagal memperbarui proxy sesi.');
   }
 };
+
+export const repairSession = async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (isSessionManagerClientEnabled()) {
+      const payload = await sessionManagerClient.repairSession(id);
+      return res.json(payload);
+    }
+
+    await whatsappService.repairSession(id);
+    return sendSuccess(res, null, 200, { message: `Sesi ${id} berhasil diperbaiki.` });
+  } catch (err) {
+    logError('repairSession', err, { params: req.params });
+    return sendError(res, 500, 'REPAIR_SESSION_ERROR', err.message || 'Gagal memperbaiki sesi.');
+  }
+};

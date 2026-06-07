@@ -57,8 +57,7 @@ export const getMediaSpec = (mimeType) => ALLOWED_MEDIA[mimeType] || null;
 
 export const createMediaFilename = (file) => {
   const spec = getMediaSpec(file.mimetype);
-  const originalExt = path.extname(file.originalname || '').toLowerCase();
-  const ext = originalExt && originalExt.length <= 8 ? originalExt : spec.ext;
+  const ext = spec ? spec.ext : '.bin';
   return `${Date.now()}-${randomUUID()}${ext}`;
 };
 
