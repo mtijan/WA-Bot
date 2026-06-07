@@ -13,6 +13,7 @@ import chatbotAiRoutes from './routes/chatbot_ai.routes.js';
 import optOutRoutes from './routes/opt_out.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
+import monitoringRoutes from './routes/monitoring.routes.js';
 import { dbGet, dbAll } from './database.js';
 import { config } from './config.js';
 import { logError } from './logger.js';
@@ -64,6 +65,7 @@ export function createApp(options = {}) {
   app.use('/api/chatbot-ai', chatbotAiRoutes);
   app.use('/api/opt-outs', optOutRoutes);
   app.use('/api/uploads', uploadRoutes);
+  app.use('/api/monitoring', monitoringRoutes);
 
   // Endpoint statistik dashboard real-time
   app.get('/api/dashboard/stats', async (req, res) => {

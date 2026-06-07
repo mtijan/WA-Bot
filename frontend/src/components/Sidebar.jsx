@@ -13,13 +13,15 @@ import {
   Network,
   Layers,
   LogOut,
-  MoreVertical
+  MoreVertical,
+  Activity
 } from 'lucide-react';
 
 const Sidebar = ({ authState, onLogout }) => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const navItems = [
     { path: '/', name: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    { path: '/monitoring', name: 'Monitoring', icon: <Activity size={20} /> },
     { path: '/devices', name: 'Devices', icon: <Smartphone size={20} /> },
     { path: '/single-message', name: 'Single Message', icon: <MessageSquare size={20} /> },
     { path: '/templates', name: 'Templates', icon: <FileText size={20} /> },

@@ -14,6 +14,7 @@ import SingleMessage from './components/SingleMessage';
 import GroupGrabber from './components/GroupGrabber';
 import ChatbotAI from './components/ChatbotAI';
 import Login from './components/Login';
+import Monitoring from './components/Monitoring';
 import { apiRequest } from './apiClient';
 
 function App() {
@@ -86,6 +87,7 @@ function App() {
         <main className="main-content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/monitoring" element={<Monitoring />} />
             <Route path="/devices" element={<SessionManager />} />
             <Route path="/bulk" element={<BulkCampaign />} />
             <Route path="/chatbot-flows" element={<ChatbotFlows />} />
