@@ -50,6 +50,43 @@ const uploadJsonWithProgress = ({ path, payload, onProgress }) => new Promise((r
   xhr.send(JSON.stringify(payload));
 });
 
+const downloadJsonWithProgress = ({ path, onProgress }) => new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  const url = `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
+
+  xhr.open('GET', url);
+  xhr.withCredentials = true;
+
+  xhr.onprogress = (event) => {
+    if (!event.lengthComputable) return;
+    onProgress?.({
+      loaded: event.loaded,
+      total: event.total,
+      percent: Math.min(100, Math.round((event.loaded / event.total) * 100))
+    });
+  };
+
+  xhr.onload = () => {
+    let response;
+    try {
+      response = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+    } catch {
+      reject(new Error('Response export bukan JSON valid.'));
+      return;
+    }
+
+    if (xhr.status >= 200 && xhr.status < 300 && response?.status !== 'error') {
+      resolve(response);
+      return;
+    }
+
+    reject(new Error(response?.message || `Request export gagal dengan status ${xhr.status}.`));
+  };
+
+  xhr.onerror = () => reject(new Error('Koneksi export gagal.'));
+  xhr.send();
+});
+
 const ChatbotFlows = () => {
   const [flows, setFlows] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -196,9 +233,26 @@ const ChatbotFlows = () => {
         detail: `Mengambil ${flows.length} flow dari server.`
       });
 
-      const data = await apiRequest('/chatbot-flows/export');
+      const response = await downloadJsonWithProgress({
+        path: '/chatbot-flows/export',
+        onProgress: ({ loaded, total, percent }) => {
+          setTransferStatus({
+            type: 'export',
+            phase: 'downloading',
+            percent: Math.min(79, Math.max(25, Math.round(percent * 0.79))),
+            title: 'Mendownload data export...',
+            detail: `${formatBytes(loaded)} dari ${formatBytes(total)} diterima dari server.`
+          });
+        }
+      });
+      const data = response?.data?.flows ? response.data : response;
+
+      if (!data || !Array.isArray(data.flows)) {
+        throw new Error('Data export kosong atau formatnya tidak valid.');
+      }
+
       const serialized = JSON.stringify(data, null, 2);
-      const exportedCount = data?.flows?.length || 0;
+      const exportedCount = data.flows.length;
       setTransferStatus({
         type: 'export',
         phase: 'download',
