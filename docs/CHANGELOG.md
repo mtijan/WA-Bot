@@ -5,6 +5,19 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.3] - 2026-06-07
+
+### Added
+- Fitur manual session Repair pada interface UI Devices (Session Manager) beserta route API baru untuk memicu perbaikan sesi.
+- Enkripsi offsite backup otomatis via Telegram Bot API (`sendDocument` endpoint) menggunakan format kompresi `.tar.gz`.
+
+### Fixed
+- Mitigasi celah keamanan Stored XSS pada proses file upload dengan validasi kecocokan ekstensi dan mime type file secara ketat di [upload.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/upload.service.js).
+- Mitigasi celah keamanan timing attack pada middleware internal auth [internal_auth.middleware.js](file:///d:/Self%20Project/WA-Bot/backend/src/middleware/internal_auth.middleware.js) menggunakan perbandingan token timing-safe (`crypto.timingSafeEqual`).
+- Perbaikan sinkronisasi state WhatsApp: status database otomatis berubah ke `DISCONNECTED` dan menghapus `phone_number` lama saat memicu pembuatan QR code baru di [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js).
+
+---
+
 ## [2.8.2] - 2026-06-06
 
 ### Added

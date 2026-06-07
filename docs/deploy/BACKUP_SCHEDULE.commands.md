@@ -137,17 +137,18 @@ sudo systemctl start wa-bot-restore-drill.service
 sudo journalctl -u wa-bot-restore-drill.service -n 80 --no-pager
 ```
 
-## 8. Offsite Copy Requirement
+## 8. Offsite Copy Configuration (Telegram Integration)
 
-The encrypted backup directory should not be the only copy for production. Move or sync encrypted backup folders to protected storage outside the VPS once a storage destination exists.
+The backup system has built-in support for offsite backup copying using the Telegram Bot API (`sendDocument` endpoint). When `WA_BOT_ALERT_TELEGRAM_BOT_TOKEN` and `WA_BOT_ALERT_TELEGRAM_CHAT_ID` are configured in `/etc/wa-bot/wa-bot.env`, the backup script (`npm run backup:encrypted`) automatically packages the encrypted backup folder into a `.tar.gz` archive, uploads it to the specified Telegram chat, and cleans up the temporary archive.
 
-For the current staging baseline, offsite copy may be explicitly marked as deferred because no offsite storage destination has been selected yet. Keep local encrypted backup and restore drill timers active while this is deferred.
+To enable Telegram offsite backup, ensure these environment variables are set in `/etc/wa-bot/wa-bot.env`:
 
-Acceptable next options:
+```bash
+WA_BOT_ALERT_TELEGRAM_BOT_TOKEN=your_bot_token
+WA_BOT_ALERT_TELEGRAM_CHAT_ID=your_chat_id
+```
 
-* provider object storage;
-* another VPS/storage volume with SSH key auth;
-* manual download during staging only.
+If Telegram credentials are not configured, the backup script will log a notice and skip the offsite upload, keeping the encrypted backup locally only.
 
 Do not copy `WA_BOT_BACKUP_ENCRYPTION_KEY` into the same destination as the encrypted backups.
 
@@ -161,4 +162,4 @@ Record these into `docs/STAGING.md`, `docs/MONITORING.md`, and the release check
 * restore drill log result;
 * SQLite table count from restore drill;
 * whether uploaded media under `backend/uploads/` is included, excluded, or governed by a separate retention rule;
-* offsite copy destination or explicit staging exception/deferred decision.
+* offsite copy Telegram upload confirmation.
