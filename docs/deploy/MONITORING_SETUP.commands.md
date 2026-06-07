@@ -85,15 +85,77 @@ X-Internal-Token: <WA_BOT_INTERNAL_TOKEN>
 
 Do not expose port `3002` publicly just to monitor it. Run the monitor on the VPS/private network or use a local script monitor.
 
-## 6. Netdata Or Equivalent
+## 6. Netdata Native Installation
 
-Install a resource monitor only after deciding the monitoring tool and alert channel. Minimum resource alerts:
+Instalasi agen pemantau resource Netdata secara native pada sistem operasi host Ubuntu/Debian (tanpa Docker):
 
-* disk `/` warning `80%`, critical `90%`;
-* RAM sustained `85%`;
-* CPU/load sustained high for 10 minutes;
-* process down for `wa-bot-api`, `wa-bot-worker`, and `caddy`;
-* backup freshness stale.
+1. Jalankan skrip kickstart resmi Netdata secara non-interaktif dan menolak pengiriman telemetry data:
+
+```bash
+wget -O /tmp/netdata-kickstart.sh https://get.netdata.cloud/kickstart.sh && sh /tmp/netdata-kickstart.sh --non-interactive --disable-telemetry
+```
+
+2. Pastikan service Netdata telah terpasang dan berjalan aktif sebagai service systemd:
+
+```bash
+sudo systemctl status netdata --no-pager
+```
+
+3. Untuk alasan keamanan, Netdata sebaiknya dikonfigurasi agar hanya mendengarkan pada alamat local loopback (`127.0.0.1`). Konfigurasi ini biasanya berada di `/etc/netdata/netdata.conf`:
+
+```ini
+[web]
+    bind to = 127.0.0.1
+```
+
+Setelah mengubah konfigurasi, restart Netdata:
+```bash
+sudo systemctl restart netdata
+```
+
+4. **Akses Dashboard Secara Aman**: Jangan membuka port `19999` di firewall UFW untuk publik. Gunakan SSH Tunneling dari komputer lokal Anda untuk mengakses dashboard Netdata:
+
+```bash
+# Jalankan perintah ini dari terminal komputer lokal Anda
+ssh -L 19999:127.0.0.1:19999 user@43.157.224.57
+```
+
+Setelah terowongan SSH aktif, Anda dapat membuka dashboard pemantauan resource di browser lokal melalui alamat:
+`http://localhost:19999/`
+
+## 6.1 Alur Konfigurasi Alerting Bawaan Netdata
+
+Netdata secara native mendukung pengiriman alert jika penggunaan CPU/RAM/Disk melampaui batas kritis. Untuk mengaktifkan peringatan Telegram langsung dari Netdata:
+
+1. Edit konfigurasi health alarm menggunakan utility bawaan Netdata:
+
+```bash
+cd /etc/netdata
+sudo ./edit-config health_alarm_notify.conf
+```
+
+2. Cari bagian `TELEGRAM` dan sesuaikan nilainya:
+
+```conf
+# Enable telegram sending
+SEND_TELEGRAM="YES"
+
+# Telegram Bot Token
+TELEGRAM_BOT_TOKEN="isi-dengan-token-bot-telegram-anda"
+
+# Chat ID penerima alert
+DEFAULT_RECIPIENT_TELEGRAM="isi-dengan-chat-id-tujuan"
+```
+
+3. Uji pengiriman alarm notifikasi dari Netdata:
+
+```bash
+# Jalankan sebagai user netdata untuk mengetes pengiriman alert
+sudo su -s /bin/bash netdata
+/usr/libexec/netdata/plugins.d/alarm-notify.sh test
+exit
+```
+
 
 ## 7. Test Notification
 

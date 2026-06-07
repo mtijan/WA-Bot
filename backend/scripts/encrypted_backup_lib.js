@@ -49,9 +49,17 @@ export const collectRuntimeFiles = () => {
     }
 
     if (stat.isFile()) {
+      const normalizedRelative = relativePath.split(sep).join('/');
+      if (normalizedRelative.startsWith('sessions/')) {
+        const parts = normalizedRelative.split('/');
+        // Berkas creds.json berada tepat di bawah subfolder sesi, misalnya: sessions/sesi-1/creds.json (panjang part = 3)
+        const isCredsJson = parts.length === 3 && parts[2] === 'creds.json';
+        if (!isCredsJson) return;
+      }
+
       files.push({
         absolutePath,
-        relativePath: relativePath.split(sep).join('/'),
+        relativePath: normalizedRelative,
         size: stat.size
       });
     }
