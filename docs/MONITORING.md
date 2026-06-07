@@ -69,14 +69,24 @@ Install it as a systemd timer using `docs/deploy/EXTERNAL_ALERTING.commands.md`.
 
 ## 3. Netdata / Resource Alerts
 
-Recommended thresholds:
+Netdata is installed natively on the host (without Docker) to monitor system resources (CPU, RAM, Disk, and Network IO). For security, the Netdata dashboard is bound to localhost (`127.0.0.1:19999`) and is accessed securely from a local machine via SSH Tunneling:
+
+```bash
+# From local machine terminal:
+ssh -L 18181:127.0.0.1:19999 ubuntu@43.157.224.57
+```
+
+Then accessed locally at `http://localhost:18181/`.
+
+### Recommended Resource Thresholds:
 
 | Resource | Warning | Critical | Action |
 |----------|---------|----------|--------|
-| Disk used | `>=80%` | `>=90%` | Prune logs, move backups off VPS, expand disk |
+| Disk used | `>=80%` | `>=90%` | Prune logs (`npm run logs:prune:apply`), move backups off VPS, expand disk |
 | RAM used | `>=85%` sustained | `>=95%` sustained | Restart leaking process, reduce sessions, inspect Baileys |
 | CPU load | sustained high load 10m | sustained high load 20m | Inspect worker loop and campaign throughput |
-| SQLite size | unusual growth | disk risk | Run retention jobs and inspect logs |
+| SQLite size | unusual growth | disk risk | Run retention jobs (`npm run logs:prune:apply`) and vacuum database |
+
 
 ## 4. Process Monitoring
 

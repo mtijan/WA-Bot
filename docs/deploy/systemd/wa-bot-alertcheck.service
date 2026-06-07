@@ -1,0 +1,11 @@
+[Unit]
+Description=WA-Bot external alert healthcheck
+Wants=wa-bot-api.service wa-bot-worker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/wa-bot/backend
+EnvironmentFile=/etc/wa-bot/wa-bot.env
+ExecStart=/usr/bin/npm run monitor:alert
+User=ubuntu
+Group=ubuntu

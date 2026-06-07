@@ -1,0 +1,11 @@
+[Unit]
+Description=Run WA-Bot external alert healthcheck every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Persistent=true
+Unit=wa-bot-alertcheck.service
+
+[Install]
+WantedBy=timers.target

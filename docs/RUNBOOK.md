@@ -255,6 +255,8 @@ npm run backup:encrypted
 
 The encrypted backup stores each runtime file with AES-256-GCM and writes a manifest. Keep `WA_BOT_BACKUP_ENCRYPTION_KEY` outside the backup destination. Use `WA_BOT_ENCRYPTED_BACKUP_DIR` to send encrypted backups to protected storage.
 
+Sistem backup ini juga mendukung pengiriman salinan offsite otomatis ke Telegram jika `WA_BOT_ALERT_TELEGRAM_BOT_TOKEN` dan `WA_BOT_ALERT_TELEGRAM_CHAT_ID` telah dikonfigurasi dalam berkas `/etc/wa-bot/wa-bot.env`. Skrip backup akan otomatis mengompres folder backup terenkripsi menjadi berkas `.tar.gz` dan mengirimkannya via API Telegram.
+
 ## 8. SQLite Restore Drill
 
 1. Stop the backend.
@@ -399,18 +401,38 @@ Recommended local/VPS tools:
 | Netdata | CPU, RAM, disk, and process/resource visibility |
 | PM2/systemd | Process restart policy and service state |
 
+Netdata should be installed natively on the host and bound to localhost (`127.0.0.1:19999`) for security. Access the Netdata dashboard securely from your local machine via SSH Tunneling:
+
+```bash
+ssh -L 18181:127.0.0.1:19999 ubuntu@your_vps_ip
+```
+
+Then visit `http://localhost:18181/` in your browser.
+
 Do not mark item 5 as production-complete until the evidence table in `docs/MONITORING.md` is filled for the actual VPS.
 
 ## 11. Maintenance Cadence
 
 | Frequency | Task |
 |-----------|------|
-| Daily | Review backend errors and disconnected sessions. |
+| Daily | Review backend errors and disconnected sessions. Run automated logs/file prune & database vacuum. |
 | Weekly | Review failed campaigns, stale sessions, and storage growth. |
-| Monthly | Archive or delete old delivery logs according to retention policy and run a restore drill. |
+| Monthly | Run a manual restore drill check. |
 | Before each release | Run QA, scan for secrets, verify backup, and review dependency changes. |
 
-Preview monthly delivery-log cleanup from `backend/`:
+### Automated Daily Pruning
+
+To prevent disk space issues, the application is configured with a daily automated pruning service (`wa-bot-prune.timer` at 02:00) that automatically runs:
+
+```bash
+npm run logs:prune:apply
+```
+
+This task deletes old delivery logs, warmer logs, expired contacts export files, and vacuum-packs the SQLite database.
+
+### Manual Preview/Dry-Run
+
+Preview delivery-log cleanup manually from `backend/`:
 
 ```powershell
 npm run logs:prune

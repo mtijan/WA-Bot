@@ -1,0 +1,10 @@
+[Unit]
+Description=Run WA-Bot encrypted runtime backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+Unit=wa-bot-backup.service
+
+[Install]
+WantedBy=timers.target

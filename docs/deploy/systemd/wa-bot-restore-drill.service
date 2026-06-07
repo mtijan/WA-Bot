@@ -1,0 +1,10 @@
+[Unit]
+Description=WA-Bot encrypted backup restore drill
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/wa-bot/backend
+EnvironmentFile=/etc/wa-bot/wa-bot.env
+ExecStart=/usr/bin/npm run restore:drill
+User=ubuntu
+Group=ubuntu

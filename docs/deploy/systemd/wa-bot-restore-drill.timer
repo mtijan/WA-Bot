@@ -1,0 +1,10 @@
+[Unit]
+Description=Run WA-Bot restore drill weekly
+
+[Timer]
+OnCalendar=Sun 03:00:00
+Persistent=true
+Unit=wa-bot-restore-drill.service
+
+[Install]
+WantedBy=timers.target
