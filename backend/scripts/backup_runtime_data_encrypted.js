@@ -81,6 +81,23 @@ async function uploadToTelegram() {
       } else {
         const errText = await response.text();
         console.error('[Telegram Upload] Failed to upload backup to Telegram:', errText);
+        
+        // Kirim alarm kegagalan dalam bentuk pesan teks ke Telegram
+        try {
+          const alertUrl = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`;
+          await fetch(alertUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: telegramChatId,
+              text: `[ALARM BACKUP] Gagal mengunggah berkas cadangan ke Telegram.\nTanggal: ${startedAt.toLocaleString()}\nBerkas ID: ${backupId}\nError: ${errText}`,
+              disable_web_page_preview: true
+            })
+          });
+          console.log('[Telegram Upload] Failure notification sent to Telegram.');
+        } catch (alertError) {
+          console.error('[Telegram Upload] Failed to send failure notification to Telegram:', alertError.message);
+        }
       }
     } else {
       console.log('[Telegram Upload] Skipping upload: WA_BOT_ALERT_TELEGRAM_BOT_TOKEN or WA_BOT_ALERT_TELEGRAM_CHAT_ID is not configured.');
