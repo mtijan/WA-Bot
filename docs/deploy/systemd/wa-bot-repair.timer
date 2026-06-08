@@ -1,0 +1,11 @@
+[Unit]
+Description=Run WA-Bot Automatic Session Repair check every 1 hour
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Persistent=true
+Unit=wa-bot-repair.service
+
+[Install]
+WantedBy=timers.target

@@ -19,6 +19,7 @@
     "restore:drill": "node scripts/restore_drill_encrypted_backup.js",
     "security:audit": "npm audit --omit=dev",
     "monitor:alert": "node scripts/alert_healthcheck.js",
+    "sessions:repair-auto": "node scripts/auto_repair_disconnected.js",
     "logs:prune": "node scripts/prune_delivery_logs.js",
     "logs:prune:apply": "node scripts/prune_delivery_logs.js --apply",
     "test": "node --test test/**/*.test.js",
