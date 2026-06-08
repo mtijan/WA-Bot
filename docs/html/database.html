@@ -456,6 +456,8 @@
             <tr><td><code>knowledge_base</code></td><td>TEXT</td><td><span class="badge badge--constraint">NULL</span></td><td>Teks basis pengetahuan bisnis (FAQ kontekstual)</td></tr>
             <tr><td><code>delay_seconds</code></td><td>INTEGER</td><td><span class="badge badge--constraint">DEFAULT 2</span></td><td>Durasi jeda tunda simulasi mengetik manusia (detik)</td></tr>
             <tr><td><code>show_typing</code></td><td>INTEGER</td><td><span class="badge badge--constraint">DEFAULT 1</span></td><td>Tampilkan status "sedang mengetik" di WhatsApp (1 = Ya, 0 = Tidak)</td></tr>
+            <tr><td><code>last_error</code></td><td>TEXT</td><td><span class="badge badge--constraint">NULL</span></td><td>Pesan kesalahan terakhir ketika pemanggilan API chatbot AI gagal</td></tr>
+            <tr><td><code>last_error_at</code></td><td>DATETIME</td><td><span class="badge badge--constraint">NULL</span></td><td>Waktu terjadinya kesalahan terakhir pada chatbot AI</td></tr>
             <tr><td><code>created_at</code></td><td>DATETIME</td><td><span class="badge badge--constraint">DEFAULT CURRENT_TIMESTAMP</span></td><td>Waktu pembuatan konfigurasi</td></tr>
           </tbody>
         </table>
@@ -466,7 +468,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.8.5 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.8.6 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
   </footer>
   <script>
     const toggleBtn = document.querySelector('.theme-toggle');

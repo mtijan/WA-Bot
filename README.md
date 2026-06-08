@@ -3,7 +3,7 @@
 WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
-**Versi Dokumen/Sistem:** 2.8.5  
+**Versi Dokumen/Sistem:** 2.8.6  
 **Terakhir Diperbarui:** 2026-06-08  
 
 ---
@@ -32,7 +32,8 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Single Message Composer:** Pengiriman pesan individual cepat dengan dukungan lampiran media dan pembuatan jajak pendapat (polls).
 - **Media Upload Manager:** Upload gambar (maksimal 5 MB) dan video (maksimal 10 MB) dengan mitigasi Stored XSS melalui validasi MIME tipe dan penamaan acak ekstensi file di server.
 - **Consent & Opt-Out Handling:** Sistem filter daftar pencegahan (suppression list) otomatis jika penerima membalas dengan kata kunci seperti STOP, UNSUBSCRIBE, atau BERHENTI.
-- **Session Auto-Repair & Crypt-Key Reset:** Fitur manual Repair pada UI Session Manager untuk membersihkan cache kunci Signal tanpa menghapus kredensial utama, menyelesaikan masalah gagal dekripsi riwayat WhatsApp.
+- **Session Auto-Repair & Crypt-Key Reset:** Pemantauan dan pemulihan otomatis sesi terputus berdurasi setiap jam ([auto_repair_disconnected.js](file:///d:/Self%20Project/WA-Bot/backend/scripts/auto_repair_disconnected.js)) di staging VPS dengan pembatasan laju 3x/24j dan alert Telegram. Fitur manual Repair pada UI Session Manager juga tersedia untuk membersihkan cache kunci Signal tanpa menghapus kredensial utama.
+- **Chatbot AI Error logs & Dashboard Alerts:** Deteksi dan pencatatan error API/saldo chatbot AI secara persisten ke database serta visualisasi Alert Box glassmorphic merah self-healing di dashboard admin.
 - **Database & File Pruner Otomatis:** Script pruner berkala (`npm run logs:prune:apply`) untuk menghapus log pengiriman lama, log warmer, file ekspor lawas, dan berkas cadangan (backup) kedaluwarsa secara otomatis serta melakukan SQLite VACUUM untuk merampingkan ukuran database.
 - **Security Hardening Baseline:** Login dashboard admin berbasis secure cookie HttpOnly, proteksi kunci API server-to-server (X-API-Key), Content Security Policy (CSP) ketat yang mendukung Google Fonts & Websocket staging, serta in-memory API rate limiter.
 

@@ -380,6 +380,38 @@
                 <td>Skrip QA berhasil melakukan round-trip data suppression tanpa meninggalkan nomor uji.</td>
                 <td><span class="pass-indicator"><span class="pass-indicator__dot"></span><span class="badge badge--passed">Passed</span></span></td>
               </tr>
+              <!-- TC-MEDIA-01 -->
+              <tr class="test-row--passed">
+                <td><code>TC-MEDIA-01</code></td>
+                <td><strong>Skenario:</strong> Pengunggahan lampiran media admin.<br><strong>Prekondisi:</strong> Gambar <= 5 MB dan video <= 10 MB diunggah dari UI.</td>
+                <td>File media terverifikasi jenis ekstensi dan MIME tipenya, diberi nama acak, disimpan di folder uploads, dan terkirim dengan sukses.</td>
+                <td>Sanitasi nama, pencegahan spoofing ekstensi, dan pengiriman lampiran media terverifikasi lulus secara penuh di backend & UI.</td>
+                <td><span class="pass-indicator"><span class="pass-indicator__dot"></span><span class="badge badge--passed">Passed</span></span></td>
+              </tr>
+              <!-- TC-FLOW-03 -->
+              <tr class="test-row--passed">
+                <td><code>TC-FLOW-03</code></td>
+                <td><strong>Skenario:</strong> Impor Chatbot Flow ukuran besar.<br><strong>Prekondisi:</strong> Mengimpor berkas JSON flow ukuran 60 MB.</td>
+                <td>Proses parsing JSON flow asinkron berhasil dimuat secara non-blocking di UI dengan indikator persentase progress.</td>
+                <td>Import data besar sukses terverifikasi di staging VPS, UI menunjukkan persentase progress, dan metrics tersimpan akurat.</td>
+                <td><span class="pass-indicator"><span class="pass-indicator__dot"></span><span class="badge badge--passed">Passed</span></span></td>
+              </tr>
+              <!-- TC-RECON-02 -->
+              <tr class="test-row--passed">
+                <td><code>TC-RECON-02</code></td>
+                <td><strong>Skenario:</strong> Pemulihan berkala sesi terputus (Auto-Repair).<br><strong>Prekondisi:</strong> Status sesi berubah DISCONNECTED di staging.</td>
+                <td>Skrip auto-repair periodik mendeteksi kegagalan, menjalankan perbaikan, membatasi laju perbaikan (3x/24j), dan mengirim notifikasi Telegram.</td>
+                <td>Sesi sukses diperbaiki dan dihubungkan kembali tanpa loop tak terbatas. Notifikasi Telegram diterima dengan benar saat limit tercapai.</td>
+                <td><span class="pass-indicator"><span class="pass-indicator__dot"></span><span class="badge badge--passed">Passed</span></span></td>
+              </tr>
+              <!-- TC-FLOW-04 -->
+              <tr class="test-row--passed">
+                <td><code>TC-FLOW-04</code></td>
+                <td><strong>Skenario:</strong> Deteksi &amp; Visualisasi Galat API Chatbot AI.<br><strong>Prekondisi:</strong> Token AI habis atau provider error saat memproses pesan.</td>
+                <td>Galat API tertulis persisten di database, dan dashboard memunculkan Alert Box merah glassmorphic self-healing secara real-time.</td>
+                <td>Galat terekam di kolom `last_error`, UI dashboard merender Alert Box dengan badge klasifikasi galat secara akurat.</td>
+                <td><span class="pass-indicator"><span class="pass-indicator__dot"></span><span class="badge badge--passed">Passed</span></span></td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -452,11 +484,32 @@
                 <td>Pemantauan socket timeout, re-handshake otomatis.</td>
                 <td><span class="badge badge--passed">100% Passed</span></td>
               </tr>
-              <tr>
+               <tr>
                 <td>Grabber &amp; Kontak DB</td>
                 <td><code>FR-17</code>, <code>FR-18</code></td>
                 <td><code>TC-GRAB-01</code>, <code>TC-SYNC-01</code></td>
                 <td>CSV ekspor 14 kolom, unmasking LID, push name listener.</td>
+                <td><span class="badge badge--passed">100% Passed</span></td>
+              </tr>
+              <tr>
+                <td>Opt-Out &amp; Keamanan Admin</td>
+                <td><code>FR-19</code>, <code>FR-20</code></td>
+                <td><code>TC-OPT-01</code>, <code>TC-SEC-05</code></td>
+                <td>Penyaringan suppression list, admin cookie login HttpOnly.</td>
+                <td><span class="badge badge--passed">100% Passed</span></td>
+              </tr>
+              <tr>
+                <td>Lampiran Media &amp; Chatbot Flow</td>
+                <td><code>FR-21</code>, <code>FR-22</code></td>
+                <td><code>TC-MEDIA-01</code>, <code>TC-FLOW-03</code></td>
+                <td>Sanitasi unggahan media admin, impor flow JSON ukuran besar 60 MB.</td>
+                <td><span class="badge badge--passed">100% Passed</span></td>
+              </tr>
+              <tr>
+                <td>Auto-Repair &amp; AI Alerting</td>
+                <td><code>FR-23</code>, <code>FR-24</code></td>
+                <td><code>TC-RECON-02</code>, <code>TC-FLOW-04</code></td>
+                <td>Perbaikan otomatis berkala sesi putus, pencatatan dan Alert Box error AI.</td>
                 <td><span class="badge badge--passed">100% Passed</span></td>
               </tr>
             </tbody>
@@ -509,7 +562,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.8.5 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.8.6 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
   </footer>
   <script>
     const toggleBtn = document.querySelector('.theme-toggle');
