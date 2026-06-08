@@ -1,5 +1,5 @@
 import os from 'os';
-import { dbGet, dbAll } from '../database.js';
+import { dbGet, dbAll, dbRun } from '../database.js';
 import { getReadiness } from '../services/readiness.service.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
@@ -81,11 +81,11 @@ export const getMonitoringStatus = async (req, res) => {
     }
 
     // --- Chatbot Flows ---
-    // Kolom status berisi nilai 'active' / lainnya (bukan is_active boolean)
+    // Kolom status berisi nilai 'ACTIVE' / lainnya (bukan is_active boolean)
     const chatbotStats = await dbGet(
       `SELECT
         COUNT(*) as total,
-        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+        SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END) as active,
         COALESCE(SUM(trigger_count), 0) as total_triggers,
         COALESCE(SUM(sent_count), 0) as total_sent,
         COALESCE(SUM(failed_count), 0) as total_failed
@@ -167,5 +167,67 @@ export const getMonitoringStatus = async (req, res) => {
   } catch (err) {
     logError('getMonitoringStatus', err);
     return sendError(res, 500, 'MONITORING_STATUS_ERROR', 'Gagal mengambil status monitoring.');
+  }
+};
+
+/**
+ * GET /api/monitoring/repair-logs
+ * Mengembalikan daftar riwayat perbaikan otomatis sesi.
+ */
+export const getRepairLogs = async (req, res) => {
+  try {
+    const logs = await dbAll(
+      `SELECT * FROM session_repair_logs 
+       ORDER BY triggered_at DESC 
+       LIMIT 100`
+    );
+    return sendSuccess(res, logs);
+  } catch (err) {
+    logError('getRepairLogs', err);
+    return sendError(res, 500, 'REPAIR_LOGS_ERROR', 'Gagal mengambil log perbaikan sesi.');
+  }
+};
+
+/**
+ * GET /api/monitoring/failed-replies
+ * Mengembalikan daftar kegagalan respon chatbot/AI beserta nomor penerima.
+ */
+export const getFailedReplies = async (req, res) => {
+  try {
+    const logs = await dbAll(
+      `SELECT * FROM chatbot_failed_replies 
+       ORDER BY created_at DESC 
+       LIMIT 100`
+    );
+    return sendSuccess(res, logs);
+  } catch (err) {
+    logError('getFailedReplies', err);
+    return sendError(res, 500, 'FAILED_REPLIES_ERROR', 'Gagal mengambil log kegagalan chatbot.');
+  }
+};
+
+/**
+ * PATCH /api/monitoring/failed-replies/:id/status
+ * Memperbarui status kegagalan respon chatbot (misal dari UNRESOLVED ke RESOLVED).
+ */
+export const updateFailedReplyStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['UNRESOLVED', 'RESOLVED', 'MARKED'].includes(status)) {
+      return sendError(res, 400, 'INVALID_STATUS', 'Status tidak valid.');
+    }
+
+    const existing = await dbGet('SELECT id FROM chatbot_failed_replies WHERE id = ?', [id]);
+    if (!existing) {
+      return sendError(res, 404, 'NOT_FOUND', 'Log tidak ditemukan.');
+    }
+
+    await dbRun('UPDATE chatbot_failed_replies SET status = ? WHERE id = ?', [status, id]);
+    return sendSuccess(res, { id, status }, 200, { message: 'Status log berhasil diperbarui.' });
+  } catch (err) {
+    logError('updateFailedReplyStatus', err);
+    return sendError(res, 500, 'UPDATE_FAILED_REPLY_ERROR', 'Gagal memperbarui status log.');
   }
 };

@@ -42,7 +42,7 @@ function Login({ onLogin }) {
         borderRadius: 24,
         border: '1px solid rgba(148,163,184,0.22)',
         background: 'rgba(15,23,42,0.88)',
-        boxShadow: '0 24px 80px rgba(0,0,0,0.35)',
+        boxShadow: '0 24px 80px rgba(255, 255, 255, 0.35)',
         color: '#e5e7eb'
       }}>
         <div style={{ marginBottom: '1.5rem' }}>

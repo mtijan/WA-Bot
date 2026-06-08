@@ -239,7 +239,32 @@ class WhatsAppService {
         console.log(`[WA Socket] Sesi ${sessionId} terhubung ke nomor: ${phone}`);
         
         delete this.qrCodes[sessionId];
-        await dbRun('UPDATE sessions SET status = ?, phone_number = ? WHERE session_id = ?', ['CONNECTED', phone, sessionId]);
+
+        try {
+          const sessionRow = await dbGet('SELECT disconnected_at FROM sessions WHERE session_id = ?', [sessionId]);
+          if (sessionRow && sessionRow.disconnected_at) {
+            let downtimeSeconds = null;
+            const normalized = sessionRow.disconnected_at.replace(' ', 'T') + 'Z';
+            const discTime = new Date(normalized).getTime();
+            if (!isNaN(discTime)) {
+              downtimeSeconds = Math.max(0, Math.floor((Date.now() - discTime) / 1000));
+            }
+            await dbRun(
+              `INSERT INTO session_repair_logs (session_id, status, downtime_seconds)
+               VALUES (?, ?, ?)`,
+              [sessionId, 'SUCCESS', downtimeSeconds]
+            );
+          }
+        } catch (err) {
+          console.error('[WhatsApp Service] Gagal menulis logs repair:', err);
+        }
+
+        await dbRun(
+          `UPDATE sessions 
+           SET status = ?, phone_number = ?, disconnected_at = NULL 
+           WHERE session_id = ?`,
+          ['CONNECTED', phone, sessionId]
+        );
       }
 
       if (connection === 'close') {
@@ -248,7 +273,13 @@ class WhatsAppService {
 
         console.log(`[WA Socket] Sesi ${sessionId} terputus. Status Code: ${statusCode}. Reconnect: ${shouldReconnect}`);
         
-        await dbRun('UPDATE sessions SET status = ? WHERE session_id = ?', ['DISCONNECTED', sessionId]);
+        await dbRun(
+          `UPDATE sessions 
+           SET status = ?, 
+               disconnected_at = COALESCE(disconnected_at, CURRENT_TIMESTAMP) 
+           WHERE session_id = ?`,
+          ['DISCONNECTED', sessionId]
+        );
         delete this.sockets[sessionId];
         delete this.qrCodes[sessionId];
 
@@ -490,7 +521,7 @@ class WhatsAppService {
           if (matchedFlow.delay > 0) {
              await new Promise(r => setTimeout(r, matchedFlow.delay * 1000));
           }
-          const stats = await this.executeFlowNodes(sock, senderId, matchedFlow);
+          const stats = await this.executeFlowNodes(sock, senderId, matchedFlow, sessionId, cleanText);
           await this.recordFlowDeliveryStats(matchedFlow.id, {
             triggered: 1,
             sent: stats.sent,
@@ -592,12 +623,40 @@ class WhatsAppService {
                   }
                 } else {
                   console.warn(`[Chatbot AI Warning] Model '${modelNameToUse}' mengembalikan respon kosong untuk pesan '${cleanText}'`);
+                  try {
+                    const cleanPhone = senderId.split('@')[0];
+                    await dbRun(
+                      `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
+                       VALUES (?, ?, ?, ?, ?)`,
+                      [
+                        sessionId,
+                        cleanPhone,
+                        cleanText,
+                        'Chatbot AI',
+                        `Model '${modelNameToUse}' mengembalikan respon kosong`
+                      ]
+                    );
+                  } catch (dbErr) {
+                    console.error('[Chatbot AI Log Error]', dbErr);
+                  }
                 }
               } catch (aiErr) {
                 console.error('[Chatbot AI Error]', aiErr);
+                const errMsg = aiErr.message || String(aiErr);
                 try {
-                  const errMsg = aiErr.message || String(aiErr);
                   await dbRun('UPDATE chatbot_ai_settings SET last_error = ?, last_error_at = CURRENT_TIMESTAMP WHERE session_id = ?', [errMsg, sessionId]);
+                  const cleanPhone = senderId.split('@')[0];
+                  await dbRun(
+                    `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
+                     VALUES (?, ?, ?, ?, ?)`,
+                    [
+                      sessionId,
+                      cleanPhone,
+                      cleanText,
+                      'Chatbot AI',
+                      errMsg
+                    ]
+                  );
                 } catch (dbErr) {
                   console.error('[Chatbot AI DB Error]', dbErr);
                 }
@@ -691,7 +750,7 @@ class WhatsAppService {
     return true;
   }
 
-  async executeFlowNodes(sock, jid, flow) {
+  async executeFlowNodes(sock, jid, flow, sessionId, incomingText = '') {
     const stats = { sent: 0, failed: 0 };
     const sendAndCount = async (sendAction) => {
       try {
@@ -857,7 +916,7 @@ class WhatsAppService {
             const nextFlow = await dbGet("SELECT * FROM chatbot_flows WHERE id = ?", [nextFlowId]);
             if (nextFlow) {
               console.log(`[Chatbot] Alur melompat ke flow lain: ${nextFlow.flow_name}`);
-              const nextStats = await this.executeFlowNodes(sock, jid, nextFlow);
+              const nextStats = await this.executeFlowNodes(sock, jid, nextFlow, sessionId, incomingText);
               await this.recordFlowDeliveryStats(nextFlow.id, {
                 triggered: 1,
                 sent: nextStats.sent,
@@ -877,6 +936,22 @@ class WhatsAppService {
       }
     } catch (error) {
       console.error('Error executing flow nodes:', error);
+      try {
+        const cleanPhone = jid.split('@')[0];
+        await dbRun(
+          `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            sessionId || 'unknown',
+            cleanPhone,
+            incomingText || (currentNode?.message_content || null),
+            `Flow: ${flow.flow_name}`,
+            error.message || String(error)
+          ]
+        );
+      } catch (dbErr) {
+        console.error('Gagal menulis log kegagalan flow chatbot ke database:', dbErr);
+      }
     }
 
     return stats;

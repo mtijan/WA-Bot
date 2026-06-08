@@ -196,6 +196,23 @@ async function main() {
       } catch (repairErr) {
         console.error(`[Auto Repair] Gagal memicu perbaikan untuk sesi ${sessionId}:`, repairErr.message);
         
+        // Log kegagalan ke database
+        try {
+          await new Promise((resolveQuery, rejectQuery) => {
+            db.run(
+              `INSERT INTO session_repair_logs (session_id, status, error_message, downtime_seconds)
+               VALUES (?, ?, ?, NULL)`,
+              [sessionId, 'FAILED', repairErr.message || String(repairErr)],
+              (dbErr) => {
+                if (dbErr) rejectQuery(dbErr);
+                else resolveQuery();
+              }
+            );
+          });
+        } catch (dbErr) {
+          console.error('[Auto Repair] Gagal mencatat logs error repair ke DB:', dbErr.message);
+        }
+
         // Tetap catat upaya agar tidak melooping tanpa henti jika port internal error/down
         sessionInfo.attempts.push(now);
         state[sessionId] = sessionInfo;

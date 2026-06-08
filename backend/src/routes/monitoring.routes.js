@@ -1,12 +1,16 @@
 import express from 'express';
-import { getMonitoringStatus } from '../controllers/monitoring.controller.js';
+import { 
+  getMonitoringStatus, 
+  getRepairLogs, 
+  getFailedReplies, 
+  updateFailedReplyStatus 
+} from '../controllers/monitoring.controller.js';
 
 const router = express.Router();
 
-/**
- * GET /api/monitoring/status
- * Snapshot status sistem: health, sesi, memory, campaign, warmer, chatbot, delivery logs.
- */
 router.get('/status', getMonitoringStatus);
+router.get('/repair-logs', getRepairLogs);
+router.get('/failed-replies', getFailedReplies);
+router.patch('/failed-replies/:id/status', updateFailedReplyStatus);
 
 export default router;

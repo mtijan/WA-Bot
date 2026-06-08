@@ -351,6 +351,40 @@ const migrations = [
       await addColumnIfMissing(db, 'chatbot_ai_settings', 'last_error', 'TEXT');
       await addColumnIfMissing(db, 'chatbot_ai_settings', 'last_error_at', 'DATETIME');
     }
+  },
+  {
+    id: '009_session_repair_and_failed_replies_monitoring',
+    description: 'Add disconnected_at to sessions, and create session_repair_logs and chatbot_failed_replies tables.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'sessions', 'disconnected_at', 'DATETIME');
+      await exec(db, [
+        `CREATE TABLE IF NOT EXISTS session_repair_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          error_message TEXT,
+          downtime_seconds INTEGER,
+          triggered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (session_id) REFERENCES sessions (session_id) ON DELETE CASCADE
+        )`,
+        `CREATE TABLE IF NOT EXISTS chatbot_failed_replies (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          phone_number TEXT NOT NULL,
+          message_content TEXT,
+          triggered_keyword TEXT,
+          error_message TEXT,
+          status TEXT DEFAULT 'UNRESOLVED',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (session_id) REFERENCES sessions (session_id) ON DELETE CASCADE
+        )`
+      ]);
+      await exec(db, [
+        'CREATE INDEX IF NOT EXISTS idx_session_repair_logs_session_id ON session_repair_logs (session_id)',
+        'CREATE INDEX IF NOT EXISTS idx_chatbot_failed_replies_session_id ON chatbot_failed_replies (session_id)',
+        'CREATE INDEX IF NOT EXISTS idx_chatbot_failed_replies_status ON chatbot_failed_replies (status)'
+      ]);
+    }
   }
 ];
 

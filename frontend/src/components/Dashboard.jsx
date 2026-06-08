@@ -16,9 +16,18 @@ const Dashboard = () => {
     chatbotAiErrors: []
   });
 
+  const [repairLogs, setRepairLogs] = useState([]);
+  const [failedReplies, setFailedReplies] = useState([]);
+
   useEffect(() => {
     fetchStats();
-    const interval = setInterval(fetchStats, 5000);
+    fetchRepairLogs();
+    fetchFailedReplies();
+    const interval = setInterval(() => {
+      fetchStats();
+      fetchRepairLogs();
+      fetchFailedReplies();
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -30,6 +39,42 @@ const Dashboard = () => {
       }
     } catch (err) {
       console.error('Failed to fetch stats:', err);
+    }
+  };
+
+  const fetchRepairLogs = async () => {
+    try {
+      const json = await apiRequest('/monitoring/repair-logs');
+      if (json.status === 'success') {
+        setRepairLogs(json.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch repair logs:', err);
+    }
+  };
+
+  const fetchFailedReplies = async () => {
+    try {
+      const json = await apiRequest('/monitoring/failed-replies');
+      if (json.status === 'success') {
+        setFailedReplies(json.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch failed replies:', err);
+    }
+  };
+
+  const markReplyAsResolved = async (id) => {
+    try {
+      const json = await apiRequest(`/monitoring/failed-replies/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'RESOLVED' })
+      });
+      if (json.status === 'success') {
+        setFailedReplies(prev => prev.map(item => item.id === id ? { ...item, status: 'RESOLVED' } : item));
+      }
+    } catch (err) {
+      console.error('Failed to update status:', err);
     }
   };
 
@@ -52,6 +97,68 @@ const Dashboard = () => {
       {extra && <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '10px', marginTop: '4px' }}>{extra}</div>}
     </div>
   );
+
+  const flowFailedReplies = failedReplies.filter(
+    reply => reply.triggered_keyword && reply.triggered_keyword.startsWith('Flow: ')
+  );
+
+  const aiFailedReplies = failedReplies.filter(
+    reply => reply.triggered_keyword === 'Chatbot AI' || !reply.triggered_keyword || !reply.triggered_keyword.startsWith('Flow: ')
+  );
+
+  const renderFailedRepliesList = (list, emptyMessage) => {
+    if (list.length === 0) {
+      return (
+        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          {emptyMessage}
+        </div>
+      );
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {list.map((reply) => (
+          <div key={reply.id} style={{
+            padding: '12px', border: '1px solid var(--border-color)', borderRadius: '8px',
+            display: 'flex', flexDirection: 'column', gap: '6px',
+            backgroundColor: reply.status === 'RESOLVED' ? 'rgba(16, 185, 129, 0.02)' : 'rgba(239, 68, 68, 0.02)',
+            borderLeft: reply.status === 'RESOLVED' ? '4px solid #10b981' : '4px solid #ef4444'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>No. HP: {reply.phone_number}</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {new Date(reply.created_at).toLocaleString()}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Pesan:</span> "{reply.message_content || '(kosong)'}"
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Pemicu:</span> <span style={{ fontWeight: 500 }}>{reply.triggered_keyword}</span>
+            </div>
+            <div style={{ fontSize: '0.85rem', color: '#991b1b', backgroundColor: '#fee2e2', padding: '6px 10px', borderRadius: '6px', wordBreak: 'break-all' }}>
+              <span style={{ fontWeight: 600 }}>Error:</span> {reply.error_message}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sesi: {reply.session_id}</span>
+              {reply.status === 'UNRESOLVED' ? (
+                <button
+                  onClick={() => markReplyAsResolved(reply.id)}
+                  style={{
+                    padding: '4px 10px', fontSize: '0.75rem', borderRadius: '4px', border: 'none',
+                    backgroundColor: '#10b981', color: 'white', cursor: 'pointer', fontWeight: 600
+                  }}
+                >
+                  Tandai Selesai
+                </button>
+              ) : (
+                <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>Telah Ditandai</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -272,6 +379,85 @@ const Dashboard = () => {
               </div>
             </div>
             <p style={{ color: 'var(--text-muted)', textAlign: 'center' }}>Message Success Rate</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Section Pemantauan (Monitoring) */}
+      <div style={{ marginTop: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' }}>
+        {/* Repair Logs Card */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <h3 style={{ fontSize: '1.25rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Network size={20} color="var(--primary-color)" />
+            Log Perbaikan Sesi (Auto-Repair)
+          </h3>
+          <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+            {repairLogs.length === 0 ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                Belum ada riwayat perbaikan otomatis.
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '8px' }}>Sesi</th>
+                    <th style={{ padding: '8px' }}>Status</th>
+                    <th style={{ padding: '8px' }}>Downtime</th>
+                    <th style={{ padding: '8px' }}>Tanggal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {repairLogs.map((log) => {
+                    const dt = log.downtime_seconds;
+                    let displayDowntime = '-';
+                    if (dt !== null && dt !== undefined) {
+                      if (dt < 60) displayDowntime = `${dt} Detik`;
+                      else if (dt < 3600) displayDowntime = `${Math.floor(dt / 60)} Menit`;
+                      else displayDowntime = `${Math.floor(dt / 3600)} Jam ${Math.floor((dt % 3600) / 60)} Menit`;
+                    }
+                    
+                    return (
+                      <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '8px', fontWeight: 600 }}>{log.session_id}</td>
+                        <td style={{ padding: '8px' }}>
+                          <span style={{
+                            padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600,
+                            backgroundColor: log.status === 'SUCCESS' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                            color: log.status === 'SUCCESS' ? '#065f46' : '#991b1b'
+                          }}>
+                            {log.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px' }}>{displayDowntime}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{new Date(log.triggered_at).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        {/* Failed Replies - Chatbot Flow Card */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <h3 style={{ fontSize: '1.25rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Network size={20} color="var(--warning)" />
+            Pesan Gagal Balas (Chatbot Flow)
+          </h3>
+          <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+            {renderFailedRepliesList(flowFailedReplies, 'Tidak ada riwayat pesan gagal terbalas (Chatbot Flow).')}
+          </div>
+        </div>
+
+        {/* Failed Replies - Chatbot AI Card */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <h3 style={{ fontSize: '1.25rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Bot size={20} color="var(--warning)" />
+            Pesan Gagal Balas (Chatbot AI)
+          </h3>
+          <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+            {renderFailedRepliesList(aiFailedReplies, 'Tidak ada riwayat pesan gagal terbalas (Chatbot AI).')}
           </div>
         </div>
       </div>
