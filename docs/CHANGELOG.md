@@ -5,6 +5,21 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.6] - 2026-06-08
+
+### Added
+- Fitur auto-repair otomatis melalui skrip [auto_repair_disconnected.js](file:///d:/Self%20Project/WA-Bot/backend/scripts/auto_repair_disconnected.js) untuk memperbaiki sesi WhatsApp berstatus `DISCONNECTED` secara periodik.
+- Mekanisme pembatas laju (rate-limiter) perbaikan otomatis maksimal 3 kali per 24 jam dengan jeda cooldown 15 menit menggunakan berkas status persisten `backend/data/auto_repair_status.json`.
+- Integrasi notifikasi kegagalan perbaikan otomatis serta batas limit pemulihan langsung ke Telegram.
+- Perintah `"sessions:repair-auto"` di backend `package.json`.
+- Berkas unit systemd [wa-bot-repair.service](file:///d:/Self%20Project/WA-Bot/docs/deploy/systemd/wa-bot-repair.service) dan [wa-bot-repair.timer](file:///d:/Self%20Project/WA-Bot/docs/deploy/systemd/wa-bot-repair.timer) untuk otomasi perbaikan sesi terputus berdurasi setiap jam di VPS staging.
+- Migrasi database `008_add_chatbot_ai_error_fields` di [index.js](file:///d:/Self%20Project/WA-Bot/backend/src/migrations/index.js) untuk menambahkan kolom `last_error` dan `last_error_at` pada tabel `chatbot_ai_settings`.
+- Pencatatan otomatis kegagalan panggilan API/saldo habis dari AI di [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js) ke database serta mekanisme self-healing (menghapus catatan kesalahan) saat pemanggilan AI kembali sukses.
+- Box Alert glassmorphic merah premium di dashboard UI [Dashboard.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/Dashboard.jsx) untuk menampilkan error Chatbot AI yang terdeteksi dengan badge kategori dinamis (*Quota / Balance Empty*, *Invalid API Key*, *Connection Timeout*).
+
+### Fixed
+- Perbaikan simulator AI pada [ChatbotAI.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/ChatbotAI.jsx) agar menampilkan balasan dengan benar dengan menyesuaikan ekstraksi respons dari `result.reply` menjadi `result.data?.reply`.
+
 ## [2.8.5] - 2026-06-08
 
 ### Added
