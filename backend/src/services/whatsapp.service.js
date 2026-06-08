@@ -585,22 +585,33 @@ class WhatsAppService {
                 if (aiReply && aiReply.trim() !== '') {
                   await sock.sendMessage(senderId, { text: aiReply.trim() });
                   console.log(`[Chatbot AI] Sukses membalas ke ${senderId}`);
+                  try {
+                    await dbRun('UPDATE chatbot_ai_settings SET last_error = NULL, last_error_at = NULL WHERE session_id = ?', [sessionId]);
+                  } catch (dbErr) {
+                    // Abaikan
+                  }
                 } else {
                   console.warn(`[Chatbot AI Warning] Model '${modelNameToUse}' mengembalikan respon kosong untuk pesan '${cleanText}'`);
                 }
               } catch (aiErr) {
                 console.error('[Chatbot AI Error]', aiErr);
-              if (aiSettings.show_typing) {
                 try {
-                  await sock.sendPresenceUpdate('paused', senderId);
-                } catch (e) {
-                  // Abaikan
+                  const errMsg = aiErr.message || String(aiErr);
+                  await dbRun('UPDATE chatbot_ai_settings SET last_error = ?, last_error_at = CURRENT_TIMESTAMP WHERE session_id = ?', [errMsg, sessionId]);
+                } catch (dbErr) {
+                  console.error('[Chatbot AI DB Error]', dbErr);
+                }
+                if (aiSettings.show_typing) {
+                  try {
+                    await sock.sendPresenceUpdate('paused', senderId);
+                  } catch (e) {
+                    // Abaikan
+                  }
                 }
               }
             }
           }
         }
-      }
 
       } catch (err) {
         console.error('Error handling messages.upsert:', err);

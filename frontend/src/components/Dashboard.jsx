@@ -12,7 +12,8 @@ const Dashboard = () => {
     activeCampaigns: 0,
     chatbotInteractions: 0,
     totalNodes: 0,
-    successRate: 100
+    successRate: 100,
+    chatbotAiErrors: []
   });
 
   useEffect(() => {
@@ -54,6 +55,94 @@ const Dashboard = () => {
 
   return (
     <div>
+      {/* Chatbot AI Alerts */}
+      {stats.chatbotAiErrors && stats.chatbotAiErrors.length > 0 && (
+        <div style={{
+          backgroundColor: 'rgba(239, 68, 68, 0.08)',
+          borderLeft: '4px solid #ef4444',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginBottom: '24px',
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ color: '#ef4444', display: 'flex', alignItems: 'center' }}>
+              <Bot size={20} />
+            </div>
+            <h4 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#b91c1c' }}>
+              Chatbot AI Alerts
+            </h4>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {stats.chatbotAiErrors.map((err) => {
+              const isQuota = (err.last_error || '').toLowerCase().includes('quota') || 
+                              (err.last_error || '').toLowerCase().includes('balance') || 
+                              (err.last_error || '').toLowerCase().includes('insufficient');
+              const isAuth = (err.last_error || '').toLowerCase().includes('auth') || 
+                             (err.last_error || '').toLowerCase().includes('api key') ||
+                             (err.last_error || '').toLowerCase().includes('key invalid') ||
+                             (err.last_error || '').toLowerCase().includes('401');
+              
+              let badgeText = 'API Error';
+              let badgeColor = '#991b1b';
+              let badgeBg = '#fee2e2';
+
+              if (isQuota) {
+                badgeText = 'Quota / Balance Empty';
+                badgeColor = '#92400e';
+                badgeBg = '#fef3c7';
+              } else if (isAuth) {
+                badgeText = 'Invalid API Key';
+                badgeColor = '#1e3a8a';
+                badgeBg = '#dbeafe';
+              } else if ((err.last_error || '').toLowerCase().includes('fetch') || (err.last_error || '').toLowerCase().includes('network') || (err.last_error || '').toLowerCase().includes('timeout')) {
+                badgeText = 'Connection Timeout';
+                badgeColor = '#374151';
+                badgeBg = '#e5e7eb';
+              }
+
+              return (
+                <div key={err.session_id} style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between', 
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  padding: '10px 14px',
+                  backgroundColor: 'var(--card-bg, #ffffff)',
+                  border: '1px solid var(--border-color, #e5e7eb)',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                        Device: {err.session_id}
+                      </span>
+                      <span style={{ 
+                        fontSize: '0.75rem', 
+                        fontWeight: 600, 
+                        padding: '2px 8px', 
+                        borderRadius: '20px', 
+                        color: badgeColor, 
+                        backgroundColor: badgeBg 
+                      }}>
+                        {badgeText}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted, #6b7280)', wordBreak: 'break-all' }}>
+                      {err.last_error}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                    {err.last_error_at ? new Date(err.last_error_at).toLocaleString() : ''}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Welcome Banner */}
       <div style={{
         background: 'linear-gradient(135deg, var(--primary-color), var(--secondary-color))',

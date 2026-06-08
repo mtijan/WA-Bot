@@ -100,6 +100,17 @@ export function createApp(options = {}) {
         successRate = Math.round(((campaignSent?.count || 0) / totalCampaignLogs) * 100);
       }
 
+      let chatbotAiErrors = [];
+      try {
+        chatbotAiErrors = await dbAll(
+          `SELECT session_id, last_error, last_error_at 
+           FROM chatbot_ai_settings 
+           WHERE last_error IS NOT NULL`
+        );
+      } catch (e) {
+        chatbotAiErrors = [];
+      }
+
       res.json({
         status: 'success',
         data: {
@@ -115,7 +126,8 @@ export function createApp(options = {}) {
           activeCampaigns: activeCampaigns?.active || 0,
           chatbotInteractions: chatbotTriggered?.total || 0,
           totalNodes: totalNodes,
-          successRate: successRate
+          successRate: successRate,
+          chatbotAiErrors
         }
       });
     } catch (err) {

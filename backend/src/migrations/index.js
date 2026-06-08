@@ -343,6 +343,14 @@ const migrations = [
       await addColumnIfMissing(db, 'campaigns', 'attachment_type', 'TEXT');
       await addColumnIfMissing(db, 'campaigns', 'attachment_name', 'TEXT');
     }
+  },
+  {
+    id: '008_add_chatbot_ai_error_fields',
+    description: 'Add last_error and last_error_at columns to chatbot_ai_settings table.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'chatbot_ai_settings', 'last_error', 'TEXT');
+      await addColumnIfMissing(db, 'chatbot_ai_settings', 'last_error_at', 'DATETIME');
+    }
   }
 ];
 
