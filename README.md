@@ -3,8 +3,8 @@
 WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
-**Versi Dokumen/Sistem:** 2.8.4  
-**Terakhir Diperbarui:** 2026-06-07  
+**Versi Dokumen/Sistem:** 2.8.5  
+**Terakhir Diperbarui:** 2026-06-08  
 
 ---
 

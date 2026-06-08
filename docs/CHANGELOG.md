@@ -5,6 +5,17 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.5] - 2026-06-08
+
+### Added
+- Penambahan metrik penggunaan RAM Sistem host VPS (total, terpakai, dan bebas) di card Sumber Daya Sistem pada dashboard System Monitoring.
+
+### Changed
+- Dashboard System Monitoring diubah menggunakan tema putih (light theme) untuk meningkatkan kontras visual.
+- Penyegaran otomatis (auto-refresh) 10 detik dinonaktifkan agar penyegaran data sepenuhnya dilakukan secara manual melalui tombol Refresh.
+- Menghapus persentase di progress bar, stats koneksi aktif, dan tingkat keberhasilan pengiriman pada halaman monitoring untuk menyederhanakan antarmuka.
+- Menghapus visualisasi chart "Aktivitas per Jam (12 jam terakhir)" dari halaman monitoring.
+
 ## [2.8.4] - 2026-06-07
 
 ### Added
