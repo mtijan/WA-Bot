@@ -143,14 +143,23 @@ export const repairSession = async (req, res) => {
   const { id } = req.params;
   try {
     if (isSessionManagerClientEnabled()) {
-      const payload = await sessionManagerClient.repairSession(id);
+      const payload = await sessionManagerClient.repairSession(id, 'MANUAL');
       return res.json(payload);
     }
 
-    await whatsappService.repairSession(id);
+    await whatsappService.repairSession(id, 'MANUAL');
     return sendSuccess(res, null, 200, { message: `Sesi ${id} berhasil diperbaiki.` });
   } catch (err) {
     logError('repairSession', err, { params: req.params });
+    try {
+      await dbRun(
+        `INSERT INTO session_repair_logs (session_id, status, error_message, downtime_seconds, trigger_type)
+         VALUES (?, ?, ?, NULL, ?)`,
+        [id, 'FAILED', err.message || String(err), 'MANUAL']
+      );
+    } catch (dbErr) {
+      logError('repairSessionDbLog', dbErr);
+    }
     return sendError(res, 500, 'REPAIR_SESSION_ERROR', err.message || 'Gagal memperbaiki sesi.');
   }
 };

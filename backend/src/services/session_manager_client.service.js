@@ -126,7 +126,10 @@ export const sessionManagerClient = {
     return request(`/warmer/campaigns/${encodeURIComponent(campaignId)}/clear`, { method: 'POST' });
   },
 
-  async repairSession(sessionId) {
-    return request(`/sessions/${encodeURIComponent(sessionId)}/repair`, { method: 'POST' });
+  async repairSession(sessionId, triggerType = 'MANUAL') {
+    return request(`/sessions/${encodeURIComponent(sessionId)}/repair`, {
+      method: 'POST',
+      body: { triggerType }
+    });
   }
 };

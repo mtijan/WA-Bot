@@ -385,6 +385,13 @@ const migrations = [
         'CREATE INDEX IF NOT EXISTS idx_chatbot_failed_replies_status ON chatbot_failed_replies (status)'
       ]);
     }
+  },
+  {
+    id: '010_add_trigger_type_to_repair_logs',
+    description: 'Add trigger_type column to session_repair_logs table.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'session_repair_logs', 'trigger_type', "TEXT DEFAULT 'RECONNECT'");
+    }
   }
 ];
 

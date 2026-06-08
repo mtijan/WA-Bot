@@ -200,8 +200,8 @@ async function main() {
         try {
           await new Promise((resolveQuery, rejectQuery) => {
             db.run(
-              `INSERT INTO session_repair_logs (session_id, status, error_message, downtime_seconds)
-               VALUES (?, ?, ?, NULL)`,
+              `INSERT INTO session_repair_logs (session_id, status, error_message, downtime_seconds, trigger_type)
+               VALUES (?, ?, ?, NULL, 'AUTO')`,
               [sessionId, 'FAILED', repairErr.message || String(repairErr)],
               (dbErr) => {
                 if (dbErr) rejectQuery(dbErr);

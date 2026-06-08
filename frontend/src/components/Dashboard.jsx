@@ -402,6 +402,7 @@ const Dashboard = () => {
                   <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
                     <th style={{ padding: '8px' }}>Sesi</th>
                     <th style={{ padding: '8px' }}>Status</th>
+                    <th style={{ padding: '8px' }}>Pemicu</th>
                     <th style={{ padding: '8px' }}>Downtime</th>
                     <th style={{ padding: '8px' }}>Tanggal</th>
                   </tr>
@@ -416,6 +417,16 @@ const Dashboard = () => {
                       else displayDowntime = `${Math.floor(dt / 3600)} Jam ${Math.floor((dt % 3600) / 60)} Menit`;
                     }
                     
+                    let displayTrigger = 'Reconnect';
+                    let triggerColor = 'var(--text-muted)';
+                    if (log.trigger_type === 'AUTO') {
+                      displayTrigger = 'Auto';
+                      triggerColor = 'var(--primary-color)';
+                    } else if (log.trigger_type === 'MANUAL') {
+                      displayTrigger = 'Manual';
+                      triggerColor = 'var(--warning)';
+                    }
+                    
                     return (
                       <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '8px', fontWeight: 600 }}>{log.session_id}</td>
@@ -428,6 +439,7 @@ const Dashboard = () => {
                             {log.status}
                           </span>
                         </td>
+                        <td style={{ padding: '8px', fontWeight: 500, color: triggerColor }}>{displayTrigger}</td>
                         <td style={{ padding: '8px' }}>{displayDowntime}</td>
                         <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{new Date(log.triggered_at).toLocaleString()}</td>
                       </tr>

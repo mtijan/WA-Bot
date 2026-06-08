@@ -141,11 +141,21 @@ export const updateSessionProxy = async (req, res) => {
 
 export const repairSessionInternal = async (req, res) => {
   const { id } = req.params;
+  const triggerType = req.body?.triggerType || 'AUTO';
   try {
-    await whatsappService.repairSession(id);
+    await whatsappService.repairSession(id, triggerType);
     return sendSuccess(res, null, 200, { message: `Sesi ${id} berhasil diperbaiki oleh session manager.` });
   } catch (err) {
     logError('repairSessionInternal', err, { params: req.params });
+    try {
+      await dbRun(
+        `INSERT INTO session_repair_logs (session_id, status, error_message, downtime_seconds, trigger_type)
+         VALUES (?, ?, ?, NULL, ?)`,
+        [id, 'FAILED', err.message || String(err), triggerType]
+      );
+    } catch (dbErr) {
+      logError('repairSessionInternalDbLog', dbErr);
+    }
     return sendError(res, 500, 'REPAIR_SESSION_ERROR', 'Gagal memperbaiki sesi.');
   }
 };

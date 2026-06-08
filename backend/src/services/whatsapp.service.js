@@ -143,6 +143,7 @@ class WhatsAppService {
     this.sockets = {};
     this.qrCodes = {};
     this.silentLogger = pino({ level: 'silent' });
+    this.lastRepairTrigger = {};
   }
 
   // Auto-load semua sesi yang terdaftar saat server menyala
@@ -249,10 +250,13 @@ class WhatsAppService {
             if (!isNaN(discTime)) {
               downtimeSeconds = Math.max(0, Math.floor((Date.now() - discTime) / 1000));
             }
+            const triggerType = this.lastRepairTrigger[sessionId] || 'RECONNECT';
+            delete this.lastRepairTrigger[sessionId];
+
             await dbRun(
-              `INSERT INTO session_repair_logs (session_id, status, downtime_seconds)
-               VALUES (?, ?, ?)`,
-              [sessionId, 'SUCCESS', downtimeSeconds]
+              `INSERT INTO session_repair_logs (session_id, status, downtime_seconds, trigger_type)
+               VALUES (?, ?, ?, ?)`,
+              [sessionId, 'SUCCESS', downtimeSeconds, triggerType]
             );
           }
         } catch (err) {
@@ -1333,8 +1337,9 @@ class WhatsAppService {
    * CATATAN: Tidak dilakukan secara otomatis karena error dekripsi dari
    * sinkronisasi riwayat pesan lama adalah hal normal dan permanen.
    */
-  async repairSession(sessionId) {
-    console.log(`[WA Server] Menjalankan perbaikan sesi untuk: ${sessionId}`);
+  async repairSession(sessionId, triggerType = 'MANUAL') {
+    this.lastRepairTrigger[sessionId] = triggerType;
+    console.log(`[WA Server] Menjalankan perbaikan sesi untuk: ${sessionId} (pemicu: ${triggerType})`);
 
     const sock = this.sockets[sessionId];
     if (sock) {

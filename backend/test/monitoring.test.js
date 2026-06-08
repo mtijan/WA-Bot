@@ -42,8 +42,8 @@ describe('Monitoring & Logs Endpoints', () => {
       // Masukkan sesi dan repair log
       await dbRun("INSERT INTO sessions (session_id, status) VALUES ('test-session', 'DISCONNECTED')");
       await dbRun(`
-        INSERT INTO session_repair_logs (session_id, status, error_message, downtime_seconds)
-        VALUES ('test-session', 'SUCCESS', null, 120)
+        INSERT INTO session_repair_logs (session_id, status, error_message, downtime_seconds, trigger_type)
+        VALUES ('test-session', 'SUCCESS', null, 120, 'AUTO')
       `);
 
       const res = await agent
@@ -57,6 +57,7 @@ describe('Monitoring & Logs Endpoints', () => {
       assert.equal(res.body.data[0].session_id, 'test-session');
       assert.equal(res.body.data[0].status, 'SUCCESS');
       assert.equal(res.body.data[0].downtime_seconds, 120);
+      assert.equal(res.body.data[0].trigger_type, 'AUTO');
     });
   });
 
