@@ -17,8 +17,8 @@ const telegramChatId = process.env.WA_BOT_ALERT_TELEGRAM_CHAT_ID || '';
 const stateDir = join(__dirname, '..', 'data');
 const stateFilePath = join(stateDir, 'auto_repair_state.json');
 
-const MAX_REPAIRS_PER_24H = 3;
-const REPAIR_COOLDOWN_MS = 15 * 60 * 1000; // 15 menit jeda antar repair per sesi
+const MAX_REPAIRS_PER_24H = 5;
+const REPAIR_COOLDOWN_MS = 5 * 60 * 1000; // 5 menit jeda antar repair per sesi
 
 const nowIso = () => new Date().toISOString();
 
