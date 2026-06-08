@@ -461,7 +461,7 @@ function ChatbotAI() {
         window.showSuccess('Koneksi sukses! API Key valid.');
         setSandboxMessages(prev => [
           ...prev,
-          { role: 'assistant', content: `[Sistem] Uji koneksi API berhasil. Respon uji coba SumoPod AI: "${result.reply}"` }
+          { role: 'assistant', content: `[Sistem] Uji koneksi API berhasil. Respon uji coba SumoPod AI: "${result.data?.reply}"` }
         ]);
       } else {
         window.showError(result.message || 'Koneksi gagal.');
@@ -533,7 +533,7 @@ function ChatbotAI() {
         body: JSON.stringify(payload)
       });
       if (result.status === 'success') {
-        setSandboxMessages(prev => [...prev, { role: 'assistant', content: result.reply }]);
+        setSandboxMessages(prev => [...prev, { role: 'assistant', content: result.data?.reply }]);
       } else {
         setSandboxMessages(prev => [...prev, { role: 'assistant', content: `Error: ${result.message}` }]);
       }
