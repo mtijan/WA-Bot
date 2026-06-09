@@ -18,7 +18,8 @@ import {
   processCampaignInternal,
   startWarmerCampaignInternal,
   stopWarmerCampaignInternal,
-  clearWarmerCampaignInternal
+  clearWarmerCampaignInternal,
+  getFailedRepliesHealthInternal
 } from '../controllers/internal.controller.js';
 import { requireInternalToken } from '../middleware/internal_auth.middleware.js';
 import { validateBody } from '../utils/validator.js';
@@ -29,6 +30,8 @@ router.get('/health/live', live);
 router.get('/health/ready', ready);
 
 router.use(requireInternalToken);
+
+router.get('/health/failed-replies', getFailedRepliesHealthInternal);
 
 router.get('/sessions', listSessions);
 router.get('/sessions/:id', getSession);

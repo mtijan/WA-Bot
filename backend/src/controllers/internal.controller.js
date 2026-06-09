@@ -321,3 +321,29 @@ export const clearWarmerCampaignInternal = async (req, res) => {
     return sendError(res, 500, 'CLEAR_WARMER_CAMPAIGN_ERROR', error.message || 'Gagal menghapus timer kampanye warmer.');
   }
 };
+
+export const getFailedRepliesHealthInternal = async (req, res) => {
+  try {
+    const unresolved = await dbGet(
+      "SELECT COUNT(*) as count FROM chatbot_failed_replies WHERE status = 'UNRESOLVED'"
+    );
+    const count = unresolved?.count || 0;
+    if (count > 0) {
+      return res.status(200).json({
+        status: 'warning',
+        message: `Terdapat ${count} pesan gagal terbalas yang belum diselesaikan.`
+      });
+    }
+    return res.status(200).json({
+      status: 'success',
+      message: 'Tidak ada pesan gagal terbalas.'
+    });
+  } catch (error) {
+    logError('getFailedRepliesHealthInternal', error);
+    return res.status(500).json({
+      status: 'error',
+      message: `Gagal memeriksa pesan gagal terbalas: ${error.message}`
+    });
+  }
+};
+

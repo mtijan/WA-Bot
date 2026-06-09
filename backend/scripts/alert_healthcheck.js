@@ -33,6 +33,11 @@ const endpointTargets = [
     url: process.env.WA_BOT_ALERT_WORKER_READY_URL || 'http://127.0.0.1:3002/internal/health/ready',
     headers: internalToken ? { 'X-Internal-Token': internalToken } : {}
   },
+  {
+    name: 'failed-replies',
+    url: process.env.WA_BOT_ALERT_FAILED_REPLIES_URL || 'http://127.0.0.1:3002/internal/health/failed-replies',
+    headers: internalToken ? { 'X-Internal-Token': internalToken } : {}
+  },
   ...(process.env.WA_BOT_ALERT_PUBLIC_URL
     ? [{ name: 'public-frontend', url: process.env.WA_BOT_ALERT_PUBLIC_URL, headers: {} }]
     : []),
@@ -73,10 +78,11 @@ async function checkEndpoint(target) {
     if (contentType.includes('application/json')) {
       const body = await response.json();
       if (body.status && !['healthy', 'ready', 'success'].includes(body.status)) {
+        const detail = body.message || body.error || '';
         return {
           ok: false,
           target: target.name,
-          message: `${target.name} returned status=${body.status}`
+          message: `${target.name} returned status=${body.status}${detail ? ': ' + detail : ''}`
         };
       }
     }

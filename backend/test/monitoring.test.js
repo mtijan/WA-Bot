@@ -167,5 +167,53 @@ describe('Monitoring & Logs Endpoints', () => {
       assert.ok(dbRow.error_message.includes('Cannot read properties of null'));
     });
   });
+
+  describe('GET /internal/health/failed-replies', () => {
+    it('mengembalikan status success jika tidak ada pesan gagal terbalas', async () => {
+      const express = (await import('express')).default;
+      const supertest = (await import('supertest')).default;
+      const internalRoutes = (await import('../src/routes/internal.routes.js')).default;
+
+      const testApp = express();
+      testApp.use(express.json());
+      testApp.use('/internal', internalRoutes);
+      const agent = supertest(testApp);
+
+      const res = await agent
+        .get('/internal/health/failed-replies')
+        .set('X-Internal-Token', process.env.WA_BOT_INTERNAL_TOKEN || 'testing-internal-token-secret-placeholder');
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.status, 'success');
+      assert.equal(res.body.message, 'Tidak ada pesan gagal terbalas.');
+    });
+
+    it('mengembalikan status warning jika terdapat pesan gagal terbalas UNRESOLVED', async () => {
+      const express = (await import('express')).default;
+      const supertest = (await import('supertest')).default;
+      const internalRoutes = (await import('../src/routes/internal.routes.js')).default;
+
+      const testApp = express();
+      testApp.use(express.json());
+      testApp.use('/internal', internalRoutes);
+      const agent = supertest(testApp);
+
+      // Masukkan pesan gagal terbalas UNRESOLVED
+      await dbRun("INSERT INTO sessions (session_id, status) VALUES ('test-session-internal', 'CONNECTED')");
+      await dbRun(`
+        INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message, status)
+        VALUES ('test-session-internal', '628123456789', 'halo bot', 'halo', 'Timeout error', 'UNRESOLVED')
+      `);
+
+      const res = await agent
+        .get('/internal/health/failed-replies')
+        .set('X-Internal-Token', process.env.WA_BOT_INTERNAL_TOKEN || 'testing-internal-token-secret-placeholder');
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.status, 'warning');
+      assert.ok(res.body.message.includes('1 pesan gagal terbalas'));
+    });
+  });
 });
+
 
