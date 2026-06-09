@@ -17,6 +17,7 @@ For VPS command steps, use `docs/deploy/MONITORING_SETUP.commands.md` and the li
 | Combined worker readiness | `GET http://127.0.0.1:3002/internal/health/ready` | JSON `status=ready` | Worker tidak merespons |
 | Campaign worker readiness | `GET http://127.0.0.1:3003/internal/health/ready` | JSON `status=ready` | Worker granular tidak merespons |
 | Warmer worker readiness | `GET http://127.0.0.1:3004/internal/health/ready` | JSON `status=ready` | Worker granular tidak merespons |
+| Chatbot failed replies | `GET http://127.0.0.1:3002/internal/health/failed-replies` | JSON `status=success` | JSON `status=warning` (ada pesan gagal terbalas) atau proses tidak merespons |
 | Public frontend | `https://<domain>/` or staging HTTP/IP local evidence | HTTP `200` | HTTP bukan `200` |
 | Public API via reverse proxy | `https://<domain>/api/auth/me` or staging HTTP/IP local evidence | HTTP `200` | HTTP bukan `200` / reverse proxy rusak |
 | Disk usage | OS monitor | `<80%` | `>=80% warning`, `>=90% critical` |
@@ -51,7 +52,7 @@ cd /opt/wa-bot/backend
 npm run monitor:alert
 ```
 
-It checks API readiness, worker readiness, optional public HTTPS URLs, disk usage, and encrypted-backup freshness. If a check fails, it sends an alert to Telegram and/or `WA_BOT_ALERT_WEBHOOK_URL`.
+It checks API readiness, worker readiness, unresolved failed replies, optional public HTTPS URLs, disk usage, and encrypted-backup freshness. If a check fails, it sends an alert to Telegram and/or `WA_BOT_ALERT_WEBHOOK_URL`.
 
 Required env values:
 
@@ -62,6 +63,7 @@ Required env values:
 | `WA_BOT_ALERT_WEBHOOK_URL` | Optional external webhook destination. Keep secret and never commit. |
 | `WA_BOT_ALERT_PUBLIC_URL` | Optional public frontend URL, e.g. `https://stagingwabot.web.id/`. |
 | `WA_BOT_ALERT_PUBLIC_HEALTH_URL` | Optional public health URL, e.g. `https://stagingwabot.web.id/health`. |
+| `WA_BOT_ALERT_FAILED_REPLIES_URL` | Optional unresolved failed replies endpoint URL, e.g. `http://127.0.0.1:3002/internal/health/failed-replies`. |
 | `WA_BOT_ALERT_BACKUP_MAX_AGE_HOURS` | Backup freshness threshold. Default `36`. |
 | `WA_BOT_ALERT_DISK_WARN_PERCENT` | Disk warning threshold. Default `80`. |
 
