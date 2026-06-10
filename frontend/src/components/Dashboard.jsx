@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react';
 import { Smartphone, Send, Users, FileText, Bot, Network, Phone, BarChart2 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
+const formatDateTime = (dateStr) => {
+  if (!dateStr) return '';
+  const normalized = dateStr.includes('T') || dateStr.endsWith('Z') 
+    ? dateStr 
+    : dateStr.replace(' ', 'T') + 'Z';
+  const parsed = new Date(normalized);
+  return isNaN(parsed.getTime()) ? dateStr : parsed.toLocaleString();
+};
+
 const Dashboard = () => {
   const [stats, setStats] = useState({
     activeSessions: 0,
@@ -126,7 +135,7 @@ const Dashboard = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>No. HP: {reply.phone_number}</span>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                {new Date(reply.created_at).toLocaleString()}
+                {formatDateTime(reply.created_at)}
               </span>
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>
@@ -241,7 +250,7 @@ const Dashboard = () => {
                     </span>
                   </div>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                    {err.last_error_at ? new Date(err.last_error_at).toLocaleString() : ''}
+                    {formatDateTime(err.last_error_at)}
                   </span>
                 </div>
               );
@@ -441,7 +450,7 @@ const Dashboard = () => {
                         </td>
                         <td style={{ padding: '8px', fontWeight: 500, color: triggerColor }}>{displayTrigger}</td>
                         <td style={{ padding: '8px' }}>{displayDowntime}</td>
-                        <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{new Date(log.triggered_at).toLocaleString()}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{formatDateTime(log.triggered_at)}</td>
                       </tr>
                     );
                   })}
