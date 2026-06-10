@@ -346,11 +346,11 @@ const Monitoring = () => {
           </div>
 
           <div>
-            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Heap Memory (Node.js)</div>
-            <ProgressBar value={data?.memory?.heap_used_bytes || 0} max={data?.memory?.heap_total_bytes || 1} color="#7c3aed" height={10} />
+            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>RAM Aplikasi (Node.js - RSS)</div>
+            <ProgressBar value={data?.memory?.rss_bytes || 0} max={data?.memory?.system_total_bytes || 1} color="#7c3aed" height={10} />
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#64748b', marginTop: 6 }}>
-              <span>Digunakan: <strong style={{ color: '#0f172a' }}>{formatBytes(data?.memory?.heap_used_bytes || 0)}</strong></span>
-              <span>Total: <strong style={{ color: '#0f172a' }}>{formatBytes(data?.memory?.heap_total_bytes || 0)}</strong></span>
+              <span>Terpakai (RSS): <strong style={{ color: '#0f172a' }}>{formatBytes(data?.memory?.rss_bytes || 0)}</strong></span>
+              <span>Batas RAM Sistem: <strong style={{ color: '#0f172a' }}>{formatBytes(data?.memory?.system_total_bytes || 0)}</strong></span>
             </div>
           </div>
 
@@ -367,7 +367,8 @@ const Monitoring = () => {
           </div>
 
           <div>
-            <StatRow label="RSS (Total Proses)" value={formatBytes(data?.memory?.rss_bytes || 0)} />
+            <StatRow label="Heap Terpakai (JS)" value={formatBytes(data?.memory?.heap_used_bytes || 0)} />
+            <StatRow label="Heap Total Dialokasi" value={formatBytes(data?.memory?.heap_total_bytes || 0)} />
             <StatRow label="External Binding" value={formatBytes(data?.memory?.external_bytes || 0)} />
             <StatRow label="Ukuran Database" value={`${data?.database?.size_mb || 0} MB`} />
           </div>
