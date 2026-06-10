@@ -5,6 +5,19 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.7] - 2026-06-10
+
+### Added
+- Tombol reconnect manual ("Reconnect") di antarmuka Devices / Session Manager [SessionManager.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/SessionManager.jsx) untuk memicu pemutusan socket bersih dan menyambung kembali tanpa menghapus Signal cache/kredensial.
+- Handler reconnect backend `reconnectSession` di [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js), [session.controller.js](file:///d:/Self%20Project/WA-Bot/backend/src/controllers/session.controller.js), dan [internal.controller.js](file:///d:/Self%20Project/WA-Bot/backend/src/controllers/internal.controller.js) untuk mendukung alur API session-manager yang baru.
+- Opsi `keepAliveIntervalMs: 30000` di konfigurasi socket Baileys di [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js) untuk deteksi zombie connection otomatis.
+- Berkas pengujian baru [sessions.test.js](file:///d:/Self%20Project/WA-Bot/backend/test/sessions.test.js) untuk memvalidasi alur reconnect manual dan perbaikan status WhatsApp.
+- Dokumen tata kelola platform [PLATFORM_GOVERNANCE.md](file:///d:/Self%20Project/WA-Bot/docs/PLATFORM_GOVERNANCE.md) untuk mendokumentasikan compliance, manajemen risiko pemblokiran WhatsApp, limits/throttling, retensi, dan siklus hidup media.
+
+### Fixed
+- Memperbaiki progress bar visualisasi penggunaan memori sistem di [Monitoring.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/Monitoring.jsx) agar membandingkan memori RSS aplikasi (Resident Set Size) terhadap batas total RAM fisik host sistem, bukan terhadap heap limit.
+- Memperbaiki parse tanggal log dari format UTC SQLite menjadi zona waktu lokal browser dengan helper `formatDateTime` di [Dashboard.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/Dashboard.jsx).
+
 ## [2.8.6] - 2026-06-08
 
 ### Added

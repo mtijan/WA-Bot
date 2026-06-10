@@ -66,7 +66,7 @@
         </p>
         <div class="callout callout--info" style="margin-top:1.25rem;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          <div>Standar aktif: ISO/IEC/IEEE 12207, ISO/IEC/IEEE 29148 (requirements), IEEE 1016 (design), dan ISO/IEC/IEEE 29119 (testing). IEEE 830 dan IEEE 829 dipertahankan sebagai referensi historis. Versi dokumen: <strong>2.8.6</strong>. Pembaruan terakhir: <strong>8 Juni 2026</strong>.</div>
+          <div>Standar aktif: ISO/IEC/IEEE 12207, ISO/IEC/IEEE 29148 (requirements), IEEE 1016 (design), dan ISO/IEC/IEEE 29119 (testing). IEEE 830 dan IEEE 829 dipertahankan sebagai referensi historis. Versi dokumen: <strong>2.8.7</strong>. Pembaruan terakhir: <strong>10 Juni 2026</strong>.</div>
         </div>
       </div>
 
@@ -221,12 +221,21 @@
                 <td>Pertahankan smoke import/export/edit/settings/nodes/media/counter pada setiap release candidate. Full export bisa besar karena membawa semua nodes.</td>
                 <td>Flow besar lebih ringan diedit, metrik sent menghitung pesan node yang benar-benar terkirim, dan export tidak menyimpan file <code>null</code> saat response invalid.</td>
               </tr>
+              <tr>
+                <td>15</td>
+                <td><code>P1</code></td>
+                <td>Session Reconnect &amp; Heartbeat Stability</td>
+                <td><strong>DONE</strong></td>
+                <td>Tombol reconnect manual di UI Devices/Session Manager, Baileys socket keep-alive ping 30 detik, optimasi perbandingan RSS memori dashboard terhadap total RAM fisik sistem host, dan parser log UTC ke zona waktu lokal browser.</td>
+                <td>Selesaikan testing performa deteksi zombie connection pada kondisi beban tinggi.</td>
+                <td>Pengguna dapat melakukan reconnect sesi manual; zombie connection terdeteksi otomatis; progress bar memori mengukur memori host asli; cap waktu log sinkron dengan waktu peramban lokal.</td>
+              </tr>
             </tbody>
           </table>
         </div>
         <div class="callout callout--warning" style="margin-top:1.25rem;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-          <div>Tahap saat ini: item 2 Process architecture, item 3 Database migration, item 4 Backup and restore, item 5 lightweight VPS monitoring baseline, item 6 Database reliability, item 7 Codebase quality, item 8 Security hardening, item 9 Deploy automation, item 10 Test coverage, item 12 Media upload attachments, dan item 14 Chatbot Flow large-data UX/metrics sudah DONE; staging VPS terverifikasi dengan domain HTTPS, secure cookie/CORS, rotated placeholders, UFW, provider firewall review, local backup/restore/healthcheck/alertcheck timers, Telegram offsite backup, logrotate, HTTP/HTTPS smoke, auth HTTPS smoke, manual browser smoke HTTPS, browser feature smoke socket-heavy PASS pada 2026-06-07, frontend production API URL guard, seluruh React UI API client + backend controllers migrations, serta skrip smoke test otomatis (npm run test:smoke). Stabilitas sesi WhatsApp diperkuat (auto-repair loop dinonaktifkan & log libsignal disaring), serta 54 test cases backend integration & unit test suite selesai dengan kelulusan 100%.</div>
+          <div>Tahap saat ini: item 2 Process architecture, item 3 Database migration, item 4 Backup and restore, item 5 lightweight VPS monitoring baseline, item 6 Database reliability, item 7 Codebase quality, item 8 Security hardening, item 9 Deploy automation, item 10 Test coverage, item 11 Platform governance, item 12 Media upload attachments, item 13 Chatbot Flow large-data UX/metrics, item 14 Session Auto-Repair &amp; Chatbot AI Alerting, dan item 15 Session Reconnect &amp; Heartbeat Stability sudah DONE; staging VPS terverifikasi dengan domain HTTPS, secure cookie/CORS, rotated placeholders, UFW, provider firewall review, local backup/restore/healthcheck/alertcheck timers, Telegram offsite backup, logrotate, HTTP/HTTPS smoke, auth HTTPS smoke, manual browser smoke HTTPS, browser feature smoke socket-heavy PASS pada 2026-06-07, frontend production API URL guard, seluruh React UI API client + backend controllers migrations, serta skrip smoke test otomatis (npm run test:smoke). Stabilitas sesi WhatsApp diperkuat (auto-repair loop dinonaktifkan & log libsignal disaring), serta test suite backend integration & unit test lulus 100%.</div>
         </div>
       </div>
 
@@ -460,6 +469,30 @@
               <td>Sistem mendeteksi kegagalan panggilan API atau kehabisan saldo pada chatbot AI, mencatat pesan kesalahan secara persisten, dan menampilkan alert box self-healing pada dashboard admin.</td>
               <td><span class="badge badge--high">Tinggi</span></td>
             </tr>
+            <tr>
+              <td><code>FR-25</code></td>
+              <td>Manual Session Reconnect</td>
+              <td>Sistem mendukung pemutusan koneksi soket Baileys secara bersih dan menghubungkan kembali sesi tanpa menghapus kredensial atau Signal cache dari UI Devices secara manual.</td>
+              <td><span class="badge badge--high">Tinggi</span></td>
+            </tr>
+            <tr>
+              <td><code>FR-26</code></td>
+              <td>Baileys Keep-Alive Heartbeat</td>
+              <td>Sistem mengirimkan ping secara berkala untuk menjaga koneksi soket Baileys tetap aktif guna mencegah zombie connection.</td>
+              <td><span class="badge badge--high">Tinggi</span></td>
+            </tr>
+            <tr>
+              <td><code>FR-27</code></td>
+              <td>Accurate System Memory Progress Bar</td>
+              <td>Sistem mengukur penggunaan memori RSS (Resident Set Size) aplikasi terhadap batas RAM fisik server host secara akurat.</td>
+              <td><span class="badge badge--high">Tinggi</span></td>
+            </tr>
+            <tr>
+              <td><code>FR-28</code></td>
+              <td>Browser Local Time Log Parsing</td>
+              <td>Sistem mengonversi string tanggal UTC yang disimpan di database menjadi waktu lokal peramban pengguna saat merender log.</td>
+              <td><span class="badge badge--high">Tinggi</span></td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -509,6 +542,10 @@
             <tr><td><code>FR-22</code></td><td>Chatbot Flow Large Import &amp; Accurate Metrics</td><td><code>chatbot.controller.js</code>, <code>ChatbotFlows.jsx</code>, <code>whatsapp.service.js</code>, migration <code>006</code></td><td><span class="badge badge--info">TC-FLOW-03</span></td></tr>
             <tr><td><code>FR-23</code></td><td>Automatic Session Repair</td><td><code>auto_repair_disconnected.js</code>, <code>wa-bot-repair.timer</code></td><td><span class="badge badge--info">TC-RECON-02</span></td></tr>
             <tr><td><code>FR-24</code></td><td>Chatbot AI Dashboard Error Alerts</td><td><code>whatsapp.service.js</code>, <code>Dashboard.jsx</code>, <code>chatbot_ai_settings</code></td><td><span class="badge badge--info">TC-FLOW-04</span></td></tr>
+            <tr><td><code>FR-25</code></td><td>Manual Session Reconnect</td><td><code>whatsapp.service.js</code>, <code>session.controller.js</code>, <code>SessionManager.jsx</code></td><td><span class="badge badge--info">TC-RECON-03</span></td></tr>
+            <tr><td><code>FR-26</code></td><td>Baileys Keep-Alive Heartbeat</td><td><code>whatsapp.service.js</code> (Baileys socket config)</td><td><span class="badge badge--info">TC-RECON-04</span></td></tr>
+            <tr><td><code>FR-27</code></td><td>Accurate System Memory Progress Bar</td><td><code>Monitoring.jsx</code> (RSS memory vs physical system RAM)</td><td><span class="badge badge--info">TC-MON-01</span></td></tr>
+            <tr><td><code>FR-28</code></td><td>Browser Local Time Log Parsing</td><td><code>Dashboard.jsx</code> (UTC-to-local timezone)</td><td><span class="badge badge--info">TC-LOG-01</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -587,7 +624,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.8.6 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.8.7 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
   </footer>
   <script>
     const toggleBtn = document.querySelector('.theme-toggle');
