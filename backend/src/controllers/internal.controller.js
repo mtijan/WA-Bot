@@ -160,6 +160,17 @@ export const repairSessionInternal = async (req, res) => {
   }
 };
 
+export const reconnectSessionInternal = async (req, res) => {
+  const { id } = req.params;
+  try {
+    await whatsappService.reconnectSession(id);
+    return sendSuccess(res, null, 200, { message: `Sesi ${id} berhasil dihubungkan kembali oleh session manager.` });
+  } catch (err) {
+    logError('reconnectSessionInternal', err, { params: req.params });
+    return sendError(res, 500, 'RECONNECT_SESSION_ERROR', 'Gagal menghubungkan kembali sesi.');
+  }
+};
+
 export const getDetailedGroupsInternal = async (req, res) => {
   try {
     const data = await whatsappService.getDetailedGroups(req.params.id);

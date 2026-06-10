@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Smartphone, Trash2, Link, RefreshCw } from 'lucide-react';
+import { Plus, Smartphone, Trash2, Link, RefreshCw, Wrench } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
 const SessionManager = () => {
@@ -141,6 +141,30 @@ const SessionManager = () => {
     );
   };
 
+  const handleReconnectSession = async (sessionId) => {
+    triggerConfirm(
+      'Koneksi Ulang Sesi',
+      `Apakah Anda yakin ingin menghubungkan ulang sesi ${sessionId}? Ini hanya akan merestart koneksi tanpa menghapus cache data apa pun.`,
+      'Ya, Reconnect',
+      'btn-primary',
+      async () => {
+        try {
+          const json = await apiRequest(`/sessions/${sessionId}/reconnect`, {
+            method: 'POST',
+          });
+          if (json.status === 'success') {
+            alert('Sesi sedang dihubungkan ulang.');
+            fetchSessions();
+          } else {
+            alert('Gagal menghubungkan ulang sesi: ' + json.message);
+          }
+        } catch (err) {
+          alert('Terjadi kesalahan koneksi.');
+        }
+      }
+    );
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -214,8 +238,11 @@ const SessionManager = () => {
                           <Link size={16} /> QR
                         </button>
                       )}
-                      <button className="btn btn-outline" style={{ flex: 1, color: 'var(--primary-color)' }} onClick={() => handleRepairSession(session.session_id)}>
-                        <RefreshCw size={16} /> Repair
+                      <button className="btn btn-outline" style={{ flex: 1, color: 'var(--primary-color)' }} onClick={() => handleReconnectSession(session.session_id)} title="Restart koneksi WhatsApp tanpa menghapus cache">
+                        <RefreshCw size={16} /> Reconnect
+                      </button>
+                      <button className="btn btn-outline" style={{ flex: 1, color: 'var(--primary-color)' }} onClick={() => handleRepairSession(session.session_id)} title="Bersihkan cache Signal untuk negosiasi kunci ulang">
+                        <Wrench size={16} /> Repair
                       </button>
                       <button className="btn btn-outline" style={{ flex: 1, color: 'var(--danger)' }} onClick={() => handleDeleteSession(session.session_id)}>
                         <Trash2 size={16} /> Delete

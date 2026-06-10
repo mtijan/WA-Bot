@@ -98,6 +98,126 @@ export function parseSpintax(text) {
   return result;
 }
 
+export function normalizeIncomingText(text) {
+  if (typeof text !== 'string') return '';
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+export function parseFlowKeywords(keywords) {
+  if (typeof keywords !== 'string') return [];
+
+  return keywords
+    .split(/[\r\n,;]+/)
+    .map((keyword) => normalizeIncomingText(keyword))
+    .filter(Boolean);
+}
+
+function getFirstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+export function extractIncomingMessageText(messageType, innerMessage = {}) {
+  if (!messageType || !innerMessage) return '';
+
+  if (messageType === 'conversation') {
+    return innerMessage.conversation || '';
+  }
+
+  if (messageType === 'extendedTextMessage') {
+    return innerMessage.extendedTextMessage?.text || '';
+  }
+
+  if (messageType === 'imageMessage') {
+    return innerMessage.imageMessage?.caption || '';
+  }
+
+  if (messageType === 'videoMessage') {
+    return innerMessage.videoMessage?.caption || '';
+  }
+
+  if (messageType === 'buttonsResponseMessage') {
+    return getFirstNonEmptyString(
+      innerMessage.buttonsResponseMessage?.selectedDisplayText,
+      innerMessage.buttonsResponseMessage?.selectedButtonId
+    );
+  }
+
+  if (messageType === 'templateButtonReplyMessage') {
+    return getFirstNonEmptyString(
+      innerMessage.templateButtonReplyMessage?.selectedDisplayText,
+      innerMessage.templateButtonReplyMessage?.selectedId
+    );
+  }
+
+  if (messageType === 'listResponseMessage') {
+    return getFirstNonEmptyString(
+      innerMessage.listResponseMessage?.title,
+      innerMessage.listResponseMessage?.singleSelectReply?.selectedRowId,
+      innerMessage.listResponseMessage?.singleSelectReply?.title
+    );
+  }
+
+  if (messageType === 'interactiveResponseMessage') {
+    const nativeFlow = innerMessage.interactiveResponseMessage?.nativeFlowResponseMessage;
+    if (!nativeFlow?.paramsJson) return '';
+
+    try {
+      const params = JSON.parse(nativeFlow.paramsJson);
+      return getFirstNonEmptyString(
+        params?.display_text,
+        params?.title,
+        params?.selectedDisplayText,
+        params?.selectedTitle,
+        params?.id,
+        params?.selectedId
+      );
+    } catch (e) {
+      console.error('Gagal memproses paramsJson pada interactiveResponseMessage:', e);
+      return '';
+    }
+  }
+
+  return '';
+}
+
+export function doesFlowMatchIncomingText(flow, incomingText, options = {}) {
+  const { isGroup = false } = options;
+  if (!flow) return false;
+
+  const target = flow.target_type || 'ALL';
+  if (target === 'PERSONAL' && isGroup) return false;
+  if (target === 'GROUP' && !isGroup) return false;
+
+  let flowKeywords = parseFlowKeywords(flow.keywords);
+  if (flowKeywords.length === 0) return false;
+
+  const normalizedText = normalizeIncomingText(incomingText);
+  if (!normalizedText) return false;
+
+  if (!flow.case_sensitive) {
+    flowKeywords = flowKeywords.map((keyword) => keyword.toLowerCase());
+  }
+
+  const textToMatch = flow.case_sensitive ? normalizedText : normalizedText.toLowerCase();
+  const matchType = String(flow.match_type || 'CONTAINS').toUpperCase();
+
+  if (matchType === 'EXACT') {
+    return flowKeywords.includes(textToMatch);
+  }
+
+  if (matchType === 'STARTS_WITH') {
+    return flowKeywords.some((keyword) => textToMatch.startsWith(keyword));
+  }
+
+  return flowKeywords.some((keyword) => textToMatch.includes(keyword));
+}
+
 // -------------------------------------------------------------------
 // Penyaring output konsol dari library libsignal.
 // Library ini mencetak pesan debug langsung ke console.info/warn/error
@@ -205,7 +325,8 @@ class WhatsAppService {
       logger: this.silentLogger,
       browser: ['WA-Bot System', 'Chrome', '1.0.0'],
       syncFullHistory: true,
-      shouldSyncHistoryMessage: () => true
+      shouldSyncHistoryMessage: () => true,
+      keepAliveIntervalMs: 30000
     };
 
     // Menonaktifkan proxy sementara (dinonaktifkan oleh pengguna)
@@ -386,13 +507,13 @@ class WhatsAppService {
       if (m.type === 'append') return;
 
       try {
-        const msg = m.messages[0];
-        if (!msg) return;
+        for (const msg of m.messages || []) {
+        if (!msg) continue;
         console.log(`[Chatbot Debug] msg.key=${JSON.stringify(msg.key)}, hasMessage=${!!msg.message}, fromMe=${msg.key?.fromMe}`);
-        if (!msg.message || msg.key.fromMe) return;
+        if (!msg.message || msg.key.fromMe) continue;
 
         const senderId = msg.key.remoteJid;
-        if (!senderId || senderId.endsWith('@newsletter') || senderId.endsWith('@broadcast') || senderId === 'status@broadcast') return;
+        if (!senderId || senderId.endsWith('@newsletter') || senderId.endsWith('@broadcast') || senderId === 'status@broadcast') continue;
 
         // Simpan push name (nama publik WA) dari pengirim pesan ke DB whatsapp_contacts
         const pushName = msg.pushName || null;
@@ -431,34 +552,11 @@ class WhatsAppService {
         console.log(`[Chatbot Debug] Pesan masuk dari ${senderId}, type=${m.type}, messageType=${messageType}, allKeys=${allKeys.join(',')}`);
 
         // Extract text message
-        let text = '';
-        if (messageType === 'conversation') {
-          text = innerMessage.conversation;
-        } else if (messageType === 'extendedTextMessage') {
-          text = innerMessage.extendedTextMessage?.text;
-        } else if (messageType === 'imageMessage') {
-          text = innerMessage.imageMessage?.caption;
-        } else if (messageType === 'videoMessage') {
-          text = innerMessage.videoMessage?.caption;
-        } else if (messageType === 'buttonsResponseMessage') {
-          text = innerMessage.buttonsResponseMessage?.selectedButtonId;
-        } else if (messageType === 'templateButtonReplyMessage') {
-          text = innerMessage.templateButtonReplyMessage?.selectedId;
-        } else if (messageType === 'interactiveResponseMessage') {
-          const nativeFlow = innerMessage.interactiveResponseMessage?.nativeFlowResponseMessage;
-          if (nativeFlow) {
-            try {
-              const params = JSON.parse(nativeFlow.paramsJson);
-              text = params.id;
-            } catch (e) {
-              console.error('Gagal memproses paramsJson pada interactiveResponseMessage:', e);
-            }
-          }
-        }
+        const text = extractIncomingMessageText(messageType, innerMessage);
 
         console.log(`[Chatbot Debug] Extracted text: "${text || '(kosong)'}"`);
         
-        if (!text) return;
+        if (!text) continue;
 
         const isGroup = senderId.endsWith('@g.us');
         if (!isGroup && isOptOutKeyword(text)) {
@@ -467,11 +565,10 @@ class WhatsAppService {
             text: 'Permintaan berhenti menerima pesan telah dicatat. Anda tidak akan menerima pesan kampanye berikutnya.'
           });
           console.log(`[Opt-Out] Suppression list diperbarui untuk ${senderId}`);
-          return;
+          continue;
         }
         
-        const cleanText = text.trim();
-        const lowerText = cleanText.toLowerCase();
+        const cleanText = normalizeIncomingText(text);
 
         // Ambil pengaturan Chatbot AI/Mode untuk sesi ini
         const aiSettings = await dbGet('SELECT * FROM chatbot_ai_settings WHERE session_id = ?', [sessionId]);
@@ -482,9 +579,12 @@ class WhatsAppService {
         }
 
         let matchedFlow = null;
+        let activeFlowCount = 0;
+        let candidateFlowCount = 0;
         if (chatbotMode === 'flow' || chatbotMode === 'both') {
           // Check chatbot flows
           const allActiveFlows = await dbAll("SELECT * FROM chatbot_flows WHERE status = 'ACTIVE'");
+          activeFlowCount = allActiveFlows.length;
           const flows = allActiveFlows.filter(flow => {
             try {
               const ids = JSON.parse(flow.session_ids || '[]');
@@ -493,30 +593,9 @@ class WhatsAppService {
               return false;
             }
           });
+          candidateFlowCount = flows.length;
 
-          matchedFlow = flows.find(flow => {
-            // Evaluasi batasan obrolan (target_type)
-            const target = flow.target_type || 'ALL';
-            if (target === 'PERSONAL' && isGroup) return false;
-            if (target === 'GROUP' && !isGroup) return false;
-
-            let flowKeywords = flow.keywords.split(',').map(k => k.trim()).filter(k => k !== '');
-            if (flowKeywords.length === 0) return false;
-
-            if (!flow.case_sensitive) {
-               flowKeywords = flowKeywords.map(k => k.toLowerCase());
-            }
-            const textToMatch = flow.case_sensitive ? cleanText : lowerText;
-
-            if (flow.match_type === 'EXACT') {
-              return flowKeywords.includes(textToMatch);
-            } else if (flow.match_type === 'STARTS_WITH') {
-              return flowKeywords.some(k => textToMatch.startsWith(k));
-            } else {
-              // CONTAINS (Default)
-              return flowKeywords.some(k => textToMatch.includes(k));
-            }
-          });
+          matchedFlow = flows.find((flow) => doesFlowMatchIncomingText(flow, cleanText, { isGroup }));
         }
 
         if (matchedFlow) {
@@ -531,9 +610,13 @@ class WhatsAppService {
             sent: stats.sent,
             failed: stats.failed
           });
-        } else if ((chatbotMode === 'ai' || chatbotMode === 'both') && !isGroup) {
-          // Fallback ke Chatbot AI (SumoPod API)
-          if (aiSettings && aiSettings.is_active === 1) {
+        } else {
+          if (chatbotMode === 'flow' || chatbotMode === 'both') {
+            console.log(`[Chatbot Debug] Tidak ada flow match untuk sesi ${sessionId}. activeFlows=${activeFlowCount}, assignedFlows=${candidateFlowCount}, isGroup=${isGroup}, text="${cleanText}"`);
+          }
+
+          if ((chatbotMode === 'ai' || chatbotMode === 'both') && !isGroup && aiSettings && aiSettings.is_active === 1) {
+            // Fallback ke Chatbot AI (SumoPod API)
             let apiKeyToUse = null;
             let baseUrlToUse = aiSettings.base_url || 'https://ai.sumopod.com/v1';
             let modelNameToUse = aiSettings.model_name || 'gpt-4o-mini';
@@ -675,6 +758,7 @@ class WhatsAppService {
             }
           }
         }
+        }
 
       } catch (err) {
         console.error('Error handling messages.upsert:', err);
@@ -790,10 +874,14 @@ class WhatsAppService {
 
         // Eksekusi node saat ini
         if (currentNode.typing_indicator) {
-          await sock.presenceSubscribe(jid);
-          await sock.sendPresenceUpdate('composing', jid);
-          await new Promise(r => setTimeout(r, 2000));
-          await sock.sendPresenceUpdate('paused', jid);
+          try {
+            await sock.presenceSubscribe(jid);
+            await sock.sendPresenceUpdate('composing', jid);
+            await new Promise(r => setTimeout(r, 2000));
+            await sock.sendPresenceUpdate('paused', jid);
+          } catch (typingErr) {
+            console.warn(`[Chatbot] Typing indicator gagal untuk flow ${flow.id}: ${typingErr.message}`);
+          }
         }
 
         const isInteractive = currentNode.message_type === 'Interactive Buttons' && currentNode.buttons && currentNode.buttons.length > 0;
@@ -1384,6 +1472,42 @@ class WhatsAppService {
       console.log(`[WA Server] Sesi ${sessionId} berhasil dihubungkan kembali.`);
     } catch (err) {
       console.error(`[WA Server] Gagal memulihkan sesi ${sessionId} setelah perbaikan:`, err);
+    }
+  }
+
+  /**
+   * Koneksi ulang sesi manual: memutus koneksi soket aktif dan menghubungkannya
+   * kembali tanpa menghapus berkas cache enkripsi Signal.
+   */
+  async reconnectSession(sessionId) {
+    console.log(`[WA Server] Menjalankan koneksi ulang (reconnect) untuk: ${sessionId}`);
+
+    const sock = this.sockets[sessionId];
+    if (sock) {
+      try {
+        console.log(`[WA Server] Menutup socket aktif untuk sesi ${sessionId}...`);
+        if (sock.ws) {
+          sock.ws.close();
+        } else if (typeof sock.end === 'function') {
+          sock.end(undefined);
+        }
+      } catch (err) {
+        // Abaikan
+      }
+      delete this.sockets[sessionId];
+    }
+
+    // Beri jeda singkat agar socket sebelumnya benar-benar tertutup
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Mulai ulang sesi tanpa membersihkan cache Signal
+    console.log(`[WA Server] Menghubungkan kembali sesi ${sessionId}...`);
+    try {
+      await this.initSession(sessionId);
+      console.log(`[WA Server] Sesi ${sessionId} berhasil dihubungkan kembali.`);
+    } catch (err) {
+      console.error(`[WA Server] Gagal memulihkan sesi ${sessionId} setelah reconnect:`, err);
+      throw err;
     }
   }
 }

@@ -131,5 +131,11 @@ export const sessionManagerClient = {
       method: 'POST',
       body: { triggerType }
     });
+  },
+
+  async reconnectSession(sessionId) {
+    return request(`/sessions/${encodeURIComponent(sessionId)}/reconnect`, {
+      method: 'POST'
+    });
   }
 };

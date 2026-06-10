@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { getTestAgent, cleanupTestDb } from './helpers/test_app.js';
 import { dbRun, dbAll } from '../src/database.js';
 import { getFlowsKnowledgeBase } from '../src/services/chatbot_ai.service.js';
+import {
+  parseFlowKeywords,
+  extractIncomingMessageText,
+  doesFlowMatchIncomingText
+} from '../src/services/whatsapp.service.js';
 
 after(() => cleanupTestDb());
 
@@ -78,5 +83,53 @@ describe('Chatbot Session Leak Protection', () => {
     // Seharusnya berhasil mengambil basis pengetahuan dari flow sesi 12.
     const kbForSess12 = await getFlowsKnowledgeBase('session-12');
     assert.ok(kbForSess12.includes('Ini adalah respon dari sesi 12'), 'Seharusnya mengembalikan info flow untuk sesi 12');
+  });
+});
+
+describe('Chatbot Flow Matching Helpers', () => {
+  it('memecah trigger keyword multi-line dan separator campuran dengan konsisten', () => {
+    const keywords = parseFlowKeywords('halo,\n hai ; info pelanggan\r\npromo');
+
+    assert.deepEqual(keywords, ['halo', 'hai', 'info pelanggan', 'promo']);
+  });
+
+  it('mencocokkan flow untuk pesan dengan whitespace berlebih dan keyword multi-line', () => {
+    const flow = {
+      keywords: 'halo admin\ncek pesanan',
+      match_type: 'CONTAINS',
+      case_sensitive: 0,
+      target_type: 'ALL'
+    };
+
+    assert.equal(
+      doesFlowMatchIncomingText(flow, '  Saya mau   cek   pesanan sekarang  ', { isGroup: false }),
+      true
+    );
+  });
+
+  it('mengambil selectedDisplayText dari tombol interaktif agar trigger tetap terbaca', () => {
+    const text = extractIncomingMessageText('buttonsResponseMessage', {
+      buttonsResponseMessage: {
+        selectedButtonId: 'btn-order-status',
+        selectedDisplayText: 'Cek Status Pesanan'
+      }
+    });
+
+    assert.equal(text, 'Cek Status Pesanan');
+  });
+
+  it('mengambil display text dari interactiveResponseMessage jika tersedia', () => {
+    const text = extractIncomingMessageText('interactiveResponseMessage', {
+      interactiveResponseMessage: {
+        nativeFlowResponseMessage: {
+          paramsJson: JSON.stringify({
+            id: 'btn-order-status',
+            display_text: 'Cek Status Pesanan'
+          })
+        }
+      }
+    });
+
+    assert.equal(text, 'Cek Status Pesanan');
   });
 });

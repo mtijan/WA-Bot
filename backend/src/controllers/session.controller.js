@@ -163,3 +163,19 @@ export const repairSession = async (req, res) => {
     return sendError(res, 500, 'REPAIR_SESSION_ERROR', err.message || 'Gagal memperbaiki sesi.');
   }
 };
+
+export const reconnectSession = async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (isSessionManagerClientEnabled()) {
+      const payload = await sessionManagerClient.reconnectSession(id);
+      return res.json(payload);
+    }
+
+    await whatsappService.reconnectSession(id);
+    return sendSuccess(res, null, 200, { message: `Sesi ${id} berhasil dihubungkan kembali.` });
+  } catch (err) {
+    logError('reconnectSession', err, { params: req.params });
+    return sendError(res, 500, 'RECONNECT_SESSION_ERROR', err.message || 'Gagal menghubungkan kembali sesi.');
+  }
+};
