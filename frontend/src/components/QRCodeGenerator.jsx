@@ -127,7 +127,7 @@ const drawFinderPattern = (ctx, startRow, startCol, moduleSize, margin, fgColor,
 /**
  * Build SVG string using array-based accumulation (O(n)) instead of string += concatenation (O(n^2)).
  */
-const buildSVGString = (qrData, fgColor, bgColor, transparentBg, qrShape, eyeShape, logoPreview, logoSize, logoBgMode) => {
+const buildSVGString = (qrData, fgColor, bgColor, bgType, qrShape, eyeShape, logoPreview, logoSize, logoBgMode) => {
   const numModules = qrData.modules.size;
   const margin = 2;
   const totalModules = numModules + margin * 2;
@@ -137,41 +137,45 @@ const buildSVGString = (qrData, fgColor, bgColor, transparentBg, qrShape, eyeSha
   
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalModules} ${totalModules}" shape-rendering="crispEdges">\n`);
   
-  // Generate Eye Masks if transparentBg is true
-  if (transparentBg) {
+  // Generate defs if needed
+  const hasDefs = bgType === 'transparent-full' || (bgType === 'transparent-margin' && logoPreview && logoBgMode === 'transparent');
+  if (hasDefs) {
     parts.push('  <defs>\n');
-    const eyePositions = [
-      { id: 'eye-tl', x: margin, y: margin },
-      { id: 'eye-tr', x: numModules - 7 + margin, y: margin },
-      { id: 'eye-bl', x: margin, y: numModules - 7 + margin }
-    ];
     
-    eyePositions.forEach(pos => {
-      if (eyeShape === 'circle') {
-        parts.push(`    <mask id="mask-${pos.id}">
-      <rect width="${totalModules}" height="${totalModules}" fill="white" />
-      <circle cx="${pos.x + 3.5}" cy="${pos.y + 3.5}" r="3.5" fill="white" />
-      <circle cx="${pos.x + 3.5}" cy="${pos.y + 3.5}" r="2.5" fill="black" />
-    </mask>\n`);
-      } else if (eyeShape === 'rounded') {
-        parts.push(`    <mask id="mask-${pos.id}">
-      <rect width="${totalModules}" height="${totalModules}" fill="white" />
-      <rect x="${pos.x}" y="${pos.y}" width="7" height="7" rx="1.75" ry="1.75" fill="white" />
-      <rect x="${pos.x + 1}" y="${pos.y + 1}" width="5" height="5" rx="1.25" ry="1.25" fill="black" />
-    </mask>\n`);
-      } else if (eyeShape === 'diamond') {
-        parts.push(`    <mask id="mask-${pos.id}">
-      <rect width="${totalModules}" height="${totalModules}" fill="white" />
-      <path d="M ${pos.x + 3.5} ${pos.y} L ${pos.x + 7} ${pos.y + 3.5} L ${pos.x + 3.5} ${pos.y + 7} L ${pos.x} ${pos.y + 3.5} Z M ${pos.x + 3.5} ${pos.y + 1} L ${pos.x + 6} ${pos.y + 3.5} L ${pos.x + 3.5} ${pos.y + 6} L ${pos.x + 1} ${pos.y + 3.5} Z" fill="black" fill-rule="evenodd" />
-    </mask>\n`);
-      } else {
-        parts.push(`    <mask id="mask-${pos.id}">
-      <rect width="${totalModules}" height="${totalModules}" fill="white" />
-      <rect x="${pos.x}" y="${pos.y}" width="7" height="7" fill="white" />
-      <rect x="${pos.x + 1}" y="${pos.y + 1}" width="5" height="5" fill="black" />
-    </mask>\n`);
-      }
-    });
+    if (bgType === 'transparent-full') {
+      const eyePositions = [
+        { id: 'eye-tl', x: margin, y: margin },
+        { id: 'eye-tr', x: numModules - 7 + margin, y: margin },
+        { id: 'eye-bl', x: margin, y: numModules - 7 + margin }
+      ];
+      
+      eyePositions.forEach(pos => {
+        if (eyeShape === 'circle') {
+          parts.push(`    <mask id="mask-${pos.id}">
+        <rect width="${totalModules}" height="${totalModules}" fill="white" />
+        <circle cx="${pos.x + 3.5}" cy="${pos.y + 3.5}" r="3.5" fill="white" />
+        <circle cx="${pos.x + 3.5}" cy="${pos.y + 3.5}" r="2.5" fill="black" />
+      </mask>\n`);
+        } else if (eyeShape === 'rounded') {
+          parts.push(`    <mask id="mask-${pos.id}">
+        <rect width="${totalModules}" height="${totalModules}" fill="white" />
+        <rect x="${pos.x}" y="${pos.y}" width="7" height="7" rx="1.75" ry="1.75" fill="white" />
+        <rect x="${pos.x + 1}" y="${pos.y + 1}" width="5" height="5" rx="1.25" ry="1.25" fill="black" />
+      </mask>\n`);
+        } else if (eyeShape === 'diamond') {
+          parts.push(`    <mask id="mask-${pos.id}">
+        <rect width="${totalModules}" height="${totalModules}" fill="white" />
+        <path d="M ${pos.x + 3.5} ${pos.y} L ${pos.x + 7} ${pos.y + 3.5} L ${pos.x + 3.5} ${pos.y + 7} L ${pos.x} ${pos.y + 3.5} Z M ${pos.x + 3.5} ${pos.y + 1} L ${pos.x + 6} ${pos.y + 3.5} L ${pos.x + 3.5} ${pos.y + 6} L ${pos.x + 1} ${pos.y + 3.5} Z" fill="black" fill-rule="evenodd" />
+      </mask>\n`);
+        } else {
+          parts.push(`    <mask id="mask-${pos.id}">
+        <rect width="${totalModules}" height="${totalModules}" fill="white" />
+        <rect x="${pos.x}" y="${pos.y}" width="7" height="7" fill="white" />
+        <rect x="${pos.x + 1}" y="${pos.y + 1}" width="5" height="5" fill="black" />
+      </mask>\n`);
+        }
+      });
+    }
     
     // Mask for logo cutout if logo is present and logoBgMode is transparent
     if (logoPreview && logoBgMode === 'transparent') {
@@ -189,13 +193,17 @@ const buildSVGString = (qrData, fgColor, bgColor, transparentBg, qrShape, eyeSha
     parts.push('  </defs>\n');
   }
   
-  // Draw background if not transparent
-  if (!transparentBg) {
+  // Draw background based on type
+  if (bgType === 'solid') {
     parts.push(`  <rect width="${totalModules}" height="${totalModules}" fill="${bgColor}" />\n`);
+  } else if (bgType === 'transparent-margin') {
+    const bgMaskAttr = (logoPreview && logoBgMode === 'transparent') ? ' mask="url(#logo-cutout-mask)"' : '';
+    parts.push(`  <rect x="${margin}" y="${margin}" width="${numModules}" height="${numModules}" fill="${bgColor}"${bgMaskAttr} />\n`);
   }
   
   // Begin body modules group
-  const bodyMaskAttr = (transparentBg && logoPreview && logoBgMode === 'transparent') ? ' mask="url(#logo-cutout-mask)"' : '';
+  const isTransparent = bgType !== 'solid';
+  const bodyMaskAttr = (isTransparent && logoPreview && logoBgMode === 'transparent') ? ' mask="url(#logo-cutout-mask)"' : '';
   parts.push(`  <g id="body-modules" fill="${fgColor}"${bodyMaskAttr}>\n`);
   
   for (let r = 0; r < numModules; r++) {
@@ -229,7 +237,7 @@ const buildSVGString = (qrData, fgColor, bgColor, transparentBg, qrShape, eyeSha
     const x = startCol + margin;
     const y = startRow + margin;
     
-    if (transparentBg) {
+    if (bgType === 'transparent-full') {
       // Use mask for outer frame
       if (eyeShape === 'circle') {
         parts.push(`  <circle cx="${x + 3.5}" cy="${y + 3.5}" r="3.5" fill="${fgColor}" mask="url(#mask-${id})" />\n`);
@@ -303,7 +311,7 @@ const QRCodeGenerator = () => {
   const [eyeShape, setEyeShape] = useState('square'); // 'square', 'circle', 'rounded'
   const [qrVersion, setQrVersion] = useState(0); // 0 = auto, 1-40 = manual
   const [generating, setGenerating] = useState(false);
-  const [transparentBg, setTransparentBg] = useState(false);
+  const [bgType, setBgType] = useState('solid'); // 'solid', 'transparent-margin', 'transparent-full'
   const canvasRef = useRef(null);
 
   // Memoize QR data matrix -- recomputed only when text or errorLevel changes.
@@ -338,12 +346,17 @@ const QRCodeGenerator = () => {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, downloadSize, downloadSize);
 
-      if (!transparentBg) {
+      const moduleSize = downloadSize / totalModules;
+
+      if (bgType === 'solid') {
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, downloadSize, downloadSize);
+      } else if (bgType === 'transparent-margin') {
+        ctx.fillStyle = bgColor;
+        const qrSize = numModules * moduleSize;
+        const qrOffset = margin * moduleSize;
+        ctx.fillRect(qrOffset, qrOffset, qrSize, qrSize);
       }
-
-      const moduleSize = downloadSize / totalModules;
 
       // Draw body modules
       ctx.fillStyle = fgColor;
@@ -383,9 +396,10 @@ const QRCodeGenerator = () => {
       }
 
       // Draw eyes
-      drawFinderPattern(ctx, 0, 0, moduleSize, margin, fgColor, bgColor, transparentBg, eyeShape);
-      drawFinderPattern(ctx, 0, numModules - 7, moduleSize, margin, fgColor, bgColor, transparentBg, eyeShape);
-      drawFinderPattern(ctx, numModules - 7, 0, moduleSize, margin, fgColor, bgColor, transparentBg, eyeShape);
+      const isTransparentFull = bgType === 'transparent-full';
+      drawFinderPattern(ctx, 0, 0, moduleSize, margin, fgColor, bgColor, isTransparentFull, eyeShape);
+      drawFinderPattern(ctx, 0, numModules - 7, moduleSize, margin, fgColor, bgColor, isTransparentFull, eyeShape);
+      drawFinderPattern(ctx, numModules - 7, 0, moduleSize, margin, fgColor, bgColor, isTransparentFull, eyeShape);
 
       // Draw custom logo if present
       if (logoPreview) {
@@ -436,7 +450,7 @@ const QRCodeGenerator = () => {
     } finally {
       setGenerating(false);
     }
-  }, [qrData, fgColor, bgColor, transparentBg, downloadSize, logoPreview, logoSize, logoBgMode, qrShape, eyeShape]);
+  }, [qrData, fgColor, bgColor, bgType, downloadSize, logoPreview, logoSize, logoBgMode, qrShape, eyeShape]);
 
   // Redraw QR Code when options change
   useEffect(() => {
@@ -486,7 +500,7 @@ const QRCodeGenerator = () => {
     if (!qrData) return;
     try {
       // Reuse memoized qrData instead of calling QRCode.create() again
-      const svgString = buildSVGString(qrData, fgColor, bgColor, transparentBg, qrShape, eyeShape, logoPreview, logoSize, logoBgMode);
+      const svgString = buildSVGString(qrData, fgColor, bgColor, bgType, qrShape, eyeShape, logoPreview, logoSize, logoBgMode);
 
       const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -502,7 +516,7 @@ const QRCodeGenerator = () => {
       window.showError('Gagal mendownload file SVG.');
       console.error(err);
     }
-  }, [qrData, fgColor, bgColor, transparentBg, qrShape, eyeShape, logoPreview, logoSize, logoBgMode]);
+  }, [qrData, fgColor, bgColor, bgType, qrShape, eyeShape, logoPreview, logoSize, logoBgMode]);
 
   const handleQrShapeChange = useCallback((e) => {
     const val = e.target.value;
@@ -582,36 +596,38 @@ const QRCodeGenerator = () => {
                     id="bg-color-picker"
                     type="color"
                     className="form-control"
-                    style={{ ...STYLES.colorPickerInput, cursor: transparentBg ? 'not-allowed' : 'pointer', opacity: transparentBg ? 0.5 : 1 }}
+                    style={{ ...STYLES.colorPickerInput, cursor: bgType === 'transparent-full' ? 'not-allowed' : 'pointer', opacity: bgType === 'transparent-full' ? 0.5 : 1 }}
                     value={bgColor}
                     onChange={(e) => setBgColor(e.target.value)}
-                    disabled={transparentBg}
+                    disabled={bgType === 'transparent-full'}
                   />
                   <input
                     aria-label="Warna Background Hex"
                     type="text"
                     className="form-control"
-                    style={{ ...STYLES.colorHexInput, opacity: transparentBg ? 0.5 : 1 }}
-                    value={transparentBg ? 'TRANSPARENT' : bgColor}
+                    style={{ ...STYLES.colorHexInput, opacity: bgType === 'transparent-full' ? 0.5 : 1 }}
+                    value={bgType === 'transparent-full' ? 'TRANSPARENT' : bgColor}
                     onChange={(e) => setBgColor(e.target.value)}
-                    disabled={transparentBg}
+                    disabled={bgType === 'transparent-full'}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Checkbox Background Transparan */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', marginBottom: '16px' }}>
-              <input
-                id="transparent-bg-checkbox"
-                type="checkbox"
-                checked={transparentBg}
-                onChange={(e) => setTransparentBg(e.target.checked)}
-                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-              />
-              <label htmlFor="transparent-bg-checkbox" style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-main)', cursor: 'pointer', userSelect: 'none' }}>
-                Latar Belakang Transparan (Transparent Background)
-              </label>
+            {/* Selector Tipe Latar Belakang */}
+            <div className="form-group" style={{ marginTop: '16px', marginBottom: '16px' }}>
+              <label className="form-label" htmlFor="bg-type-select">Tipe Latar Belakang (Background Type)</label>
+              <select
+                id="bg-type-select"
+                className="form-control"
+                value={bgType}
+                onChange={(e) => setBgType(e.target.value)}
+                style={{ fontSize: '0.9rem' }}
+              >
+                <option value="solid">Warna Solid (Solid Color)</option>
+                <option value="transparent-margin">Transparan Hanya Margin (Sangat disarankan agar mudah discan)</option>
+                <option value="transparent-full">Transparan Penuh (Fully Transparent)</option>
+              </select>
             </div>
 
             {/* Bentuk QR Code (Shapes) */}
@@ -835,8 +851,8 @@ const QRCodeGenerator = () => {
             <div style={{
               padding: '16px',
               borderRadius: '16px',
-              backgroundColor: transparentBg ? '#f8fafc' : 'white',
-              backgroundImage: transparentBg 
+              backgroundColor: bgType !== 'solid' ? '#f8fafc' : 'white',
+              backgroundImage: bgType !== 'solid'
                 ? 'conic-gradient(#f1f5f9 25%, #ffffff 0 50%, #f1f5f9 0 75%, #ffffff 0)' 
                 : 'none',
               backgroundSize: '20px 20px',
@@ -891,19 +907,27 @@ const QRCodeGenerator = () => {
                 <span>Unduh SVG</span>
               </button>
 
-              {transparentBg && (
+              {bgType !== 'solid' && (
                 <div style={{
                   marginTop: '12px',
                   padding: '10px 12px',
                   borderRadius: '8px',
-                  backgroundColor: 'rgba(99, 102, 241, 0.05)',
-                  border: '1px dashed rgba(99, 102, 241, 0.2)',
+                  backgroundColor: bgType === 'transparent-full' ? 'rgba(239, 68, 68, 0.05)' : 'rgba(99, 102, 241, 0.05)',
+                  border: bgType === 'transparent-full' ? '1px dashed rgba(239, 68, 68, 0.2)' : '1px dashed rgba(99, 102, 241, 0.2)',
                   fontSize: '0.75rem',
                   color: 'var(--text-muted)',
                   textAlign: 'left',
                   lineHeight: '1.4'
                 }}>
-                  <strong>Tips Transparansi:</strong> Beberapa penampil gambar bawaan (seperti Windows Photos) menampilkan area transparan dengan warna putih/hitam solid. Silakan verifikasi transparansi gambar hasil unduhan dengan membukanya di browser Chrome/Firefox atau mengimpornya ke program desain seperti Photoshop, CorelDraw, atau Canva.
+                  {bgType === 'transparent-full' ? (
+                    <>
+                      <strong>Peringatan Pemindaian:</strong> QR Code dengan latar belakang transparan penuh mungkin tidak dapat dipindai oleh beberapa aplikasi scanner jika diletakkan di atas permukaan/latar yang gelap karena kurangnya kontras. Disarankan menggunakan <strong>Transparan Hanya Margin</strong> untuk menjaga fungsionalitas scan.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Info Transparansi:</strong> Mode ini membuat area pinggir (margin) luar transparan sehingga menyatu rapi dengan desain Anda, namun area QR tetap memiliki latar belakang agar selalu mudah dipindai (scannable).
+                    </>
+                  )}
                 </div>
               )}
             </div>
