@@ -796,9 +796,14 @@ class WhatsAppService {
     const sock = this.sockets[sessionId];
     if (sock) {
       try {
-        await sock.logout();
+        // Timeout guard: jangan biarkan logout hang lebih dari 10 detik
+        await Promise.race([
+          sock.logout(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('logout timeout')), 10000))
+        ]);
       } catch (err) {
-        // Abaikan jika socket sudah mati
+        // Abaikan jika socket sudah mati atau timeout
+        console.log(`[WA Server] logout sesi ${sessionId} gagal/timeout: ${err.message}`);
       }
     }
 

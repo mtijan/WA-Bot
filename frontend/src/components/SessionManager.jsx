@@ -108,14 +108,16 @@ const SessionManager = () => {
             }
             fetchSessions();
           } else {
-        alert('Gagal menghapus sesi.');
+            alert('Gagal menghapus sesi: ' + (json.message || 'Unknown error'));
+          }
+        } catch (err) {
+          const detail = err?.payload?.message || err?.message || String(err);
+          alert(`Gagal menghapus sesi: ${detail}`);
+          console.error('handleDeleteSession error:', err);
+        }
       }
-    } catch {
-      alert('Terjadi kesalahan koneksi.');
-    }
-    }
-  );
-};
+    );
+  };
 
   const handleRepairSession = async (sessionId) => {
     triggerConfirm(
@@ -135,7 +137,9 @@ const SessionManager = () => {
             alert('Gagal memperbaiki sesi: ' + json.message);
           }
         } catch (err) {
-          alert('Terjadi kesalahan koneksi.');
+          const detail = err?.payload?.message || err?.message || String(err);
+          alert(`Gagal memperbaiki sesi: ${detail}`);
+          console.error('handleRepairSession error:', err);
         }
       }
     );
@@ -159,7 +163,9 @@ const SessionManager = () => {
             alert('Gagal menghubungkan ulang sesi: ' + json.message);
           }
         } catch (err) {
-          alert('Terjadi kesalahan koneksi.');
+          const detail = err?.payload?.message || err?.message || String(err);
+          alert(`Gagal menghubungkan ulang sesi: ${detail}`);
+          console.error('handleReconnectSession error:', err);
         }
       }
     );
