@@ -6,10 +6,25 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import pino from 'pino';
 import QRCode from 'qrcode';
+import { logger, logError } from '../logger.js';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { dbRun, dbGet, dbAll } from '../database.js';
 import { resolveUploadedMediaPath } from './upload.service.js';
 import { resolveKnowledgeBase } from './chatbot_ai.service.js';
+import {
+  getMediaSource,
+  getMimeTypeFromUrl,
+  getFileNameFromUrl,
+  parseSpintax,
+  normalizeIncomingText,
+  parseFlowKeywords,
+  extractIncomingMessageText,
+  doesFlowMatchIncomingText,
+  installConsoleNoiseFilter
+} from './whatsapp.helpers.js';
+
+// Re-export untuk backward compatibility
+export { parseSpintax, normalizeIncomingText, parseFlowKeywords, extractIncomingMessageText, doesFlowMatchIncomingText };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,242 +36,8 @@ if (!fs.existsSync(SESSIONS_DIR)) {
   fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 }
 
-function getMediaSource(urlOrPath) {
-  if (!urlOrPath) return null;
-  try {
-    if (fs.existsSync(urlOrPath)) {
-      return fs.readFileSync(urlOrPath);
-    }
-  } catch (err) {
-    console.error('[WhatsApp Service] Gagal membaca berkas media lokal:', err);
-  }
-  return { url: urlOrPath };
-}
-
-function getMimeTypeFromUrl(url, defaultMime = 'application/octet-stream') {
-  if (!url) return defaultMime;
-  const ext = url.split('.').pop().toLowerCase();
-  const map = {
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'webp': 'image/webp',
-    'gif': 'image/gif',
-    'mp4': 'video/mp4',
-    'webm': 'video/webm',
-    'mov': 'video/quicktime',
-    'mp3': 'audio/mpeg',
-    'wav': 'audio/wav',
-    'ogg': 'audio/ogg',
-    'm4a': 'audio/mp4',
-    'aac': 'audio/aac',
-    'pdf': 'application/pdf',
-    'doc': 'application/msword',
-    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'xls': 'application/vnd.ms-excel',
-    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'ppt': 'application/vnd.ms-powerpoint',
-    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'txt': 'text/plain',
-    'csv': 'text/csv',
-    'zip': 'application/zip'
-  };
-  return map[ext] || defaultMime;
-}
-
-function getFileNameFromUrl(url, defaultName = 'Document.pdf') {
-  if (!url) return defaultName;
-  try {
-    const parts = url.split('/');
-    const lastPart = parts[parts.length - 1];
-    if (lastPart) {
-      return decodeURIComponent(lastPart).split(/[?#]/)[0] || defaultName;
-    }
-  } catch (err) {
-    // ignore
-  }
-  return defaultName;
-}
-
-export function parseSpintax(text) {
-  if (typeof text !== 'string') return text;
-
-  // Pola regex untuk mencocokkan kurung kurawal terluar yang berisi karakter '|'
-  const regex = /\{([^{|}]+\|[^{}]+)\}/g;
-  let result = text;
-  let match;
-
-  while ((match = regex.exec(result)) !== null) {
-    const options = match[1].split('|');
-    const randomIndex = Math.floor(Math.random() * options.length);
-    const chosen = options[randomIndex];
-
-    result = result.replace(match[0], chosen);
-    regex.lastIndex = 0; // Reset index untuk pencarian ulang karena panjang string berubah
-  }
-
-  return result;
-}
-
-export function normalizeIncomingText(text) {
-  if (typeof text !== 'string') return '';
-  return text.replace(/\s+/g, ' ').trim();
-}
-
-export function parseFlowKeywords(keywords) {
-  if (typeof keywords !== 'string') return [];
-
-  return keywords
-    .split(/[\r\n,;]+/)
-    .map((keyword) => normalizeIncomingText(keyword))
-    .filter(Boolean);
-}
-
-function getFirstNonEmptyString(...values) {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim() !== '') {
-      return value;
-    }
-  }
-
-  return '';
-}
-
-export function extractIncomingMessageText(messageType, innerMessage = {}) {
-  if (!messageType || !innerMessage) return '';
-
-  if (messageType === 'conversation') {
-    return innerMessage.conversation || '';
-  }
-
-  if (messageType === 'extendedTextMessage') {
-    return innerMessage.extendedTextMessage?.text || '';
-  }
-
-  if (messageType === 'imageMessage') {
-    return innerMessage.imageMessage?.caption || '';
-  }
-
-  if (messageType === 'videoMessage') {
-    return innerMessage.videoMessage?.caption || '';
-  }
-
-  if (messageType === 'buttonsResponseMessage') {
-    return getFirstNonEmptyString(
-      innerMessage.buttonsResponseMessage?.selectedDisplayText,
-      innerMessage.buttonsResponseMessage?.selectedButtonId
-    );
-  }
-
-  if (messageType === 'templateButtonReplyMessage') {
-    return getFirstNonEmptyString(
-      innerMessage.templateButtonReplyMessage?.selectedDisplayText,
-      innerMessage.templateButtonReplyMessage?.selectedId
-    );
-  }
-
-  if (messageType === 'listResponseMessage') {
-    return getFirstNonEmptyString(
-      innerMessage.listResponseMessage?.title,
-      innerMessage.listResponseMessage?.singleSelectReply?.selectedRowId,
-      innerMessage.listResponseMessage?.singleSelectReply?.title
-    );
-  }
-
-  if (messageType === 'interactiveResponseMessage') {
-    const nativeFlow = innerMessage.interactiveResponseMessage?.nativeFlowResponseMessage;
-    if (!nativeFlow?.paramsJson) return '';
-
-    try {
-      const params = JSON.parse(nativeFlow.paramsJson);
-      return getFirstNonEmptyString(
-        params?.display_text,
-        params?.title,
-        params?.selectedDisplayText,
-        params?.selectedTitle,
-        params?.id,
-        params?.selectedId
-      );
-    } catch (e) {
-      console.error('Gagal memproses paramsJson pada interactiveResponseMessage:', e);
-      return '';
-    }
-  }
-
-  return '';
-}
-
-export function doesFlowMatchIncomingText(flow, incomingText, options = {}) {
-  const { isGroup = false } = options;
-  if (!flow) return false;
-
-  const target = flow.target_type || 'ALL';
-  if (target === 'PERSONAL' && isGroup) return false;
-  if (target === 'GROUP' && !isGroup) return false;
-
-  let flowKeywords = parseFlowKeywords(flow.keywords);
-  if (flowKeywords.length === 0) return false;
-
-  const normalizedText = normalizeIncomingText(incomingText);
-  if (!normalizedText) return false;
-
-  if (!flow.case_sensitive) {
-    flowKeywords = flowKeywords.map((keyword) => keyword.toLowerCase());
-  }
-
-  const textToMatch = flow.case_sensitive ? normalizedText : normalizedText.toLowerCase();
-  const matchType = String(flow.match_type || 'CONTAINS').toUpperCase();
-
-  if (matchType === 'EXACT') {
-    return flowKeywords.includes(textToMatch);
-  }
-
-  if (matchType === 'STARTS_WITH') {
-    return flowKeywords.some((keyword) => textToMatch.startsWith(keyword));
-  }
-
-  return flowKeywords.some((keyword) => textToMatch.includes(keyword));
-}
-
-// -------------------------------------------------------------------
-// Penyaring output konsol dari library libsignal.
-// Library ini mencetak pesan debug langsung ke console.info/warn/error
-// yang tidak bisa dikendalikan melalui konfigurasi logger Baileys.
-// Pesan-pesan ini (misal: "Closing session", "Failed to decrypt message")
-// adalah hal normal saat sinkronisasi riwayat dan bukan masalah serius.
-// -------------------------------------------------------------------
-const LIBSIGNAL_NOISE_PATTERNS = [
-  'Closing session',
-  'Closing open session in favor of incoming prekey bundle',
-  'Failed to decrypt message with any known session',
-  'Session error:',
-  'MessageCounterError',
-  'Key used already or never filled'
-];
-
-function isLibsignalNoise(args) {
-  if (!args || args.length === 0) return false;
-  const first = args[0];
-  if (typeof first !== 'string') return false;
-  return LIBSIGNAL_NOISE_PATTERNS.some(pattern => first.includes(pattern));
-}
-
-const _origConsoleInfo = console.info;
-const _origConsoleWarn = console.warn;
-const _origConsoleError = console.error;
-
-console.info = function (...args) {
-  if (isLibsignalNoise(args)) return;
-  _origConsoleInfo.apply(console, args);
-};
-console.warn = function (...args) {
-  if (isLibsignalNoise(args)) return;
-  _origConsoleWarn.apply(console, args);
-};
-console.error = function (...args) {
-  if (isLibsignalNoise(args)) return;
-  _origConsoleError.apply(console, args);
-};
+// Install console noise filter untuk menyaring pesan debug libsignal
+installConsoleNoiseFilter();
 
 class WhatsAppService {
   constructor() {
@@ -273,14 +54,14 @@ class WhatsAppService {
       for (const row of allSessions) {
         const sessionFolder = join(SESSIONS_DIR, row.session_id);
         if (fs.existsSync(sessionFolder)) {
-          console.log(`[WA Server] Memulihkan sesi: ${row.session_id}`);
+          logger.info(`[WA Server] Memulihkan sesi: ${row.session_id}`);
           this.initSession(row.session_id).catch(err => {
-            console.error(`Gagal memulihkan sesi ${row.session_id}:`, err);
+            logError('WhatsAppService.initAllSessions.initSession', err, { sessionId: row.session_id });
           });
         }
       }
     } catch (err) {
-      console.error('Gagal menginisialisasi sesi otomatis:', err);
+      logError('WhatsAppService.initAllSessions', err);
     }
   }
 
@@ -295,10 +76,10 @@ class WhatsAppService {
     let version = [2, 3000, 1017531287];
     try {
       const { version: latestVersion, isLatest } = await fetchLatestBaileysVersion();
-      console.log(`[WA Socket] Sesi ${sessionId} menggunakan WA Web v${latestVersion.join('.')}, isLatest: ${isLatest}`);
+      logger.info(`[WA Socket] Sesi ${sessionId} menggunakan WA Web v${latestVersion.join('.')}, isLatest: ${isLatest}`);
       version = latestVersion;
     } catch (err) {
-      console.warn(`[WA Socket] Sesi ${sessionId} gagal mengambil versi WA Web terbaru, menggunakan fallback.`, err.message);
+      logger.warn(`[WA Socket] Sesi ${sessionId} gagal mengambil versi WA Web terbaru, menggunakan fallback. ${err.message}`);
     }
 
     // Pastikan entri sesi ada di DB
@@ -332,7 +113,7 @@ class WhatsAppService {
     // Menonaktifkan proxy sementara (dinonaktifkan oleh pengguna)
     if (false && proxyUrl) {
       socketConfig.agent = new HttpsProxyAgent(proxyUrl);
-      console.log(`[WA Socket] Sesi ${sessionId} terhubung melewati proxy: ${proxyUrl}`);
+      logger.info(`[WA Socket] Sesi ${sessionId} terhubung melewati proxy: ${proxyUrl}`);
     }
 
 
@@ -351,14 +132,14 @@ class WhatsAppService {
           this.qrCodes[sessionId] = qrDataUrl;
           await dbRun('UPDATE sessions SET status = ?, phone_number = NULL WHERE session_id = ?', ['DISCONNECTED', sessionId]);
         } catch (err) {
-          console.error('Gagal membuat Base64 QR Code:', err);
+          logError('WhatsAppService.initSession.qr', err, { sessionId });
         }
       }
 
       if (connection === 'open') {
         const rawJid = sock.user.id;
         const phone = rawJid.split(':')[0];
-        console.log(`[WA Socket] Sesi ${sessionId} terhubung ke nomor: ${phone}`);
+        logger.info(`[WA Socket] Sesi ${sessionId} terhubung ke nomor: ${phone}`);
         
         delete this.qrCodes[sessionId];
 
@@ -381,7 +162,7 @@ class WhatsAppService {
             );
           }
         } catch (err) {
-          console.error('[WhatsApp Service] Gagal menulis logs repair:', err);
+          logError('WhatsAppService.initSession.repairLog', err, { sessionId });
         }
 
         await dbRun(
@@ -396,7 +177,7 @@ class WhatsAppService {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-        console.log(`[WA Socket] Sesi ${sessionId} terputus. Status Code: ${statusCode}. Reconnect: ${shouldReconnect}`);
+        logger.info(`[WA Socket] Sesi ${sessionId} terputus. Status Code: ${statusCode}. Reconnect: ${shouldReconnect}`);
         
         await dbRun(
           `UPDATE sessions 
@@ -413,14 +194,14 @@ class WhatsAppService {
           setTimeout(() => this.initSession(sessionId), 5000);
         } else {
           // Jika logged out, hapus kredensial lokal
-          console.log(`[WA Socket] Kredensial sesi ${sessionId} kedaluwarsa/keluar. Menghapus folder lokal.`);
+          logger.warn(`[WA Socket] Kredensial sesi ${sessionId} kedaluwarsa/keluar. Menghapus folder lokal.`);
           fs.rmSync(sessionFolder, { recursive: true, force: true });
         }
       }
     });
 
     sock.ev.on('contacts.upsert', async (contacts) => {
-      console.log(`[WA Contacts] contacts.upsert: ${contacts.length} kontak untuk sesi ${sessionId}`);
+      logger.info(`[WA Contacts] contacts.upsert: ${contacts.length} kontak untuk sesi ${sessionId}`);
       for (const contact of contacts) {
         try {
           const jid = contact.id;
@@ -473,7 +254,7 @@ class WhatsAppService {
     // Tangkap kontak dari sinkronisasi riwayat pesan (history sync saat koneksi awal)
     sock.ev.on('messaging-history.set', async ({ contacts: historyContacts }) => {
       if (!Array.isArray(historyContacts) || historyContacts.length === 0) return;
-      console.log(`[WA Contacts] Menerima ${historyContacts.length} kontak dari messaging-history.set untuk sesi ${sessionId}`);
+      logger.info(`[WA Contacts] Menerima ${historyContacts.length} kontak dari messaging-history.set untuk sesi ${sessionId}`);
       for (const contact of historyContacts) {
         try {
           const jid = contact.id;
@@ -501,7 +282,7 @@ class WhatsAppService {
 
     sock.ev.on('messages.upsert', async (m) => {
       // Debug: log paling awal untuk konfirmasi event messages.upsert diterima
-      console.log(`[Chatbot Debug] >>> messages.upsert diterima, type=${m.type}, jumlah=${m.messages?.length}`);
+      logger.debug(`[Chatbot Debug] >>> messages.upsert diterima, type=${m.type}, jumlah=${m.messages?.length}`);
 
       // Lewati hanya jika ini history sync (append), proses semua lainnya termasuk undefined
       if (m.type === 'append') return;
@@ -509,7 +290,7 @@ class WhatsAppService {
       try {
         for (const msg of m.messages || []) {
         if (!msg) continue;
-        console.log(`[Chatbot Debug] msg.key=${JSON.stringify(msg.key)}, hasMessage=${!!msg.message}, fromMe=${msg.key?.fromMe}`);
+        logger.debug(`[Chatbot Debug] msg.key=${JSON.stringify(msg.key)}, hasMessage=${!!msg.message}, fromMe=${msg.key?.fromMe}`);
         if (!msg.message || msg.key.fromMe) continue;
 
         const senderId = msg.key.remoteJid;
@@ -549,12 +330,12 @@ class WhatsAppService {
         const allKeys = Object.keys(innerMessage);
         const messageType = allKeys.find(k => !skipKeys.includes(k)) || allKeys[0];
 
-        console.log(`[Chatbot Debug] Pesan masuk dari ${senderId}, type=${m.type}, messageType=${messageType}, allKeys=${allKeys.join(',')}`);
+        logger.debug(`[Chatbot Debug] Pesan masuk dari ${senderId}, type=${m.type}, messageType=${messageType}, allKeys=${allKeys.join(',')}`);
 
         // Extract text message
         const text = extractIncomingMessageText(messageType, innerMessage);
 
-        console.log(`[Chatbot Debug] Extracted text: "${text || '(kosong)'}"`);
+        logger.debug(`[Chatbot Debug] Extracted text: "${text || '(kosong)'}"`);
         
         if (!text) continue;
 
@@ -564,7 +345,7 @@ class WhatsAppService {
           await sock.sendMessage(senderId, {
             text: 'Permintaan berhenti menerima pesan telah dicatat. Anda tidak akan menerima pesan kampanye berikutnya.'
           });
-          console.log(`[Opt-Out] Suppression list diperbarui untuk ${senderId}`);
+          logger.info(`[Opt-Out] Suppression list diperbarui untuk ${senderId}`);
           continue;
         }
         
@@ -599,7 +380,7 @@ class WhatsAppService {
         }
 
         if (matchedFlow) {
-          console.log(`[Chatbot] Sesi ${sessionId} membalas ke ${senderId} untuk flow: ${matchedFlow.flow_name}`);
+          logger.info(`[Chatbot] Sesi ${sessionId} membalas ke ${senderId} untuk flow: ${matchedFlow.flow_name}`);
 
           if (matchedFlow.delay > 0) {
              await new Promise(r => setTimeout(r, matchedFlow.delay * 1000));
@@ -612,7 +393,7 @@ class WhatsAppService {
           });
         } else {
           if (chatbotMode === 'flow' || chatbotMode === 'both') {
-            console.log(`[Chatbot Debug] Tidak ada flow match untuk sesi ${sessionId}. activeFlows=${activeFlowCount}, assignedFlows=${candidateFlowCount}, isGroup=${isGroup}, text="${cleanText}"`);
+            logger.debug(`[Chatbot Debug] Tidak ada flow match untuk sesi ${sessionId}. activeFlows=${activeFlowCount}, assignedFlows=${candidateFlowCount}, isGroup=${isGroup}, text="${cleanText}"`);
           }
 
           if ((chatbotMode === 'ai' || chatbotMode === 'both') && !isGroup && aiSettings && aiSettings.is_active === 1) {
@@ -628,14 +409,14 @@ class WhatsAppService {
                 baseUrlToUse = cred.base_url || baseUrlToUse;
                 modelNameToUse = cred.model_name || modelNameToUse;
               } else {
-                console.log(`[Chatbot AI] Sesi ${sessionId} dilewati karena kredensial terikat (#${aiSettings.credential_id}) tidak aktif atau tidak ditemukan.`);
+                logger.info(`[Chatbot AI] Sesi ${sessionId} dilewati karena kredensial terikat (#${aiSettings.credential_id}) tidak aktif atau tidak ditemukan.`);
               }
             } else if (aiSettings.api_key) {
               apiKeyToUse = revealSecret(aiSettings.api_key);
             }
 
             if (apiKeyToUse) {
-              console.log(`[Chatbot AI] Sesi ${sessionId} memproses pesan masuk dari ${senderId} via SumoPod AI`);
+              logger.info(`[Chatbot AI] Sesi ${sessionId} memproses pesan masuk dari ${senderId} via SumoPod AI`);
               
               if (aiSettings.show_typing) {
                 try {
@@ -702,14 +483,14 @@ class WhatsAppService {
 
                 if (aiReply && aiReply.trim() !== '') {
                   await sock.sendMessage(senderId, { text: aiReply.trim() });
-                  console.log(`[Chatbot AI] Sukses membalas ke ${senderId}`);
+                  logger.info(`[Chatbot AI] Sukses membalas ke ${senderId}`);
                   try {
                     await dbRun('UPDATE chatbot_ai_settings SET last_error = NULL, last_error_at = NULL WHERE session_id = ?', [sessionId]);
                   } catch (dbErr) {
                     // Abaikan
                   }
                 } else {
-                  console.warn(`[Chatbot AI Warning] Model '${modelNameToUse}' mengembalikan respon kosong untuk pesan '${cleanText}'`);
+                  logger.warn(`[Chatbot AI Warning] Model '${modelNameToUse}' mengembalikan respon kosong untuk pesan '${cleanText}'`);
                   try {
                     const cleanPhone = senderId.split('@')[0];
                     await dbRun(
@@ -724,11 +505,11 @@ class WhatsAppService {
                       ]
                     );
                   } catch (dbErr) {
-                    console.error('[Chatbot AI Log Error]', dbErr);
+                    logError('WhatsAppService.messages.upsert.chatbotAI.logFailed', dbErr, { sessionId, senderId });
                   }
                 }
               } catch (aiErr) {
-                console.error('[Chatbot AI Error]', aiErr);
+                logError('WhatsAppService.messages.upsert.chatbotAI', aiErr, { sessionId, senderId });
                 const errMsg = aiErr.message || String(aiErr);
                 try {
                   await dbRun('UPDATE chatbot_ai_settings SET last_error = ?, last_error_at = CURRENT_TIMESTAMP WHERE session_id = ?', [errMsg, sessionId]);
@@ -745,7 +526,7 @@ class WhatsAppService {
                     ]
                   );
                 } catch (dbErr) {
-                  console.error('[Chatbot AI DB Error]', dbErr);
+                  logError('WhatsAppService.messages.upsert.chatbotAI.dbUpdate', dbErr, { sessionId, senderId });
                 }
                 if (aiSettings.show_typing) {
                   try {
@@ -761,7 +542,7 @@ class WhatsAppService {
         }
 
       } catch (err) {
-        console.error('Error handling messages.upsert:', err);
+        logError('WhatsAppService.messages.upsert', err, { sessionId });
       }
     });
 
@@ -803,7 +584,7 @@ class WhatsAppService {
         ]);
       } catch (err) {
         // Abaikan jika socket sudah mati atau timeout
-        console.log(`[WA Server] logout sesi ${sessionId} gagal/timeout: ${err.message}`);
+        logger.error(`[WA Server] logout sesi ${sessionId} gagal/timeout: ${err.message}`);
       }
     }
 
@@ -870,7 +651,7 @@ class WhatsAppService {
       while (currentNode) {
         const nodeIdStr = String(currentNode.id);
         if (visited.has(nodeIdStr)) {
-          console.warn(`[Chatbot] Terdeteksi siklus melingkar (circular loop) pada node ${nodeIdStr}. Eksekusi dihentikan.`);
+          logger.warn(`[Chatbot] Terdeteksi siklus melingkar (circular loop) pada node ${nodeIdStr}. Eksekusi dihentikan.`);
           break;
         }
         visited.add(nodeIdStr);
@@ -885,7 +666,7 @@ class WhatsAppService {
             await new Promise(r => setTimeout(r, 2000));
             await sock.sendPresenceUpdate('paused', jid);
           } catch (typingErr) {
-            console.warn(`[Chatbot] Typing indicator gagal untuk flow ${flow.id}: ${typingErr.message}`);
+            logger.warn(`[Chatbot] Typing indicator gagal untuk flow ${flow.id}: ${typingErr.message}`);
           }
         }
 
@@ -1012,7 +793,7 @@ class WhatsAppService {
             const nextFlowId = String(currentNode.next_node).split(':')[1];
             const nextFlow = await dbGet("SELECT * FROM chatbot_flows WHERE id = ?", [nextFlowId]);
             if (nextFlow) {
-              console.log(`[Chatbot] Alur melompat ke flow lain: ${nextFlow.flow_name}`);
+              logger.info(`[Chatbot] Alur melompat ke flow lain: ${nextFlow.flow_name}`);
               const nextStats = await this.executeFlowNodes(sock, jid, nextFlow, sessionId, incomingText);
               await this.recordFlowDeliveryStats(nextFlow.id, {
                 triggered: 1,
@@ -1032,7 +813,7 @@ class WhatsAppService {
         }
       }
     } catch (error) {
-      console.error('Error executing flow nodes:', error);
+      logError('WhatsAppService.executeFlowNodes', error, { sessionId });
       try {
         const cleanPhone = jid.split('@')[0];
         await dbRun(
@@ -1047,7 +828,7 @@ class WhatsAppService {
           ]
         );
       } catch (dbErr) {
-        console.error('Gagal menulis log kegagalan flow chatbot ke database:', dbErr);
+        logError('WhatsAppService.executeFlowNodes.logFail', dbErr, { sessionId });
       }
     }
 
@@ -1083,7 +864,7 @@ class WhatsAppService {
         size: g.participants?.length || 0
       }));
     } catch (err) {
-      console.error(`Gagal mengambil daftar grup untuk sesi ${sessionId}:`, err);
+      logError('WhatsAppService.getGroups', err, { sessionId });
       return [];
     }
   }
@@ -1150,7 +931,7 @@ class WhatsAppService {
           }
         }
       } catch (err) {
-        console.error('Error fetching contact name for single message personalization:', err);
+        logError('WhatsAppService.sendSingleMessage.personalization', err, { sessionId });
       }
     }
 
@@ -1314,7 +1095,7 @@ class WhatsAppService {
         };
       });
     } catch (err) {
-      console.error(`Gagal mengambil daftar grup detail untuk sesi ${sessionId}:`, err);
+      logError('WhatsAppService.getGroupsWithDetails', err, { sessionId });
       throw err;
     }
   }
@@ -1328,7 +1109,7 @@ class WhatsAppService {
       const code = await sock.groupInviteCode(groupId);
       return `https://chat.whatsapp.com/${code}`;
     } catch (err) {
-      console.error(`Gagal membuat link undangan untuk grup ${groupId}:`, err);
+      logError('WhatsAppService.getGroupInviteLink', err, { sessionId, groupId });
       throw new Error(`Gagal membuat link undangan. Pastikan akun WhatsApp Anda adalah admin dari grup tersebut.`);
     }
   }
@@ -1383,7 +1164,7 @@ class WhatsAppService {
           })
         });
       } catch (err) {
-        console.error(`Gagal mengambil metadata grup live untuk ${gid}:`, err.message);
+        logError('WhatsAppService.getGroupsMetadata.live', err, { sessionId, groupId: gid });
       }
     }
 
@@ -1407,17 +1188,17 @@ class WhatsAppService {
     // Hapus file app-state agar Baileys minta ulang dari server
     if (fs.existsSync(appStateFile)) {
       fs.unlinkSync(appStateFile);
-      console.log(`[WA Contacts] app-state-sync-version-regular.json dihapus untuk sesi ${sessionId}. Restart sesi diperlukan.`);
+      logger.info(`[WA Contacts] app-state-sync-version-regular.json dihapus untuk sesi ${sessionId}. Restart sesi diperlukan.`);
     }
 
     // Coba panggil resyncAppState jika tersedia di versi Baileys ini
     try {
       if (sock.resyncAppState) {
         await sock.resyncAppState(['regular']);
-        console.log(`[WA Contacts] resyncAppState dipanggil untuk sesi ${sessionId}`);
+        logger.info(`[WA Contacts] resyncAppState dipanggil untuk sesi ${sessionId}`);
       }
     } catch (err) {
-      console.warn(`[WA Contacts] resyncAppState gagal:`, err.message);
+      logger.warn(`[WA Contacts] resyncAppState gagal: ${err.message}`);
     }
 
     return { message: 'Sync dipaksa. Restart sesi untuk mendapatkan kontak terbaru.' };
@@ -1432,12 +1213,12 @@ class WhatsAppService {
    */
   async repairSession(sessionId, triggerType = 'MANUAL') {
     this.lastRepairTrigger[sessionId] = triggerType;
-    console.log(`[WA Server] Menjalankan perbaikan sesi untuk: ${sessionId} (pemicu: ${triggerType})`);
+    logger.info(`[WA Server] Menjalankan perbaikan sesi untuk: ${sessionId} (pemicu: ${triggerType})`);
 
     const sock = this.sockets[sessionId];
     if (sock) {
       try {
-        console.log(`[WA Server] Menutup socket aktif untuk sesi ${sessionId}...`);
+        logger.info(`[WA Server] Menutup socket aktif untuk sesi ${sessionId}...`);
         if (sock.ws) {
           sock.ws.close();
         } else if (typeof sock.end === 'function') {
@@ -1464,19 +1245,19 @@ class WhatsAppService {
             deletedCount++;
           }
         }
-        console.log(`[WA Server] Berhasil menghapus ${deletedCount} berkas cache Signal pada folder sesi ${sessionId}. Kredensial utama tetap aman.`);
+        logger.info(`[WA Server] Berhasil menghapus ${deletedCount} berkas cache Signal pada folder sesi ${sessionId}. Kredensial utama tetap aman.`);
       } catch (err) {
-        console.error(`[WA Server] Gagal membersihkan cache Signal pada folder sesi ${sessionId}:`, err);
+        logError('WhatsAppService.repairSession.cleanCache', err, { sessionId });
       }
     }
 
     // Mulai ulang sesi
-    console.log(`[WA Server] Memulai kembali sesi ${sessionId} setelah perbaikan...`);
+    logger.info(`[WA Server] Memulai kembali sesi ${sessionId} setelah perbaikan...`);
     try {
       await this.initSession(sessionId);
-      console.log(`[WA Server] Sesi ${sessionId} berhasil dihubungkan kembali.`);
+      logger.info(`[WA Server] Sesi ${sessionId} berhasil dihubungkan kembali.`);
     } catch (err) {
-      console.error(`[WA Server] Gagal memulihkan sesi ${sessionId} setelah perbaikan:`, err);
+      logError('WhatsAppService.repairSession.reinit', err, { sessionId });
     }
   }
 
@@ -1485,12 +1266,12 @@ class WhatsAppService {
    * kembali tanpa menghapus berkas cache enkripsi Signal.
    */
   async reconnectSession(sessionId) {
-    console.log(`[WA Server] Menjalankan koneksi ulang (reconnect) untuk: ${sessionId}`);
+    logger.info(`[WA Server] Menjalankan koneksi ulang (reconnect) untuk: ${sessionId}`);
 
     const sock = this.sockets[sessionId];
     if (sock) {
       try {
-        console.log(`[WA Server] Menutup socket aktif untuk sesi ${sessionId}...`);
+        logger.info(`[WA Server] Menutup socket aktif untuk sesi ${sessionId}...`);
         if (sock.ws) {
           sock.ws.close();
         } else if (typeof sock.end === 'function') {
@@ -1506,12 +1287,12 @@ class WhatsAppService {
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     // Mulai ulang sesi tanpa membersihkan cache Signal
-    console.log(`[WA Server] Menghubungkan kembali sesi ${sessionId}...`);
+    logger.info(`[WA Server] Menghubungkan kembali sesi ${sessionId}...`);
     try {
       await this.initSession(sessionId);
-      console.log(`[WA Server] Sesi ${sessionId} berhasil dihubungkan kembali.`);
+      logger.info(`[WA Server] Sesi ${sessionId} berhasil dihubungkan kembali.`);
     } catch (err) {
-      console.error(`[WA Server] Gagal memulihkan sesi ${sessionId} setelah reconnect:`, err);
+      logError('WhatsAppService.reconnectSession', err, { sessionId });
       throw err;
     }
   }

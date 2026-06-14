@@ -1,22 +1,24 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle, Info, XCircle, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import SessionManager from './components/SessionManager';
-import BulkCampaign from './components/BulkCampaign';
-import ChatbotFlows from './components/ChatbotFlows';
-import ContactGroups from './components/ContactGroups';
-import GroupDetail from './components/GroupDetail';
-import Warmer from './components/Warmer';
-import Templates from './components/Templates';
-import SingleMessage from './components/SingleMessage';
-import GroupGrabber from './components/GroupGrabber';
-import ChatbotAI from './components/ChatbotAI';
 import Login from './components/Login';
-import Monitoring from './components/Monitoring';
-import QRCodeGenerator from './components/QRCodeGenerator';
 import { apiRequest } from './apiClient';
+
+// Lazy-loaded page components for code splitting
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const SessionManager = lazy(() => import('./components/SessionManager'));
+const BulkCampaign = lazy(() => import('./components/BulkCampaign'));
+const ChatbotFlows = lazy(() => import('./components/ChatbotFlows'));
+const ContactGroups = lazy(() => import('./components/ContactGroups'));
+const GroupDetail = lazy(() => import('./components/GroupDetail'));
+const Warmer = lazy(() => import('./components/Warmer'));
+const Templates = lazy(() => import('./components/Templates'));
+const SingleMessage = lazy(() => import('./components/SingleMessage'));
+const GroupGrabber = lazy(() => import('./components/GroupGrabber'));
+const ChatbotAI = lazy(() => import('./components/ChatbotAI'));
+const Monitoring = lazy(() => import('./components/Monitoring'));
+const QRCodeGenerator = lazy(() => import('./components/QRCodeGenerator'));
 
 function App() {
   const [toasts, setToasts] = useState([]);
@@ -86,6 +88,11 @@ function App() {
       <div className="app-container">
         <Sidebar authState={authState} onLogout={handleLogout} />
         <main className="main-content">
+          <Suspense fallback={
+            <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', color: 'var(--text-secondary)' }}>
+              Memuat halaman...
+            </div>
+          }>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/monitoring" element={<Monitoring />} />
@@ -109,6 +116,7 @@ function App() {
             {/* Catch-all redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
         </main>
 
         {/* Floating Custom Glassmorphic Notification Toast Container */}
