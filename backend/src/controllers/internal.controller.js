@@ -112,7 +112,7 @@ export const deleteSession = async (req, res) => {
     return sendSuccess(res, null, 200, { message: `Sesi ${id} berhasil dihapus oleh session manager.` });
   } catch (err) {
     logError('deleteSessionInternal', err, { params: req.params });
-    return sendError(res, 500, 'DELETE_SESSION_ERROR', 'Gagal menghapus sesi.');
+    return sendError(res, 500, 'DELETE_SESSION_ERROR', err.message || 'Gagal menghapus sesi.');
   }
 };
 
@@ -156,7 +156,7 @@ export const repairSessionInternal = async (req, res) => {
     } catch (dbErr) {
       logError('repairSessionInternalDbLog', dbErr);
     }
-    return sendError(res, 500, 'REPAIR_SESSION_ERROR', 'Gagal memperbaiki sesi.');
+    return sendError(res, 500, 'REPAIR_SESSION_ERROR', err.message || 'Gagal memperbaiki sesi.');
   }
 };
 
@@ -167,7 +167,7 @@ export const reconnectSessionInternal = async (req, res) => {
     return sendSuccess(res, null, 200, { message: `Sesi ${id} berhasil dihubungkan kembali oleh session manager.` });
   } catch (err) {
     logError('reconnectSessionInternal', err, { params: req.params });
-    return sendError(res, 500, 'RECONNECT_SESSION_ERROR', 'Gagal menghubungkan kembali sesi.');
+    return sendError(res, 500, 'RECONNECT_SESSION_ERROR', err.message || 'Gagal menghubungkan kembali sesi.');
   }
 };
 

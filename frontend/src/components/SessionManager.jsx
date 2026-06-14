@@ -238,7 +238,7 @@ const SessionManager = () => {
                       </span>
                     </div>
                     
-                    <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                    <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '16px', flexWrap: 'wrap' }}>
                       {session.status !== 'CONNECTED' && session.qr_code && (
                         <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => { setQrSessionId(session.session_id); setActiveQr(session.qr_code); }}>
                           <Link size={16} /> QR
