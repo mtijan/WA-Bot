@@ -58,7 +58,15 @@ export function getFileNameFromUrl(url, defaultName = 'Document.pdf') {
     const parts = url.split('/');
     const lastPart = parts[parts.length - 1];
     if (lastPart) {
-      return decodeURIComponent(lastPart).split(/[?#]/)[0] || defaultName;
+      const decodedFilename = decodeURIComponent(lastPart).split(/[?#]/)[0];
+      if (!decodedFilename) return defaultName;
+
+      const fileParts = decodedFilename.split('-');
+      if (fileParts.length > 6) {
+        return fileParts.slice(6).join('-');
+      }
+
+      return decodedFilename;
     }
   } catch (err) {
     // ignore

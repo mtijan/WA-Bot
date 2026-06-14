@@ -58,8 +58,18 @@ export const getMediaSpec = (mimeType) => ALLOWED_MEDIA[mimeType] || null;
 export const createMediaFilename = (file) => {
   const spec = getMediaSpec(file.mimetype);
   const ext = spec ? spec.ext : '.bin';
-  return `${Date.now()}-${randomUUID()}${ext}`;
+  
+  // Extract original name and sanitize path traversals / illegal characters
+  const originalName = file.originalname || 'file';
+  const baseName = path.parse(originalName).name;
+  
+  const sanitized = baseName
+    .replace(/[\/\\]/g, '_') // Remove path slashes
+    .replace(/[<>:"|?*]/g, ''); // Remove Windows illegal characters
+    
+  return `${Date.now()}-${randomUUID()}-${sanitized}${ext}`;
 };
+
 
 export const getMediaPublicPath = (filename) => `/api/uploads/media/${filename}`;
 
