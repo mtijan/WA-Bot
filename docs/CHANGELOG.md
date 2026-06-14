@@ -5,6 +5,12 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.8] - 2026-06-14
+
+### Fixed
+- Memperbaiki bug rendering transparansi pada canvas QR Code di [QRCodeGenerator.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/QRCodeGenerator.jsx) di mana opsi "Transparan Penuh" gagal memotong lubang transparan di tengah pola mata pojok (finder pattern) karena penggunaan fillStyle transparan (`#00000000`) pada operasi `destination-out`. Diperbaiki dengan menggunakan fillStyle solid (`#ffffff`) agar piksel di bawahnya terhapus secara sempurna.
+- Menambahkan inisialisasi `ctx.fillStyle` secara defensif pada blok penghapusan latar belakang logo tengah transparan di [QRCodeGenerator.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/QRCodeGenerator.jsx) untuk menjamin pemotongan area logo berjalan konsisten tanpa bergantung pada status warna pengisi sebelumnya.
+
 ## [2.8.7] - 2026-06-10
 
 ### Added

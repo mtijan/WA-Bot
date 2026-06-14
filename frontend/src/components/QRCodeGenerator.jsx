@@ -33,7 +33,7 @@ const drawFinderPattern = (ctx, startRow, startCol, moduleSize, margin, fgColor,
     ctx.fill();
     
     // Clear/fill inner space
-    ctx.fillStyle = transparentBg ? '#00000000' : bgColor;
+    ctx.fillStyle = transparentBg ? '#ffffff' : bgColor;
     ctx.save();
     if (transparentBg) {
       ctx.globalCompositeOperation = 'destination-out';
@@ -55,7 +55,7 @@ const drawFinderPattern = (ctx, startRow, startCol, moduleSize, margin, fgColor,
     ctx.fill();
     
     // Clear/fill inner space
-    ctx.fillStyle = transparentBg ? '#00000000' : bgColor;
+    ctx.fillStyle = transparentBg ? '#ffffff' : bgColor;
     ctx.save();
     if (transparentBg) {
       ctx.globalCompositeOperation = 'destination-out';
@@ -81,7 +81,7 @@ const drawFinderPattern = (ctx, startRow, startCol, moduleSize, margin, fgColor,
     ctx.fill();
     
     // Clear/fill inner space
-    ctx.fillStyle = transparentBg ? '#00000000' : bgColor;
+    ctx.fillStyle = transparentBg ? '#ffffff' : bgColor;
     ctx.save();
     if (transparentBg) {
       ctx.globalCompositeOperation = 'destination-out';
@@ -110,7 +110,7 @@ const drawFinderPattern = (ctx, startRow, startCol, moduleSize, margin, fgColor,
     ctx.fillRect(x, y, outerSize, outerSize);
     
     // Clear/fill inner space
-    ctx.fillStyle = transparentBg ? '#00000000' : bgColor;
+    ctx.fillStyle = transparentBg ? '#ffffff' : bgColor;
     ctx.save();
     if (transparentBg) {
       ctx.globalCompositeOperation = 'destination-out';
@@ -311,7 +311,11 @@ const QRCodeGenerator = () => {
   const [eyeShape, setEyeShape] = useState('square'); // 'square', 'circle', 'rounded'
   const [qrVersion, setQrVersion] = useState(0); // 0 = auto, 1-40 = manual
   const [generating, setGenerating] = useState(false);
-  const [bgType, setBgType] = useState('solid'); // 'solid', 'transparent-margin', 'transparent-full'
+  const [transparentBg, setTransparentBg] = useState(false);
+  const [transparencyMode, setTransparencyMode] = useState('full'); // 'full', 'margin'
+  const bgType = useMemo(() => {
+    return !transparentBg ? 'solid' : (transparencyMode === 'margin' ? 'transparent-margin' : 'transparent-full');
+  }, [transparentBg, transparencyMode]);
   const canvasRef = useRef(null);
 
   // Memoize QR data matrix -- recomputed only when text or errorLevel changes.
@@ -424,6 +428,7 @@ const QRCodeGenerator = () => {
               // Clear the area behind the logo to create a transparent cutout
               ctx.save();
               ctx.globalCompositeOperation = 'destination-out';
+              ctx.fillStyle = '#ffffff';
               ctx.beginPath();
               ctx.roundRect(x - bgPadding, y - bgPadding, size + bgPadding * 2, size + bgPadding * 2, size * 0.2);
               ctx.fill();
@@ -614,21 +619,36 @@ const QRCodeGenerator = () => {
               </div>
             </div>
 
-            {/* Selector Tipe Latar Belakang */}
-            <div className="form-group" style={{ marginTop: '16px', marginBottom: '16px' }}>
-              <label className="form-label" htmlFor="bg-type-select">Tipe Latar Belakang (Background Type)</label>
-              <select
-                id="bg-type-select"
-                className="form-control"
-                value={bgType}
-                onChange={(e) => setBgType(e.target.value)}
-                style={{ fontSize: '0.9rem' }}
-              >
-                <option value="solid">Warna Solid (Solid Color)</option>
-                <option value="transparent-margin">Transparan Hanya Margin (Sangat disarankan agar mudah discan)</option>
-                <option value="transparent-full">Transparan Penuh (Fully Transparent)</option>
-              </select>
+            {/* Checkbox Background Transparan */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', marginBottom: '12px' }}>
+              <input
+                id="transparent-bg-checkbox"
+                type="checkbox"
+                checked={transparentBg}
+                onChange={(e) => setTransparentBg(e.target.checked)}
+                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <label htmlFor="transparent-bg-checkbox" style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-main)', cursor: 'pointer', userSelect: 'none' }}>
+                Latar Belakang Transparan (Transparent Background)
+              </label>
             </div>
+
+            {/* Sub-opsi Gaya Transparansi */}
+            {transparentBg && (
+              <div className="form-group" style={{ marginLeft: '24px', marginBottom: '16px' }}>
+                <label className="form-label" htmlFor="transparency-mode-select" style={{ fontSize: '0.8rem' }}>Gaya Transparansi</label>
+                <select
+                  id="transparency-mode-select"
+                  className="form-control"
+                  value={transparencyMode}
+                  onChange={(e) => setTransparencyMode(e.target.value)}
+                  style={{ fontSize: '0.85rem', padding: '6px 10px', height: '36px' }}
+                >
+                  <option value="full">Transparan Penuh (Benar-benar transparan, hanya blok QR)</option>
+                  <option value="margin">Transparan Hanya Margin (Bagian QR tetap ada latar belakang agar mudah discan)</option>
+                </select>
+              </div>
+            )}
 
             {/* Bentuk QR Code (Shapes) */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '12px', marginBottom: '16px' }}>

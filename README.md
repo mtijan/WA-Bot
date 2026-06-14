@@ -3,8 +3,8 @@
 WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
-**Versi Dokumen/Sistem:** 2.8.6  
-**Terakhir Diperbarui:** 2026-06-08  
+**Versi Dokumen/Sistem:** 2.8.8  
+**Terakhir Diperbarui:** 2026-06-14  
 
 ---
 
@@ -36,6 +36,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Chatbot AI Error logs & Dashboard Alerts:** Deteksi dan pencatatan error API/saldo chatbot AI secara persisten ke database serta visualisasi Alert Box glassmorphic merah self-healing di dashboard admin.
 - **Database & File Pruner Otomatis:** Script pruner berkala (`npm run logs:prune:apply`) untuk menghapus log pengiriman lama, log warmer, file ekspor lawas, dan berkas cadangan (backup) kedaluwarsa secara otomatis serta melakukan SQLite VACUUM untuk merampingkan ukuran database.
 - **Security Hardening Baseline:** Login dashboard admin berbasis secure cookie HttpOnly, proteksi kunci API server-to-server (X-API-Key), Content Security Policy (CSP) ketat yang mendukung Google Fonts & Websocket staging, serta in-memory API rate limiter.
+- **Fully Transparent QR Code Generator:** Pembuatan QR Code kustom dengan latar belakang transparan penuh pada sela-sela modul dan pola mata pojok (finder pattern) menggunakan HTML5 Canvas 2D compositing, dengan opsi gaya transparansi terpisah untuk menjaga kemudahan pemindaian (scannable).
 
 ---
 
