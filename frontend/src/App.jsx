@@ -15,6 +15,7 @@ import GroupGrabber from './components/GroupGrabber';
 import ChatbotAI from './components/ChatbotAI';
 import Login from './components/Login';
 import Monitoring from './components/Monitoring';
+import QRCodeGenerator from './components/QRCodeGenerator';
 import { apiRequest } from './apiClient';
 
 function App() {
@@ -103,6 +104,7 @@ function App() {
             <Route path="/opt-out" element={<div className="card"><h2>Opt-Out Management</h2><p>Feature under construction.</p></div>} />
             <Route path="/chatbot-ai" element={<ChatbotAI />} />
             <Route path="/auto-reply" element={<Navigate to="/chatbot-ai" replace />} />
+            <Route path="/qrcode-generator" element={<QRCodeGenerator />} />
             
             {/* Catch-all redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -14,7 +14,8 @@ import {
   Layers,
   LogOut,
   MoreVertical,
-  Activity
+  Activity,
+  QrCode
 } from 'lucide-react';
 
 const Sidebar = ({ authState, onLogout }) => {
@@ -34,6 +35,7 @@ const Sidebar = ({ authState, onLogout }) => {
     { path: '/chatbot-ai', name: 'Chatbot AI', icon: <Bot size={20} /> },
     { path: '/chatbot-flows', name: 'Chatbot Flows', icon: <Network size={20} /> },
     { path: '/group-grabber', name: 'Group Grabber', icon: <Layers size={20} /> },
+    { path: '/qrcode-generator', name: 'QR Generator', icon: <QrCode size={20} /> },
   ];
 
   return (
