@@ -598,6 +598,15 @@ class WhatsAppService {
     delete this.sockets[sessionId];
     delete this.qrCodes[sessionId];
 
+    // Bersihkan atau update tabel-tabel lain yang memiliki ketergantungan foreign key ke sessions
+    // untuk mencegah kegagalan constraint SQLITE_CONSTRAINT: FOREIGN KEY constraint failed
+    await dbRun('UPDATE campaigns SET session_id = NULL WHERE session_id = ?', [sessionId]);
+    await dbRun('DELETE FROM auto_replies WHERE session_id = ?', [sessionId]);
+    await dbRun('DELETE FROM chatbot_flow_sessions WHERE session_id = ?', [sessionId]);
+    await dbRun('DELETE FROM chatbot_ai_settings WHERE session_id = ?', [sessionId]);
+    await dbRun('DELETE FROM session_repair_logs WHERE session_id = ?', [sessionId]);
+    await dbRun('DELETE FROM chatbot_failed_replies WHERE session_id = ?', [sessionId]);
+
     await dbRun('DELETE FROM sessions WHERE session_id = ?', [sessionId]);
   }
 

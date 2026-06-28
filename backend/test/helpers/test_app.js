@@ -22,14 +22,11 @@ process.env.NODE_ENV = 'test';
 process.env.WA_BOT_DB_PATH = testDbPath;
 process.env.WA_BOT_INTERNAL_TOKEN = 'testing-internal-token-secret-placeholder';
 
-// Nonaktifkan admin auth dan API key agar test bisa mengakses endpoint tanpa kredensial
-// kecuali kita secara eksplisit ingin menguji autentikasi
-if (!process.env.WA_BOT_ADMIN_PASSWORD) {
-  process.env.WA_BOT_ADMIN_PASSWORD = '';
-}
-if (!process.env.WA_BOT_API_KEY) {
-  process.env.WA_BOT_API_KEY = '';
-}
+// Nonaktifkan admin auth, API key, dan session manager url agar test bisa mengakses endpoint tanpa kredensial
+// dan berjalan dalam mode terisolasi tanpa mem-proxy ke session manager secara nyata.
+process.env.WA_BOT_ADMIN_PASSWORD = '';
+process.env.WA_BOT_API_KEY = '';
+process.env.WA_BOT_SESSION_MANAGER_URL = '';
 
 // Import createApp setelah env var di-set
 const { createApp } = await import('../../src/app.js');
