@@ -25,7 +25,7 @@ async function getPlanSessionLimit(userId) {
 export async function reserveSessionSlot(sessionId, auth) {
   const existing = await dbGet('SELECT * FROM sessions WHERE session_id = ?', [sessionId]);
   if (existing) {
-    if (existing.user_id !== auth.userId && auth.role !== 'admin') {
+    if (existing.user_id !== auth.userId) {
       return { ok: false, status: 403, code: 'FORBIDDEN_ACCESS', message: 'ID Sesi sudah digunakan oleh pengguna lain.' };
     }
 
@@ -33,7 +33,7 @@ export async function reserveSessionSlot(sessionId, auth) {
     return { ok: true, existing: true };
   }
 
-  if (auth.role === 'admin') {
+  if (auth.userId === 1) {
     await dbRun(
       'INSERT INTO sessions (session_id, status, proxy_id, user_id) VALUES (?, ?, NULL, ?)',
       [sessionId, 'DISCONNECTED', auth.userId]
@@ -92,24 +92,18 @@ export const getSessions = async (req, res) => {
       const payload = await sessionManagerClient.listSessions();
       if (Array.isArray(payload?.data)) {
         sessionsToReturn = payload.data.map(maskSessionProxy);
-        if (req.auth.role !== 'admin') {
-          const userSessionRows = await dbAll('SELECT session_id FROM sessions WHERE user_id = ?', [req.auth.userId]);
-          const userSessionIds = new Set(userSessionRows.map(r => r.session_id));
-          sessionsToReturn = sessionsToReturn.filter(s => userSessionIds.has(s.session_id));
-        }
+        const userSessionRows = await dbAll('SELECT session_id FROM sessions WHERE user_id = ?', [req.auth.userId]);
+        const userSessionIds = new Set(userSessionRows.map(r => r.session_id));
+        sessionsToReturn = sessionsToReturn.filter(s => userSessionIds.has(s.session_id));
       }
       return res.json({ ...payload, data: sessionsToReturn });
     }
 
-    const query = req.auth.role === 'admin'
-      ? `SELECT s.*, p.name as proxy_name, p.proxy_url as resolved_proxy_url 
-         FROM sessions s 
-         LEFT JOIN proxies p ON s.proxy_id = p.id`
-      : `SELECT s.*, p.name as proxy_name, p.proxy_url as resolved_proxy_url 
+    const query = `SELECT s.*, p.name as proxy_name, p.proxy_url as resolved_proxy_url 
          FROM sessions s 
          LEFT JOIN proxies p ON s.proxy_id = p.id
          WHERE s.user_id = ?`;
-    const dbSessions = await dbAll(query, req.auth.role === 'admin' ? [] : [req.auth.userId]);
+    const dbSessions = await dbAll(query, [req.auth.userId]);
     const result = [];
     
     for (const session of dbSessions) {
@@ -176,14 +170,12 @@ export const createSession = async (req, res) => {
 export const deleteSession = async (req, res) => {
   const { id } = req.params;
   try {
-    if (req.auth.role !== 'admin') {
-      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [id]);
-      if (!sess) {
-        return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
-      }
-      if (sess.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-      }
+    const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [id]);
+    if (!sess) {
+      return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+    }
+    if (sess.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
     if (isSessionManagerClientEnabled()) {
@@ -205,14 +197,12 @@ export const updateSessionProxy = async (req, res) => {
   const { proxy_id } = req.body;
 
   try {
-    if (req.auth.role !== 'admin') {
-      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [id]);
-      if (!sess) {
-        return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
-      }
-      if (sess.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-      }
+    const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [id]);
+    if (!sess) {
+      return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+    }
+    if (sess.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
     if (isSessionManagerClientEnabled()) {
@@ -245,14 +235,12 @@ export const updateSessionProxy = async (req, res) => {
 export const repairSession = async (req, res) => {
   const { id } = req.params;
   try {
-    if (req.auth.role !== 'admin') {
-      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [id]);
-      if (!sess) {
-        return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
-      }
-      if (sess.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-      }
+    const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [id]);
+    if (!sess) {
+      return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+    }
+    if (sess.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
     if (isSessionManagerClientEnabled()) {
@@ -282,14 +270,12 @@ export const repairSession = async (req, res) => {
 export const reconnectSession = async (req, res) => {
   const { id } = req.params;
   try {
-    if (req.auth.role !== 'admin') {
-      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [id]);
-      if (!sess) {
-        return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
-      }
-      if (sess.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-      }
+    const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [id]);
+    if (!sess) {
+      return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+    }
+    if (sess.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
     if (isSessionManagerClientEnabled()) {

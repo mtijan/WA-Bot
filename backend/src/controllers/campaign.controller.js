@@ -7,19 +7,7 @@ import { auditLog } from '../services/audit.service.js';
 
 export const getCampaigns = async (req, res) => {
   try {
-    const sql = req.auth.role === 'admin'
-      ? `SELECT 
-          c.id, c.name, c.session_id, c.message, c.status, c.created_at,
-          c.attachment_url, c.attachment_type, c.attachment_name,
-          COUNT(dl.id) as total_targets,
-          SUM(CASE WHEN dl.status = 'SENT' THEN 1 ELSE 0 END) as sent,
-          SUM(CASE WHEN dl.status = 'FAILED' THEN 1 ELSE 0 END) as failed,
-          SUM(CASE WHEN dl.status = 'PENDING' THEN 1 ELSE 0 END) as pending
-        FROM campaigns c
-        LEFT JOIN delivery_logs dl ON c.id = dl.campaign_id
-        GROUP BY c.id
-        ORDER BY c.created_at DESC`
-      : `SELECT 
+    const sql = `SELECT 
           c.id, c.name, c.session_id, c.message, c.status, c.created_at,
           c.attachment_url, c.attachment_type, c.attachment_name,
           COUNT(dl.id) as total_targets,
@@ -33,7 +21,7 @@ export const getCampaigns = async (req, res) => {
         GROUP BY c.id
         ORDER BY c.created_at DESC`;
     
-    const campaigns = await dbAll(sql, req.auth.role === 'admin' ? [] : [req.auth.userId]);
+    const campaigns = await dbAll(sql, [req.auth.userId]);
     return sendSuccess(res, campaigns);
   } catch (error) {
     logError('getCampaigns', error);
@@ -45,11 +33,9 @@ export const createCampaign = async (req, res) => {
   const { session_id, name, message, targets, delay_ms_min, delay_ms_max, attachment_url, attachment_type, attachment_name } = req.body;
 
   try {
-    if (req.auth.role !== 'admin') {
-      const session = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
-      if (!session || session.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-      }
+    const session = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
+    if (!session || session.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
     const campaignId = await campaignService.createCampaign(
@@ -88,19 +74,17 @@ export const createCampaign = async (req, res) => {
 export const getCampaignProgress = async (req, res) => {
   const { id } = req.params;
   try {
-    if (req.auth.role !== 'admin') {
-      const camp = await dbGet(
-        `SELECT s.user_id FROM campaigns c
-         INNER JOIN sessions s ON c.session_id = s.session_id
-         WHERE c.id = ?`,
-        [id]
-      );
-      if (!camp) {
-        return sendError(res, 404, 'CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
-      }
-      if (camp.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kampanye ini.');
-      }
+    const camp = await dbGet(
+      `SELECT s.user_id FROM campaigns c
+       INNER JOIN sessions s ON c.session_id = s.session_id
+       WHERE c.id = ?`,
+      [id]
+    );
+    if (!camp) {
+      return sendError(res, 404, 'CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
+    }
+    if (camp.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kampanye ini.');
     }
 
     const progress = await campaignService.getCampaignProgress(Number.parseInt(id, 10));
@@ -117,19 +101,17 @@ export const getCampaignProgress = async (req, res) => {
 export const deleteCampaign = async (req, res) => {
   const { id } = req.params;
   try {
-    if (req.auth.role !== 'admin') {
-      const camp = await dbGet(
-        `SELECT s.user_id FROM campaigns c
-         INNER JOIN sessions s ON c.session_id = s.session_id
-         WHERE c.id = ?`,
-        [id]
-      );
-      if (!camp) {
-        return sendError(res, 404, 'CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
-      }
-      if (camp.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kampanye ini.');
-      }
+    const camp = await dbGet(
+      `SELECT s.user_id FROM campaigns c
+       INNER JOIN sessions s ON c.session_id = s.session_id
+       WHERE c.id = ?`,
+      [id]
+    );
+    if (!camp) {
+      return sendError(res, 404, 'CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
+    }
+    if (camp.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kampanye ini.');
     }
 
     await dbRun('DELETE FROM delivery_logs WHERE campaign_id = ?', [id]);

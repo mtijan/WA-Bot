@@ -28,10 +28,8 @@ export const resolveStoredApiKey = (existingKey, submittedKey, clearApiKey) => {
 
 export const getCredentials = async (req, res) => {
   try {
-    const sql = req.auth.role === 'admin'
-      ? 'SELECT * FROM chatbot_ai_credentials ORDER BY created_at DESC'
-      : 'SELECT * FROM chatbot_ai_credentials WHERE user_id = ? ORDER BY created_at DESC';
-    const rows = await dbAll(sql, req.auth.role === 'admin' ? [] : [req.auth.userId]);
+    const sql = 'SELECT * FROM chatbot_ai_credentials WHERE user_id = ? ORDER BY created_at DESC';
+    const rows = await dbAll(sql, [req.auth.userId]);
     const masked = rows.map(row => maskAICredential(row));
     return sendSuccess(res, masked);
   } catch (error) {
@@ -72,7 +70,7 @@ export const updateCredential = async (req, res) => {
       return sendError(res, 404, 'CREDENTIAL_NOT_FOUND', 'Kredensial tidak ditemukan.');
     }
 
-    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+    if (existing.user_id !== req.auth.userId) {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kredensial ini.');
     }
 
@@ -124,7 +122,7 @@ export const deleteCredential = async (req, res) => {
       return sendError(res, 404, 'CREDENTIAL_NOT_FOUND', 'Kredensial tidak ditemukan.');
     }
 
-    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+    if (existing.user_id !== req.auth.userId) {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kredensial ini.');
     }
 
@@ -145,7 +143,7 @@ export const toggleCredentialActive = async (req, res) => {
       return sendError(res, 404, 'CREDENTIAL_NOT_FOUND', 'Kredensial tidak ditemukan.');
     }
 
-    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+    if (existing.user_id !== req.auth.userId) {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kredensial ini.');
     }
 
@@ -165,14 +163,12 @@ export const toggleCredentialActive = async (req, res) => {
 export const getAISettings = async (req, res) => {
   const { sessionId } = req.params;
   try {
-    if (req.auth.role !== 'admin') {
-      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
-      if (!sess) {
-        return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
-      }
-      if (sess.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-      }
+    const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
+    if (!sess) {
+      return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+    }
+    if (sess.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
     let settings = await dbGet('SELECT * FROM chatbot_ai_settings WHERE session_id = ?', [sessionId]);
@@ -215,20 +211,18 @@ export const saveAISettings = async (req, res) => {
   const { session_id, credential_id } = req.body;
 
   try {
-    if (req.auth.role !== 'admin') {
-      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
-      if (!sess) {
-        return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
-      }
-      if (sess.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-      }
+    const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
+    if (!sess) {
+      return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+    }
+    if (sess.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
+    }
 
-      if (credential_id) {
-        const cred = await dbGet('SELECT user_id FROM chatbot_ai_credentials WHERE id = ?', [credential_id]);
-        if (!cred || cred.user_id !== req.auth.userId) {
-          return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Kredensial terpilih tidak valid.');
-        }
+    if (credential_id) {
+      const cred = await dbGet('SELECT user_id FROM chatbot_ai_credentials WHERE id = ?', [credential_id]);
+      if (!cred || cred.user_id !== req.auth.userId) {
+        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Kredensial terpilih tidak valid.');
       }
     }
 
@@ -321,18 +315,16 @@ export const testAISettings = async (req, res) => {
   const { base_url, api_key, model_name, session_id, credential_id, prompt_override } = req.body;
 
   try {
-    if (req.auth.role !== 'admin') {
-      if (session_id) {
-        const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
-        if (!sess || sess.user_id !== req.auth.userId) {
-          return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-        }
+    if (session_id) {
+      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
+      if (!sess || sess.user_id !== req.auth.userId) {
+        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
       }
-      if (credential_id) {
-        const cred = await dbGet('SELECT user_id FROM chatbot_ai_credentials WHERE id = ?', [credential_id]);
-        if (!cred || cred.user_id !== req.auth.userId) {
-          return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kredensial ini.');
-        }
+    }
+    if (credential_id) {
+      const cred = await dbGet('SELECT user_id FROM chatbot_ai_credentials WHERE id = ?', [credential_id]);
+      if (!cred || cred.user_id !== req.auth.userId) {
+        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kredensial ini.');
       }
     }
   } catch (err) {

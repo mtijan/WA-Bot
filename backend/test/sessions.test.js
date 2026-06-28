@@ -8,6 +8,8 @@ after(() => cleanupTestDb());
 describe('Session Reconnect Endpoints', () => {
   it('POST /api/sessions/:id/reconnect memanggil whatsappService.reconnectSession dan mengembalikan status sukses', async () => {
     const { agent, cookie } = await getAuthenticatedAgent();
+    const { dbRun } = await import('../src/database.js');
+    await dbRun("INSERT INTO sessions (session_id, status, user_id) VALUES ('test-session-id', 'CONNECTED', 1)");
 
     // Mock metode reconnectSession agar tidak mencoba menghubungkan Baileys secara nyata
     let calledSessionId = null;

@@ -78,14 +78,12 @@ const normalizePhoneForMatching = (num) => {
 
 // Helper: Verifikasi kepemilikan Grup Kontak
 const verifyGroupOwnership = async (groupId, req) => {
-  if (req.auth.role === 'admin') return true;
   const group = await dbGet('SELECT user_id FROM contact_groups WHERE id = ?', [groupId]);
   return group && group.user_id === req.auth.userId;
 };
 
 // Helper: Verifikasi kepemilikan Kontak
 const verifyContactOwnership = async (contactId, req) => {
-  if (req.auth.role === 'admin') return true;
   const contact = await dbGet(
     `SELECT cg.user_id FROM contacts c 
      INNER JOIN contact_groups cg ON c.group_id = cg.id 
@@ -97,17 +95,7 @@ const verifyContactOwnership = async (contactId, req) => {
 
 export const getGroups = async (req, res) => {
   try {
-    const sql = req.auth.role === 'admin'
-      ? `SELECT 
-          cg.id, cg.name, cg.description, cg.color, cg.created_at,
-          COUNT(c.id) AS total_contacts,
-          SUM(CASE WHEN c.status = 'VERIFIED' THEN 1 ELSE 0 END) AS verified_contacts,
-          SUM(CASE WHEN c.status = 'UNVERIFIED' THEN 1 ELSE 0 END) AS unverified_contacts
-        FROM contact_groups cg
-        LEFT JOIN contacts c ON cg.id = c.group_id
-        GROUP BY cg.id
-        ORDER BY cg.created_at DESC`
-      : `SELECT 
+    const sql = `SELECT 
           cg.id, cg.name, cg.description, cg.color, cg.created_at,
           COUNT(c.id) AS total_contacts,
           SUM(CASE WHEN c.status = 'VERIFIED' THEN 1 ELSE 0 END) AS verified_contacts,
@@ -118,7 +106,7 @@ export const getGroups = async (req, res) => {
         GROUP BY cg.id
         ORDER BY cg.created_at DESC`;
     
-    const groups = await dbAll(sql, req.auth.role === 'admin' ? [] : [req.auth.userId]);
+    const groups = await dbAll(sql, [req.auth.userId]);
     return sendSuccess(res, groups);
   } catch (error) {
     logError('getGroupsContacts', error);

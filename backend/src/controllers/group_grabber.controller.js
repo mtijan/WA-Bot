@@ -77,8 +77,6 @@ const normalizePhoneForMatching = (num) => {
 };
 
 const verifySessionOwnership = async (req, res, sessionId) => {
-  if (req.auth.role === 'admin') return true;
-
   const session = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
   if (!session) {
     sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi WhatsApp tidak ditemukan.');
@@ -233,9 +231,7 @@ export const exportParticipants = async (req, res) => {
     // ========== FASE 1: Kumpulkan semua kontak dari berbagai sumber ==========
 
     // 1a. Kontak dari database lokal (input manual user)
-    const dbContacts = req.auth.role === 'admin'
-      ? await dbAll("SELECT name, phone_number FROM contacts")
-      : await dbAll(
+    const dbContacts = await dbAll(
         `SELECT c.name, c.phone_number
          FROM contacts c
          INNER JOIN contact_groups cg ON c.group_id = cg.id

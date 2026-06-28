@@ -36,6 +36,7 @@ describe('POST /api/chatbot-flows - Validasi & Pembuatan', () => {
 
   it('berhasil membuat alur chatbot baru', async () => {
     const agent = await getTestAgent();
+    await dbRun("INSERT INTO sessions (session_id, status, user_id) VALUES ('session-utama', 'CONNECTED', 1)");
     const res = await agent
       .post('/api/chatbot-flows')
       .send({

@@ -5,10 +5,8 @@ import { auditLog } from '../services/audit.service.js';
 
 export const getTemplates = async (req, res) => {
   try {
-    const sql = req.auth.role === 'admin'
-      ? 'SELECT * FROM message_templates ORDER BY created_at DESC'
-      : 'SELECT * FROM message_templates WHERE user_id = ? ORDER BY created_at DESC';
-    const templates = await dbAll(sql, req.auth.role === 'admin' ? [] : [req.auth.userId]);
+    const sql = 'SELECT * FROM message_templates WHERE user_id = ? ORDER BY created_at DESC';
+    const templates = await dbAll(sql, [req.auth.userId]);
     return sendSuccess(res, templates);
   } catch (error) {
     logError('getTemplates', error);
@@ -77,7 +75,7 @@ export const deleteTemplate = async (req, res) => {
       return sendError(res, 404, 'TEMPLATE_NOT_FOUND', 'Template tidak ditemukan.');
     }
 
-    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+    if (existing.user_id !== req.auth.userId) {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke template ini.');
     }
 

@@ -3,6 +3,10 @@ import { dbAll, dbGet, dbRun } from '../database.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
 import { auditLog } from '../services/audit.service.js';
+import whatsappService from '../services/whatsapp.service.js';
+import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
+import { resolveMediaFilePath, deleteFileIfExists } from '../services/upload.service.js';
+
 
 function sanitizeUserBody(body = {}) {
   const sanitized = { ...body };
@@ -241,21 +245,67 @@ export const deleteUser = async (req, res) => {
       return sendError(res, 404, 'USER_NOT_FOUND', 'Pengguna tidak ditemukan.');
     }
 
-    await dbRun(
-      `UPDATE users 
-       SET is_active = 0,
-           token_version = COALESCE(token_version, 0) + 1,
-           updated_at = CURRENT_TIMESTAMP 
-       WHERE id = ?`,
-      [id]
-    );
-    await dbRun(
-      'UPDATE user_refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL',
-      [id]
-    );
+    // 1. Clean up user WhatsApp sessions
+    const userSessions = await dbAll('SELECT session_id FROM sessions WHERE user_id = ?', [id]);
+    for (const session of userSessions) {
+      try {
+        if (isSessionManagerClientEnabled()) {
+          await sessionManagerClient.deleteSession(session.session_id);
+        } else {
+          await whatsappService.deleteSession(session.session_id);
+        }
+      } catch (err) {
+        logError('deleteUserSession', err, { sessionId: session.session_id });
+      }
+    }
+
+    // 2. Clean up uploaded media files on disk
+    const userMedia = await dbAll('SELECT filename FROM uploaded_media WHERE user_id = ?', [id]);
+    for (const media of userMedia) {
+      try {
+        const filePath = resolveMediaFilePath(media.filename);
+        deleteFileIfExists(filePath);
+      } catch (err) {
+        logError('deleteUserMediaFile', err, { filename: media.filename });
+      }
+    }
+
+    // 3. Delete dependent rows in SQL
+    await dbRun('DELETE FROM user_refresh_tokens WHERE user_id = ?', [id]);
+    await dbRun('DELETE FROM opt_out_contacts WHERE user_id = ?', [id]);
+    await dbRun('DELETE FROM chatbot_flow_sessions WHERE user_id = ?', [id]);
+    await dbRun('DELETE FROM uploaded_media WHERE user_id = ?', [id]);
+
+    // Warmer campaigns & logs
+    await dbRun('DELETE FROM warmer_logs WHERE campaign_id IN (SELECT id FROM warmer_campaigns WHERE user_id = ?)', [id]);
+    await dbRun('DELETE FROM warmer_campaigns WHERE user_id = ?', [id]);
+    await dbRun('DELETE FROM warmer_templates WHERE user_id = ?', [id]);
+
+    // Message templates
+    await dbRun('DELETE FROM message_templates WHERE user_id = ?', [id]);
+
+    // Contacts & groups
+    await dbRun('DELETE FROM contacts WHERE group_id IN (SELECT id FROM contact_groups WHERE user_id = ?)', [id]);
+    await dbRun('DELETE FROM contact_groups WHERE user_id = ?', [id]);
+
+    // Campaigns & delivery logs
+    await dbRun('DELETE FROM delivery_logs WHERE campaign_id IN (SELECT id FROM campaigns WHERE user_id = ?)', [id]);
+    await dbRun('DELETE FROM campaigns WHERE user_id = ?', [id]);
+
+    // Chatbot flows
+    await dbRun('DELETE FROM chatbot_flows WHERE user_id = ?', [id]);
+
+    // Chatbot AI credentials
+    await dbRun('DELETE FROM chatbot_ai_credentials WHERE user_id = ?', [id]);
+
+    // Audit logs associated with this user
+    await dbRun('DELETE FROM audit_logs WHERE actor_user_id = ?', [id]);
+
+    // 4. Finally delete the user row itself
+    await dbRun('DELETE FROM users WHERE id = ?', [id]);
 
     auditLog(req, 'USER_DELETE', 'user', String(id), 'success', { username: targetUser.username });
-    return sendSuccess(res, null, 200, { message: 'Pengguna berhasil dinonaktifkan (dihapus).' });
+    return sendSuccess(res, null, 200, { message: 'Pengguna beserta seluruh datanya berhasil dihapus secara permanen.' });
   } catch (error) {
     logError('deleteUser', error, { params: req.params });
     return sendError(res, 500, 'DELETE_USER_ERROR', 'Gagal menghapus pengguna.');

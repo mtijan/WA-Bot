@@ -217,18 +217,18 @@ const UserManagement = ({ authState }) => {
 
   const handleDeleteUser = async (user) => {
     triggerConfirm(
-      'Hapus/Nonaktifkan Pengguna',
-      `Apakah Anda yakin ingin menonaktifkan pengguna "${user.username}"? Akun ini tidak akan bisa login kembali.`,
-      'Ya, Nonaktifkan',
+      'Hapus Pengguna Permanen',
+      `Apakah Anda yakin ingin menghapus pengguna "${user.username}" beserta seluruh datanya (perangkat, kampanye, kontak, alur chatbot, dsb)? Tindakan ini permanen dan tidak dapat dibatalkan.`,
+      'Ya, Hapus Permanen',
       'btn-danger',
       async () => {
         try {
           const json = await apiRequest(`/users/${user.id}`, { method: 'DELETE' });
           if (json.status === 'success') {
-            window.showSuccess('Pengguna berhasil dinonaktifkan.');
+            window.showSuccess('Pengguna beserta seluruh datanya berhasil dihapus secara permanen.');
             fetchUsers();
           } else {
-            window.showError(json.message || 'Gagal menonaktifkan pengguna.');
+            window.showError(json.message || 'Gagal menghapus pengguna.');
           }
         } catch (err) {
           window.showError(err.message || 'Kesalahan jaringan saat menghapus pengguna.');

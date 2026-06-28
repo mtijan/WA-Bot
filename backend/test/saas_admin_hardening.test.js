@@ -104,4 +104,43 @@ describe('SaaS admin hardening', () => {
     assert.equal(invalidPlan.status, 400);
     assert.equal(invalidPlan.body.error_code, 'INVALID_PLAN');
   });
+
+  it('berhasil menghapus user secara permanen beserta seluruh datanya (cascade)', async () => {
+    const { agent, cookie } = await getAuthenticatedAgent();
+    
+    // Seed target user
+    const targetUserId = await seedTenant('delete_cascade_user', 'target-password-12345');
+    
+    // Seed associated data for this user
+    await dbRun("INSERT INTO sessions (session_id, status, user_id) VALUES ('cascade-session', 'CONNECTED', ?)", [targetUserId]);
+    await dbRun("INSERT INTO contact_groups (id, name, user_id) VALUES (999, 'cascade-group', ?)", [targetUserId]);
+    await dbRun("INSERT INTO message_templates (id, name, content, user_id) VALUES (999, 'cascade-template', 'Hello', ?)", [targetUserId]);
+    await dbRun("INSERT INTO campaigns (id, session_id, name, message, user_id) VALUES (999, 'cascade-session', 'cascade-campaign', 'Msg', ?)", [targetUserId]);
+    
+    // Delete the user
+    const res = await agent
+      .delete(`/api/users/${targetUserId}`)
+      .set('Cookie', cookie);
+      
+    assert.equal(res.status, 200);
+    assert.equal(res.body.status, 'success');
+    
+    // Verify user is deleted
+    const user = await dbGet('SELECT * FROM users WHERE id = ?', [targetUserId]);
+    assert.equal(user, undefined);
+    
+    // Verify associated records are deleted
+    const session = await dbGet("SELECT * FROM sessions WHERE user_id = ?", [targetUserId]);
+    assert.equal(session, undefined);
+    
+    const group = await dbGet("SELECT * FROM contact_groups WHERE user_id = ?", [targetUserId]);
+    assert.equal(group, undefined);
+    
+    const template = await dbGet("SELECT * FROM message_templates WHERE user_id = ?", [targetUserId]);
+    assert.equal(template, undefined);
+    
+    const campaign = await dbGet("SELECT * FROM campaigns WHERE user_id = ?", [targetUserId]);
+    assert.equal(campaign, undefined);
+  });
 });
+
