@@ -5,6 +5,26 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.4] - 2026-06-28
+
+### Added
+- Uploaded media tenant ownership: added `uploaded_media` metadata and authenticated owner/admin download checks for `/api/uploads/media/{filename}`.
+- SaaS hardening tests covering plan validation, audit logging, entitlement enforcement, uploaded-media tenant isolation, and race-safe session quota reservation.
+
+### Changed
+- Device quota enforcement now uses `subscription_plans.max_sessions` as the active source of truth instead of the legacy `users.device_limit` fallback.
+- OpenAPI route parity updated to 112/112 operations and backend integration/unit suite verified at 92/92 passing.
+
+### Fixed
+- Prevented concurrent session creation from bypassing device quota by reserving session slots through an atomic SQLite insert.
+- Removed unsafe owner fallbacks for campaign and opt-out processing paths so missing ownership no longer silently maps data to admin.
+
+## [2.9.3] - 2026-06-28
+
+### Added
+- Session credential at-rest encryption provider for Baileys auth state using AES-256-GCM.
+- Additional documentation and validation coverage for SaaS security hardening prior to Git push.
+
 ## [2.9.2] - 2026-06-28
 
 ### Added
@@ -36,7 +56,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - SaaS operations HTML documentation aligned with `docs/SAAS_OPERATIONS.md`.
 
 ### Changed
-- Documentation baseline updated to 81/81 backend tests and OpenAPI route parity 106/106.
+- Documentation baseline updated to 81/81 backend tests and OpenAPI route parity 106/106 at the time of that release.
 
 ## [2.8.9] - 2026-06-16
 

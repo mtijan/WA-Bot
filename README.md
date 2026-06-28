@@ -3,8 +3,8 @@
 WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
-**Versi Dokumen/Sistem:** 2.8.9  
-**Terakhir Diperbarui:** 2026-06-16  
+**Versi Dokumen/Sistem:** 2.9.4
+**Terakhir Diperbarui:** 2026-06-28
 
 ---
 
@@ -31,16 +31,18 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Chatbot AI:** Integrasi penyedia AI (seperti OpenAI GPT atau Google Gemini) dengan mode operasional fleksibel per-sesi (off, chatbot flow saja, AI saja, atau kombinasi keduanya).
 - **Group Grabber:** Ekstraksi anggota grup WhatsApp secara instan ke file CSV 14 kolom dengan resolusi LID (Lid-to-Jid resolution) untuk penargetan campaign yang aman.
 - **Single Message Composer:** Pengiriman pesan individual cepat dengan dukungan lampiran media dan pembuatan jajak pendapat (polls).
-- **Media Upload Manager:** Upload gambar (maksimal 5 MB) dan video (maksimal 10 MB) dengan mitigasi Stored XSS melalui validasi MIME tipe dan penamaan acak ekstensi file di server.
+- **Media Upload Manager:** Upload gambar (maksimal 5 MB) dan video (maksimal 10 MB) dengan mitigasi Stored XSS, metadata kepemilikan tenant di `uploaded_media`, dan download terautentikasi hanya untuk owner/admin.
 - **Consent & Opt-Out Handling:** Sistem filter daftar pencegahan (suppression list) otomatis jika penerima membalas dengan kata kunci seperti STOP, UNSUBSCRIBE, atau BERHENTI.
 - **Session Auto-Repair & Crypt-Key Reset:** Pemantauan dan pemulihan otomatis sesi terputus berdurasi setiap 10 menit ([auto_repair_disconnected.js](file:///d:/Self%20Project/WA-Bot/backend/scripts/auto_repair_disconnected.js)) di staging VPS dengan pembatasan laju 5x/24j dan alert Telegram. Fitur manual Repair pada UI Session Manager juga tersedia untuk membersihkan cache kunci Signal tanpa menghapus kredensial utama.
 - **Chatbot AI Error logs & Dashboard Alerts:** Deteksi dan pencatatan error API/saldo chatbot AI secara persisten ke database serta visualisasi Alert Box glassmorphic merah self-healing di dashboard admin.
 - **Database & File Pruner Otomatis:** Script pruner berkala (`npm run logs:prune:apply`) untuk menghapus log pengiriman lama, log warmer, file ekspor lawas, dan berkas cadangan (backup) kedaluwarsa secara otomatis serta melakukan SQLite VACUUM untuk merampingkan ukuran database.
 - **Security Hardening Baseline:** Login dashboard admin berbasis secure cookie HttpOnly, proteksi kunci API server-to-server (X-API-Key), Content Security Policy (CSP) ketat yang mendukung Google Fonts & Websocket staging, serta in-memory API rate limiter.
 - **Multi-User RBAC & Tenant Isolation:** Login JWT dual-cookie dengan access/refresh token, refresh token rotation/revocation, User Management admin-only, role `admin`/`user`, serta isolasi data per `user_id`.
-- **Admin-Controlled Device Quota:** Admin dapat mengatur limit device WhatsApp per user; user non-admin tidak dapat menambah device melebihi kuota.
+- **SaaS Plans & Entitlements:** Admin mengatur paket langganan di Plans Management; runtime menolak sesi, campaign bulanan, chatbot flow, upload, single-message, dan warmer action saat subscription tidak aktif atau kuota habis.
+- **Race-Safe Device Quota:** Kuota device WhatsApp menggunakan `subscription_plans.max_sessions` sebagai sumber limit utama dan reservasi slot sesi atomik di SQLite untuk mencegah race condition saat banyak request masuk bersamaan.
+- **Audit Logs:** Tindakan sensitif seperti auth, user, session, campaign, template, chatbot flow, proxy, dan setting tercatat di tabel `audit_logs`; admin melihat global, user hanya melihat log aktornya sendiri.
 - **Admin-Only Monitoring:** Menu dan route Monitoring hanya untuk admin/operator platform; user tenant biasa fokus pada data dan device miliknya sendiri.
-- **SaaS Operations Baseline:** Keputusan tenant/admin global, billing manual MVP, audit-log requirement, backup/retention, acceptable use, dan launch gates dicatat di `docs/SAAS_OPERATIONS.md`.
+- **SaaS Operations Baseline:** Keputusan tenant/admin global, entitlement, audit log, backup/retention, acceptable use, dan launch gates dicatat di `docs/SAAS_OPERATIONS.md`.
 - **Fully Transparent QR Code Generator:** Pembuatan QR Code kustom dengan latar belakang transparan penuh pada sela-sela modul dan pola mata pojok (finder pattern) menggunakan HTML5 Canvas 2D compositing, dengan opsi gaya transparansi terpisah untuk menjaga kemudahan pemindaian (scannable).
 
 ---
@@ -123,7 +125,7 @@ Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan
 ## Panduan Pengujian (Testing)
 
 ### Pengujian Unit & Integrasi Backend
-Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation, campaign tenant personalization, pruner logs, kuota device user, dan isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite terakhir: 81 test pass.
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation, campaign tenant personalization, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media tenant isolation, dan isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite terakhir: 92 test pass.
 ```bash
 cd backend
 npm test

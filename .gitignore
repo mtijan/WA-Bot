@@ -18,6 +18,8 @@ backend/database.sqlite
 backend/database.sqlite-*
 backend/*.sqlite
 backend/*.sqlite-*
+*.db
+*.db-*
 backend/sessions/
 backend/data/
 backend/uploads/

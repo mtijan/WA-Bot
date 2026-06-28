@@ -57,4 +57,4 @@ Baileys is an unofficial WhatsApp integration. Do not use automation to evade pl
 
 ## 7. SaaS Operations
 
-For paid multi-tenant use, follow `docs/SAAS_OPERATIONS.md`. That decision record defines the platform admin model, tenant ownership boundary, billing/suspension baseline, audit-log requirement, backup/retention policy, acceptable-use expectations, and launch gates for private pilot versus public SaaS.
+For paid multi-tenant use, follow `docs/SAAS_OPERATIONS.md`. That decision record defines the platform admin model, tenant ownership boundary, plan entitlement and suspension baseline, audit-log implementation, backup/retention policy, acceptable-use expectations, and launch gates for private pilot versus public SaaS.

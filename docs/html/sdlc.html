@@ -100,7 +100,7 @@
                 <td><code>P0</code></td>
                 <td>Admin authentication</td>
                 <td><strong>DONE</strong></td>
-                <td>JWT multi-user auth aktif dengan HttpOnly access/refresh cookies, role admin/user, User Management admin-only, refresh token rotation/revocation, <code>users.token_version</code> invalidation, tenant isolation berbasis <code>user_id</code>, dan admin dapat mengatur <code>users.device_limit</code> untuk user tenant.</td>
+                <td>JWT multi-user auth aktif dengan HttpOnly access/refresh cookies, role admin/user, User Management admin-only, refresh token rotation/revocation, <code>users.token_version</code> invalidation, tenant isolation berbasis <code>user_id</code>, dan admin dapat mengatur kuota device melalui <code>subscription_plans.max_sessions</code>.</td>
                 <td>Simpan admin password di password manager dan review secret lifecycle secara berkala.</td>
                 <td>Browser publik tidak dapat mengakses <code>/api/*</code> tanpa identitas sah; refresh token lama ditolak setelah rotasi/logout/password change; backend tidak diekspos langsung.</td>
               </tr>
@@ -181,7 +181,7 @@
                 <td><code>P2</code></td>
                 <td>Test coverage</td>
                 <td><strong>DONE</strong></td>
-                <td>QA browser, build frontend, OpenAPI parity 106/106, smoke test internal delegation, 81 test cases backend integration &amp; unit test suite (validator, auth token rotation/revocation, tenant isolation, device quota, templates, opt-outs, chatbot flow session mapping/isolation, campaign tenant personalization, single-message delegation, spintax engine, dan log/file pruner), serta automated deploy smoke test 100% lulus.</td>
+                <td>QA browser, build frontend, OpenAPI parity 112/112, smoke test internal delegation, 92 test cases backend integration &amp; unit test suite (validator, auth token rotation/revocation, tenant isolation, race-safe plan device quota, entitlement routes, plan validation/audit logging, uploaded-media tenant isolation, templates, opt-outs, chatbot flow session mapping/isolation, campaign tenant personalization, single-message delegation, spintax engine, dan log/file pruner), serta automated deploy smoke test 100% lulus.</td>
                 <td>-</td>
                 <td>CI/manual release dapat menjalankan test cepat tanpa Puppeteer dan test end-to-end saat kandidat rilis.</td>
               </tr>
@@ -244,7 +244,7 @@
         </div>
         <div class="callout callout--warning" style="margin-top:1.25rem;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-          <div>Tahap saat ini: item 1 Admin authentication, item 2 Process architecture, item 3 Database migration, item 4 Backup and restore, item 5 lightweight VPS monitoring baseline, item 6 Database reliability, item 7 Codebase quality, item 8 Security hardening, item 9 Deploy automation, item 10 Test coverage, item 11 Platform governance, item 12 Media upload attachments, item 13 Chatbot Flow large-data UX/metrics/runtime scaling, item 14 Session Auto-Repair &amp; Chatbot AI Alerting, item 15 Session Reconnect &amp; Heartbeat Stability, dan item 16 Fully Transparent QR Code Cutting sudah DONE. Auth multi-user, revocable refresh token, tenant isolation, campaign tenant personalization, kuota device user, Monitoring admin-only, dan Chatbot Flow indexed session mapping sudah diverifikasi melalui backend integration test 81/81.</div>
+          <div>Tahap saat ini: item 1 Admin authentication, item 2 Process architecture, item 3 Database migration, item 4 Backup and restore, item 5 lightweight VPS monitoring baseline, item 6 Database reliability, item 7 Codebase quality, item 8 Security hardening, item 9 Deploy automation, item 10 Test coverage, item 11 Platform governance, item 12 Media upload attachments, item 13 Chatbot Flow large-data UX/metrics/runtime scaling, item 14 Session Auto-Repair &amp; Chatbot AI Alerting, item 15 Session Reconnect &amp; Heartbeat Stability, dan item 16 Fully Transparent QR Code Cutting sudah DONE. Auth multi-user, revocable refresh token, tenant isolation, campaign tenant personalization, race-safe plan device quota, entitlement middleware, audit log, uploaded-media tenant isolation, Monitoring admin-only, dan Chatbot Flow indexed session mapping sudah diverifikasi melalui backend integration test 92/92.</div>
         </div>
 
         <h4 style="color:var(--color-title); font-size:1rem; margin:1.75rem 0 0.75rem; font-weight:600;">SaaS Production Gap Cross-Check</h4>
@@ -261,11 +261,11 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td><code>P0</code></td><td>Audit log</td><td>SDLC sudah punya auth, tenant isolation, logger, dan test coverage, tetapi belum mencatat implementasi <code>audit_logs</code>.</td><td>Tambahkan append-only audit log sebelum public SaaS.</td></tr>
-              <tr><td><code>P0</code></td><td>Billing and entitlement enforcement</td><td>SDLC sudah mencatat <code>users.device_limit</code>; belum ada subscription/plan, invoice, renewal, campaign-volume limit, atau entitlement middleware.</td><td>Tambahkan subscription/entitlement layer setelah pilot manual stabil.</td></tr>
-              <tr><td><code>P0</code></td><td>Legal/customer policy</td><td>SDLC dan privacy docs mencatat consent/opt-out/platform risk; belum ada customer-facing Terms/AUP/DPA/suspension/deletion policy lengkap.</td><td>Siapkan dokumen legal/customer policy sebelum public sale.</td></tr>
+              <tr><td><code>DONE</code></td><td>Audit log</td><td>SDLC sudah punya auth, tenant isolation, logger, test coverage, dan implementasi <code>audit_logs</code> persisten.</td><td>Append-only audit log selesai; tetap validasi evidence produksi sebelum public launch.</td></tr>
+              <tr><td><code>DONE</code></td><td>Billing and entitlement enforcement</td><td>SDLC sudah mencatat <code>subscription_plans</code>, <code>users.plan_id</code>, subscription status, middleware entitlement, dan Plans Management UI.</td><td>Enforcement runtime selesai; payment gateway/invoice otomatis masih jalur self-serve lanjutan.</td></tr>
+              <tr><td><code>DONE</code></td><td>Legal/customer policy</td><td>Dokumen Terms, Privacy Policy, Acceptable Use Policy, dan Data Deletion Policy tersedia dalam MD dan modal internal frontend.</td><td>Kebijakan pelanggan selesai untuk pilot; review legal formal tetap disarankan sebelum public sale.</td></tr>
               <tr><td><code>P1</code></td><td>Backup and retention production target</td><td>SDLC menandai backup/restore DONE untuk encrypted backup + Telegram offsite staging/pilot; security docs masih menyarankan object storage/managed destination untuk public SaaS.</td><td>Tetapkan offsite backup production-grade dan evidence restore.</td></tr>
-              <tr><td><code>P1</code></td><td>Session credential at-rest hardening</td><td>SDLC mencatat local directory isolation dan ACL; belum terbukti encrypted at-rest untuk session credentials.</td><td>Terapkan/rekam disk encryption, ACL final, session rotation, dan compromise removal procedure.</td></tr>
+              <tr><td><code>DONE</code></td><td>Session credential at-rest hardening</td><td>Session credential Baileys sudah memakai provider encrypted auth state AES-256-GCM.</td><td>Pertahankan key lifecycle dan prosedur rotasi sesi saat kompromi.</td></tr>
               <tr><td><code>P1</code></td><td>Production monitoring and incident response</td><td>SDLC mencatat lightweight staging monitoring DONE; public traffic masih membutuhkan operator, escalation, dan incident drill yang eksplisit.</td><td>Perluas monitoring sesuai traffic dan tetapkan named operator.</td></tr>
               <tr><td><code>P2</code></td><td>Platform governance</td><td>SDLC mencatat risiko Baileys dan governance DONE untuk pilot/operasi terbatas.</td><td>Pertahankan batas penggunaan pilot, lalu WhatsApp Business Platform path.</td></tr>
             </tbody>
@@ -518,7 +518,7 @@
             <tr>
               <td><code>FR-27</code></td>
               <td>Admin-Controlled Device Quota</td>
-              <td>Sistem memungkinkan admin mengatur <code>users.device_limit</code> dan menolak user non-admin membuat WhatsApp session baru ketika kuota device sudah tercapai.</td>
+              <td>Sistem memungkinkan admin mengatur <code>subscription_plans.max_sessions</code> dan menolak user non-admin membuat WhatsApp session baru ketika kuota device paket sudah tercapai.</td>
               <td><span class="badge badge--high">Tinggi</span></td>
             </tr>
             <tr>

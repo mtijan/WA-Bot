@@ -1,7 +1,7 @@
 # WA-Bot Pro Operations Runbook
 
 **Status:** Internal baseline  
-**Last updated:** 2026-06-16
+**Last updated:** 2026-06-28
 
 ## 1. Local Start
 
@@ -183,7 +183,10 @@ Latest schema notes:
 
 - Migration `014_auth_token_revocation_and_campaign_owner` adds `users.token_version`, `password_changed_at`, `user_refresh_tokens`, and campaign owner indexing for revocable JWT sessions and tenant-safe campaign processing.
 - Migration `015_chatbot_flow_session_mapping` adds `chatbot_flow_sessions` and backfills existing `chatbot_flows.session_ids` assignments. Runtime inbound matching now looks up active candidate flows by indexed `session_id`, then lazy-loads full flow nodes only after a candidate matches.
-- Migration `016_user_device_limit` adds `users.device_limit` so platform admins can control how many WhatsApp devices a non-admin tenant may connect.
+- Migration `016_user_device_limit` adds the legacy per-user device field; current active device enforcement is plan-based through `subscription_plans.max_sessions`.
+- Migration `017_audit_logs` adds append-only audit records for sensitive auth/user/session/campaign/template/chatbot/proxy/settings actions.
+- Migration `018_billing_and_entitlements` adds `subscription_plans` and user subscription fields for plan-based quotas and subscription status.
+- Migration `019_uploaded_media_metadata` adds tenant-owned media metadata so uploaded file downloads can be authorized by owner/admin.
 - Migration `006_chatbot_flow_delivery_metrics` adds accurate Chatbot Flow counters. Historical `sent_count` values are copied into `trigger_count`, then `sent_count` starts from `0` so future counts represent successfully sent node messages only. `failed_count` records node send failures.
 
 Chatbot Flow large-data behavior:
@@ -312,7 +315,7 @@ Frontend production builds default to `/api`, so the recommended public layout i
 `frontend/package.json` runs `scripts/assert-production-api-url.mjs` after every production build. This guard fails the build when generated assets contain direct private backend URLs such as `:3001/api`. If staging login fails with `Failed to fetch` and DevTools shows requests to `:3001/api/auth/login`, set `VITE_API_URL=/api` in the frontend env, rebuild, reload the reverse proxy, and hard-refresh the browser cache.
 
 See `docs/SECURITY.md` for the production checklist.
-For paid multi-tenant operation, also follow `docs/SAAS_OPERATIONS.md` before activating customers. It records the tenant/admin policy, manual-billing baseline, audit-log requirement, backup and retention gates, and WhatsApp/Baileys acceptable-use limits.
+For paid multi-tenant operation, also follow `docs/SAAS_OPERATIONS.md` before activating customers. It records the tenant/admin policy, plan entitlement baseline, audit-log implementation, backup and retention gates, and WhatsApp/Baileys acceptable-use limits.
 
 Security checks before VPS exposure:
 

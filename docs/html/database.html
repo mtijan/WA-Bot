@@ -66,7 +66,7 @@
           3.4 Entity Relationship Diagram (ERD)
           <a href="#erd" class="section-anchor">#</a>
         </h3>
-        <p style="color:var(--text-secondary); margin-bottom:1rem;">Menggambarkan 16 entitas basis data SQLite3 secara logis dan fisik. Gambar ERD historis belum memuat tabel suppression independen <code>opt_out_contacts</code>; data dictionary di halaman ini adalah acuan schema terbaru.</p>
+        <p style="color:var(--text-secondary); margin-bottom:1rem;">Menggambarkan entitas basis data SQLite3 secara logis dan fisik. Gambar ERD historis belum memuat seluruh tabel SaaS terbaru; data dictionary dan catatan migration di halaman ini adalah acuan schema terbaru.</p>
         <div class="mermaid-container">
           <img src="../images/3_4_entity_relationship_diagram_erd_data_dictionary.png" alt="Entity Relationship Diagram: Struktur relasi database WA-Bot Pro. Tabel sessions berelasi satu-ke-banyak dengan campaigns, chatbot_flows, auto_replies, dan whatsapp_contacts. Tabel campaigns berelasi satu-ke-banyak dengan delivery_logs. Tabel contact_groups berelasi satu-ke-banyak dengan contacts. Tabel warmer_templates berelasi satu-ke-banyak dengan warmer_campaigns, yang selanjutnya berelasi satu-ke-banyak dengan warmer_logs. Tabel proxies berelasi satu-ke-banyak dengan sessions (proxy dialokasikan untuk routing konektivitas sesi)." loading="lazy">
           <div class="mermaid-label">Gambar 3.4 -- ERD: Relasi Antar Entitas Database</div>
@@ -460,6 +460,27 @@
             <tr><td><code>last_error</code></td><td>TEXT</td><td><span class="badge badge--constraint">NULL</span></td><td>Pesan kesalahan terakhir ketika pemanggilan API chatbot AI gagal</td></tr>
             <tr><td><code>last_error_at</code></td><td>DATETIME</td><td><span class="badge badge--constraint">NULL</span></td><td>Waktu terjadinya kesalahan terakhir pada chatbot AI</td></tr>
             <tr><td><code>created_at</code></td><td>DATETIME</td><td><span class="badge badge--constraint">DEFAULT CURRENT_TIMESTAMP</span></td><td>Waktu pembuatan konfigurasi</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Table: SaaS operations schema -->
+    <div class="content-card" id="tbl-saas-ops">
+      <h3 class="content-card__title" style="font-size: 1.25rem;">
+        Tabel SaaS Operations
+      </h3>
+      <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+        Migration <code>017_audit_logs</code>, <code>018_billing_and_entitlements</code>, dan <code>019_uploaded_media_metadata</code> menambahkan baseline SaaS untuk audit trail, paket langganan, dan kepemilikan upload.
+      </p>
+      <div class="doc-table-caption">Tabel 3.5.17 -- Ringkasan Tabel SaaS Tambahan</div>
+      <div class="doc-table-wrapper">
+        <table class="doc-table">
+          <thead><tr><th>Tabel</th><th>Kegunaan</th><th>Kolom Kunci</th></tr></thead>
+          <tbody>
+            <tr><td><code>audit_logs</code></td><td>Audit trail append-only untuk aksi sensitif.</td><td><code>actor_user_id</code>, <code>event_type</code>, <code>target_type</code>, <code>result</code>, <code>created_at</code></td></tr>
+            <tr><td><code>subscription_plans</code></td><td>Sumber limit paket SaaS.</td><td><code>max_sessions</code>, <code>max_campaigns_per_month</code>, <code>max_flows</code>, <code>is_default</code></td></tr>
+            <tr><td><code>uploaded_media</code></td><td>Metadata file runtime agar download dapat dibatasi ke owner/admin.</td><td><code>filename</code>, <code>media_type</code>, <code>size_bytes</code>, <code>user_id</code></td></tr>
           </tbody>
         </table>
       </div>

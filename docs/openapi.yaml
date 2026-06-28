@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: WA-Bot Pro Local API
-  version: 2.9.2
+  version: 2.9.4
   description: |
     Machine-readable baseline for the routes mounted by the local Express backend.
     Rate limiting and restricted CORS origins are enforced by the local backend.

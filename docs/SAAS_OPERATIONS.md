@@ -14,7 +14,7 @@ Keputusan:
 - Admin global tidak boleh dipakai sebagai akun tenant harian. Admin hanya dipakai untuk tugas operasional.
 - Setiap pelanggan SaaS minimal memiliki satu akun `user`; akun tambahan dibuat hanya jika ada kebutuhan operasional jelas.
 - Semua WhatsApp sessions, contacts, templates, campaigns, warmer campaigns, chatbot flows, chatbot AI credentials/settings, delivery logs, opt-outs, monitoring visibility, dan Group Grabber access harus tenant-scoped untuk non-admin.
-- Jumlah WhatsApp device yang dapat dibuat user dikontrol admin melalui `users.device_limit`; user non-admin ditolak saat mencoba menambah device di atas kuota.
+- Jumlah WhatsApp device yang dapat dibuat user dikontrol admin melalui paket `subscription_plans.max_sessions`; user non-admin ditolak saat mencoba menambah device di atas kuota.
 - Menu Monitoring hanya untuk admin/operator platform; user tenant biasa tidak melihat route/menu tersebut.
 - API key `X-API-Key` dianggap admin internal server-to-server. Jangan berikan API key ini ke pelanggan atau frontend.
 - Dokumentasi HTML pendamping tersedia di `docs/html/saas-operations.html` agar paket dokumen browser selaras dengan decision record ini.
@@ -28,23 +28,23 @@ Operational rule:
 
 Keputusan fase MVP:
 
-- Billing awal dilakukan manual/off-platform sampai modul subscription otomatis dibuat.
-- Status pembayaran pelanggan dikelola melalui proses operasional, bukan melalui bypass teknis di aplikasi.
-- Jika pelanggan berhenti membayar, admin menonaktifkan akun user (`is_active=0`). Ini mencabut sesi dashboard melalui `token_version` dan refresh-token revocation.
+- Billing awal tetap dapat dilakukan manual/off-platform, tetapi entitlement teknis sudah dikontrol di aplikasi melalui `subscription_plans`, `users.plan_id`, `users.subscription_status`, `users.subscription_expires_at`, dan `users.billing_reference`.
+- Status pembayaran pelanggan dikelola oleh admin melalui User Management/Plans Management. Fitur runtime menolak operasi berbayar dengan `SUBSCRIPTION_INACTIVE` atau `QUOTA_EXCEEDED` ketika status/kuota tidak valid.
+- Jika pelanggan berhenti membayar, admin dapat mengubah `subscription_status` atau menonaktifkan akun user (`is_active=0`). Nonaktif akun mencabut sesi dashboard melalui `token_version` dan refresh-token revocation.
 - Jangan menghapus data pelanggan saat suspend kecuali ada permintaan penghapusan atau masa retensi sudah lewat.
 
 Kebutuhan sebelum self-serve SaaS penuh:
 
-- Tambahkan tabel subscription/plan, invoice/customer reference, status entitlements, batas jumlah sessions, batas campaign volume, dan tanggal renewal.
-- Tambahkan middleware enforcement agar fitur premium tidak hanya dikontrol oleh UI.
-- Tambahkan halaman admin untuk status subscription dan riwayat perubahan plan.
+- Payment gateway, invoice otomatis, customer portal, dan webhook pembayaran belum diimplementasikan.
+- Riwayat invoice/renewal yang lengkap masih perlu dibuat jika ingin self-serve SaaS publik.
+- Saat ini enforcement sudah ada untuk session max, campaign bulanan, chatbot flow count, upload media, single-message, dan warmer create action.
 
 ## 3. Audit Logging
 
 Keputusan:
 
-- Sebelum public paid SaaS, tindakan sensitif harus memiliki audit trail.
-- Untuk private paid pilot, audit sementara boleh dicatat di tiket/support log selama jumlah pelanggan kecil dan akses admin terbatas.
+- Tindakan sensitif harus memiliki audit trail. Implementasi `audit_logs` append-only sudah tersedia.
+- Untuk private paid pilot, tiket/support log tetap disarankan sebagai konteks bisnis tambahan, tetapi audit teknis tetap menjadi sumber bukti aplikasi.
 
 Minimum audit event sebelum public launch:
 
@@ -58,10 +58,10 @@ Minimum audit event sebelum public launch:
 | Proxy/settings/API key changes | admin | setting/proxy | masked value, actor, timestamp |
 | Backup/restore/prune | admin/system | runtime data | result, affected counts, backup id |
 
-Implementation requirement:
+Implementation baseline:
 
-- Add an append-only `audit_logs` table before public launch.
-- Audit logs must be tenant-filtered for non-admin visibility and globally visible to admin.
+- Append-only `audit_logs` table sudah dibuat oleh migration `017_audit_logs`.
+- Audit logs tenant-filtered untuk non-admin visibility dan globally visible untuk admin melalui `GET /api/audit-logs`.
 - Do not log secrets, refresh tokens, raw provider API keys, full proxy credentials, or WhatsApp session files.
 
 ## 4. Backup, Restore, and Retention
@@ -154,9 +154,8 @@ Private paid pilot can proceed when:
 
 Public SaaS launch requires additionally:
 
-- Audit log implementation.
-- Subscription/entitlement enforcement.
-- Offsite backup destination with restore evidence.
+- Production-grade offsite backup destination with restore evidence.
+- Evidence that audit logs and entitlement enforcement remain active in the production environment.
 - Written customer Terms, Privacy Policy, Acceptable Use Policy, and platform risk disclosure.
 - Abuse handling and customer suspension workflow.
 - Production incident response runbook with named operator responsibilities.

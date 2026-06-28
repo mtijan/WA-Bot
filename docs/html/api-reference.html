@@ -221,7 +221,7 @@
           <br><code style="background:rgba(255,255,255,0.05); padding:0.2rem 0.5rem; border-radius:4px; display:inline-block; margin-top:0.5rem; color:var(--color-text-accent);">X-API-Key: &lt;YOUR_API_KEY&gt;</code>
         </p>
         <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
-          Dashboard browser memakai JWT access/refresh cookie HttpOnly. Role <code>admin</code> dapat mengelola user, melihat Monitoring, dan mengatur kuota device; role <code>user</code> hanya mengakses resource miliknya sendiri. OpenAPI utama berada di <code>docs/openapi.yaml</code> dan saat ini parity dengan 106 handler Express.
+          Dashboard browser memakai JWT access/refresh cookie HttpOnly. Role <code>admin</code> dapat mengelola user, melihat Monitoring, audit log, dan paket langganan; role <code>user</code> hanya mengakses resource miliknya sendiri. OpenAPI utama berada di <code>docs/openapi.yaml</code> dan saat ini parity dengan 112 handler Express.
         </p>
 
         <h4 style="color:var(--color-title); font-size:0.95rem; margin:1.5rem 0 0.5rem; font-weight:600;">Kebijakan Jeda Kecepatan (Rate Limiting):</h4>
@@ -326,7 +326,7 @@
           <span class="endpoint-card__title">Create New Session</span>
         </div>
         <div class="endpoint-card__body">
-          <p class="endpoint-card__desc">Membuat sesi WhatsApp baru dan menghasilkan QR Code Base64 untuk dipindai oleh perangkat pengguna. Untuk role <code>user</code>, backend memeriksa <code>users.device_limit</code> sebelum membuat session baru.</p>
+          <p class="endpoint-card__desc">Membuat sesi WhatsApp baru dan menghasilkan QR Code Base64 untuk dipindai oleh perangkat pengguna. Untuk role <code>user</code>, backend memeriksa <code>subscription_plans.max_sessions</code> dengan reservasi slot atomik sebelum membuat session baru.</p>
 
           <div class="endpoint-card__section-title">Request Body Parameters</div>
           <table class="param-table">
@@ -1333,6 +1333,88 @@
         </div>
         <div class="endpoint-card__body">
           <p class="endpoint-card__desc">Menghapus nomor dari suppression list setelah terdapat dasar yang sah untuk mengaktifkan kembali komunikasi.</p>
+        </div>
+      </div>
+
+      <div class="content-header" id="uploads-plans-audit">
+        <div class="content-header__icon content-header__icon--violet"></div>
+        Uploads, Plans &amp; Audit
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-card__header">
+          <span class="endpoint-card__method method--post">POST</span>
+          <span class="endpoint-card__path">/api/uploads/media</span>
+          <span class="endpoint-card__title">Upload Media</span>
+        </div>
+        <div class="endpoint-card__body">
+          <p class="endpoint-card__desc">Mengunggah gambar maksimal 5 MB atau video maksimal 10 MB. Upload membutuhkan subscription aktif dan metadata file disimpan di tabel <code>uploaded_media</code> dengan pemilik <code>user_id</code>.</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-card__header">
+          <span class="endpoint-card__method method--get">GET</span>
+          <span class="endpoint-card__path">/api/uploads/media/:filename</span>
+          <span class="endpoint-card__title">Download Uploaded Media</span>
+        </div>
+        <div class="endpoint-card__body">
+          <p class="endpoint-card__desc">Mengunduh media runtime melalui auth. Admin dapat membaca semua upload; user biasa hanya dapat membaca upload miliknya sendiri. File lama tanpa metadata ditolak fail-closed.</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-card__header">
+          <span class="endpoint-card__method method--get">GET</span>
+          <span class="endpoint-card__path">/api/plans</span>
+          <span class="endpoint-card__title">List Subscription Plans</span>
+        </div>
+        <div class="endpoint-card__body">
+          <p class="endpoint-card__desc">Endpoint admin-only untuk daftar paket SaaS. Paket mengatur <code>max_sessions</code>, <code>max_campaigns_per_month</code>, dan <code>max_flows</code> yang dipakai oleh middleware entitlement.</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-card__header">
+          <span class="endpoint-card__method method--post">POST</span>
+          <span class="endpoint-card__path">/api/plans</span>
+          <span class="endpoint-card__title">Create Subscription Plan</span>
+        </div>
+        <div class="endpoint-card__body">
+          <p class="endpoint-card__desc">Membuat paket langganan baru. Jika <code>is_default</code> aktif, paket default lama dinonaktifkan secara otomatis.</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-card__header">
+          <span class="endpoint-card__method method--put">PUT</span>
+          <span class="endpoint-card__path">/api/plans/:id</span>
+          <span class="endpoint-card__title">Update Subscription Plan</span>
+        </div>
+        <div class="endpoint-card__body">
+          <p class="endpoint-card__desc">Memperbarui batas paket. Enforcement runtime membaca nilai paket terkini, termasuk limit device dari <code>max_sessions</code>.</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-card__header">
+          <span class="endpoint-card__method method--delete">DELETE</span>
+          <span class="endpoint-card__path">/api/plans/:id</span>
+          <span class="endpoint-card__title">Delete Subscription Plan</span>
+        </div>
+        <div class="endpoint-card__body">
+          <p class="endpoint-card__desc">Menghapus paket jika tidak sedang digunakan user. Paket yang masih direferensikan oleh user ditolak untuk menjaga konsistensi entitlement.</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-card__header">
+          <span class="endpoint-card__method method--get">GET</span>
+          <span class="endpoint-card__path">/api/audit-logs</span>
+          <span class="endpoint-card__title">List Audit Logs</span>
+        </div>
+        <div class="endpoint-card__body">
+          <p class="endpoint-card__desc">Mengambil audit trail append-only. Admin melihat seluruh event; user biasa hanya event dirinya sendiri. Filter tersedia untuk <code>event_type</code>, <code>target_type</code>, <code>result</code>, <code>page</code>, dan <code>limit</code>.</p>
         </div>
       </div>
 
