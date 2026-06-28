@@ -130,7 +130,7 @@ function App() {
             <Route path="/qrcode-generator" element={<QRCodeGenerator />} />
             {authState.role === 'admin' && (
               <>
-                <Route path="/users" element={<UserManagement />} />
+                <Route path="/users" element={<UserManagement authState={authState} />} />
                 <Route path="/plans" element={<PlansManagement />} />
               </>
             )}

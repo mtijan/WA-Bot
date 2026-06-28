@@ -47,6 +47,7 @@ export const getAuthStatus = async (req, res) => {
     return sendSuccess(res, {
         enabled: true,
         authenticated,
+        userId: authenticated ? user.id : null,
         username: authenticated ? user.username : null,
         role: authenticated ? user.role : null
     });
@@ -102,6 +103,7 @@ export const login = async (req, res) => {
     return sendSuccess(res, {
       enabled: true,
       authenticated: true,
+      userId: user.id,
       username: user.username,
       role: user.role
     });
@@ -202,6 +204,7 @@ export const refreshToken = async (req, res) => {
     
     return sendSuccess(res, {
       refreshed: true,
+      userId: user.id,
       username: user.username,
       role: user.role
     });

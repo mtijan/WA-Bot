@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
-const UserManagement = () => {
+const UserManagement = ({ authState }) => {
   const [users, setUsers] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -425,23 +425,27 @@ const UserManagement = () => {
                   </div>
 
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <button
-                      title="Ubah Password"
-                      onClick={() => openPasswordModal(u)}
-                      className="btn-icon"
-                      style={{ padding: '6px', color: 'var(--text-muted)' }}
-                    >
-                      <Key size={15} />
-                    </button>
-                    <button
-                      title="Edit User"
-                      onClick={() => openEditModal(u)}
-                      className="btn-icon"
-                      style={{ padding: '6px', color: 'var(--primary-color)' }}
-                    >
-                      <Edit size={15} />
-                    </button>
-                    {u.is_active === 1 && (
+                    {(u.id !== 1 || authState?.userId === 1) && (
+                      <button
+                        title="Ubah Password"
+                        onClick={() => openPasswordModal(u)}
+                        className="btn-icon"
+                        style={{ padding: '6px', color: 'var(--text-muted)' }}
+                      >
+                        <Key size={15} />
+                      </button>
+                    )}
+                    {(u.id !== 1 || authState?.userId === 1) && (
+                      <button
+                        title="Edit User"
+                        onClick={() => openEditModal(u)}
+                        className="btn-icon"
+                        style={{ padding: '6px', color: 'var(--primary-color)' }}
+                      >
+                        <Edit size={15} />
+                      </button>
+                    )}
+                    {u.is_active === 1 && u.id !== 1 && (
                       <button
                         title="Nonaktifkan User"
                         onClick={() => handleDeleteUser(u)}
@@ -702,6 +706,8 @@ const UserManagement = () => {
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
                   className="form-control"
+                  disabled={selectedUser?.id === 1}
+                  style={selectedUser?.id === 1 ? { backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                 >
                   <option value="user">User (Akses Standar SaaS)</option>
                   <option value="admin">Admin (Akses Penuh + User Management)</option>
@@ -714,6 +720,8 @@ const UserManagement = () => {
                   value={isActive}
                   onChange={(e) => setIsActive(Number(e.target.value))}
                   className="form-control"
+                  disabled={selectedUser?.id === 1}
+                  style={selectedUser?.id === 1 ? { backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                 >
                   <option value={1}>Aktif (Bisa Login)</option>
                   <option value={0}>Nonaktif / Blokir (Tidak Bisa Login)</option>
@@ -729,6 +737,8 @@ const UserManagement = () => {
                   value={deviceLimit}
                   onChange={(e) => setDeviceLimit(e.target.value)}
                   className="form-control"
+                  disabled={selectedUser?.id === 1}
+                  style={selectedUser?.id === 1 ? { backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                 />
               </div>
 
@@ -738,6 +748,8 @@ const UserManagement = () => {
                   value={planId}
                   onChange={(e) => handlePlanChange(e.target.value)}
                   className="form-control"
+                  disabled={selectedUser?.id === 1}
+                  style={selectedUser?.id === 1 ? { backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                 >
                   <option value="">Pilih Paket...</option>
                   {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -750,6 +762,8 @@ const UserManagement = () => {
                   value={subscriptionStatus}
                   onChange={(e) => setSubscriptionStatus(e.target.value)}
                   className="form-control"
+                  disabled={selectedUser?.id === 1}
+                  style={selectedUser?.id === 1 ? { backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                 >
                   <option value="active">Aktif</option>
                   <option value="expired">Kedaluwarsa (Expired)</option>
@@ -764,6 +778,8 @@ const UserManagement = () => {
                   value={subscriptionExpiresAt}
                   onChange={(e) => setSubscriptionExpiresAt(e.target.value)}
                   className="form-control"
+                  disabled={selectedUser?.id === 1}
+                  style={selectedUser?.id === 1 ? { backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                 />
               </div>
 

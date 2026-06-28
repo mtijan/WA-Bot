@@ -84,6 +84,20 @@ export const updateUser = async (req, res) => {
     }
 
     const activeUserId = Number(req.auth?.userId);
+
+    // Proteksi Admin Utama (ID 1)
+    if (Number(id) === 1) {
+      if (activeUserId !== 1) {
+        return sendError(res, 403, 'MAIN_ADMIN_MODIFICATION_FORBIDDEN', 'Hanya Admin Utama yang dapat memodifikasi akun Admin Utama.');
+      }
+      if (role !== undefined && role !== 'admin') {
+        return sendError(res, 400, 'MAIN_ADMIN_ROLE_LOCKED', 'Role Admin Utama harus tetap admin.');
+      }
+      if (is_active !== undefined && Number(is_active) !== 1) {
+        return sendError(res, 400, 'MAIN_ADMIN_STATUS_LOCKED', 'Status Admin Utama harus tetap aktif.');
+      }
+    }
+
     if (Number(id) === activeUserId) {
       if (is_active !== undefined && Number(is_active) === 0) {
         return sendError(res, 400, 'SELF_DEACTIVATION_FORBIDDEN', 'Anda tidak dapat menonaktifkan akun sendiri.');
@@ -166,6 +180,10 @@ export const changePassword = async (req, res) => {
     }
 
     const isSelf = Number(id) === activeUserId;
+    if (Number(id) === 1 && activeUserId !== 1) {
+      return sendError(res, 403, 'MAIN_ADMIN_PASSWORD_PROTECTED', 'Hanya Admin Utama yang dapat mengubah password miliknya.');
+    }
+
     if (!isSelf && activeUserRole !== 'admin') {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki hak akses untuk mengubah password pengguna lain.');
     }
@@ -209,6 +227,10 @@ export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
     const activeUserId = Number(req.auth?.userId);
+
+    if (Number(id) === 1) {
+      return sendError(res, 400, 'MAIN_ADMIN_DELETION_FORBIDDEN', 'Akun Admin Utama tidak dapat dinonaktifkan atau dihapus.');
+    }
 
     if (Number(id) === activeUserId) {
       return sendError(res, 400, 'SELF_DELETION_FORBIDDEN', 'Anda tidak dapat menghapus akun sendiri.');
