@@ -14,6 +14,9 @@ import optOutRoutes from './routes/opt_out.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
 import monitoringRoutes from './routes/monitoring.routes.js';
+import userRoutes from './routes/user.routes.js';
+import auditRoutes from './routes/audit.routes.js';
+import planRoutes from './routes/plan.routes.js';
 import { dbGet, dbAll } from './database.js';
 import { config } from './config.js';
 import { logError } from './logger.js';
@@ -50,7 +53,7 @@ export function createApp(options = {}) {
   app.use(express.urlencoded({ limit: defaultBodyLimit, extended: true }));
   app.use('/api', createRateLimiter());
   app.use('/api/auth', authRoutes);
-  app.use('/api', createAdminAuthMiddleware());
+  app.use('/api', createAdminAuthMiddleware({ enabled: options.authEnabled === true }));
 
   // Mapping Rute API
   app.use('/api/sessions', sessionRoutes);
@@ -62,29 +65,98 @@ export function createApp(options = {}) {
   app.use('/api/single-message', singleMessageRoutes);
   app.use('/api/group-grabber', groupGrabberRoutes);
   app.use('/api/proxies', proxyRoutes);
+  app.use('/api/users', userRoutes);
   app.use('/api/chatbot-ai', chatbotAiRoutes);
   app.use('/api/opt-outs', optOutRoutes);
   app.use('/api/uploads', uploadRoutes);
   app.use('/api/monitoring', monitoringRoutes);
+  app.use('/api/audit-logs', auditRoutes);
+  app.use('/api/plans', planRoutes);
 
   // Endpoint statistik dashboard real-time
   app.get('/api/dashboard/stats', async (req, res) => {
     try {
-      const sessionStats = await dbGet("SELECT COUNT(*) as total, SUM(CASE WHEN status = 'CONNECTED' THEN 1 ELSE 0 END) as active FROM sessions");
-      const campaignSent = await dbGet("SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NOT NULL");
-      const campaignFailed = await dbGet("SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'FAILED' AND campaign_id IS NOT NULL");
-      const singleSent = await dbGet("SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NULL");
+      const isAdmin = req.auth.role === 'admin';
+      const userId = req.auth.userId;
+
+      const sessionStats = await dbGet(
+        isAdmin
+          ? "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'CONNECTED' THEN 1 ELSE 0 END) as active FROM sessions"
+          : "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'CONNECTED' THEN 1 ELSE 0 END) as active FROM sessions WHERE user_id = ?",
+        isAdmin ? [] : [userId]
+      );
       
-      const chatbotSent = await dbGet("SELECT SUM(sent_count) as total FROM chatbot_flows");
-      const chatbotTriggered = await dbGet("SELECT SUM(trigger_count) as total FROM chatbot_flows");
-      const totalContacts = await dbGet("SELECT COUNT(DISTINCT target_number) as total FROM delivery_logs");
-      const activeCampaigns = await dbGet("SELECT COUNT(*) as active FROM campaigns WHERE status = 'RUNNING'");
-      const totalFlows = await dbGet("SELECT COUNT(*) as total FROM chatbot_flows");
-      const totalTemplates = await dbGet("SELECT COUNT(*) as total FROM message_templates");
+      const campaignSent = await dbGet(
+        isAdmin
+          ? "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NOT NULL"
+          : "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NOT NULL AND user_id = ?",
+        isAdmin ? [] : [userId]
+      );
+      
+      const campaignFailed = await dbGet(
+        isAdmin
+          ? "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'FAILED' AND campaign_id IS NOT NULL"
+          : "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'FAILED' AND campaign_id IS NOT NULL AND user_id = ?",
+        isAdmin ? [] : [userId]
+      );
+      
+      const singleSent = await dbGet(
+        isAdmin
+          ? "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NULL"
+          : "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NULL AND user_id = ?",
+        isAdmin ? [] : [userId]
+      );
+      
+      const chatbotSent = await dbGet(
+        isAdmin
+          ? "SELECT SUM(sent_count) as total FROM chatbot_flows"
+          : "SELECT SUM(sent_count) as total FROM chatbot_flows WHERE user_id = ?",
+        isAdmin ? [] : [userId]
+      );
+      
+      const chatbotTriggered = await dbGet(
+        isAdmin
+          ? "SELECT SUM(trigger_count) as total FROM chatbot_flows"
+          : "SELECT SUM(trigger_count) as total FROM chatbot_flows WHERE user_id = ?",
+        isAdmin ? [] : [userId]
+      );
+      
+      const totalContacts = await dbGet(
+        isAdmin
+          ? "SELECT COUNT(DISTINCT target_number) as total FROM delivery_logs"
+          : "SELECT COUNT(DISTINCT target_number) as total FROM delivery_logs WHERE user_id = ?",
+        isAdmin ? [] : [userId]
+      );
+      
+      const activeCampaigns = await dbGet(
+        isAdmin
+          ? "SELECT COUNT(*) as active FROM campaigns WHERE status = 'RUNNING'"
+          : "SELECT COUNT(c.id) as active FROM campaigns c INNER JOIN sessions s ON c.session_id = s.session_id WHERE c.status = 'RUNNING' AND s.user_id = ?",
+        isAdmin ? [] : [userId]
+      );
+      
+      const totalFlows = await dbGet(
+        isAdmin
+          ? "SELECT COUNT(*) as total FROM chatbot_flows"
+          : "SELECT COUNT(*) as total FROM chatbot_flows WHERE user_id = ?",
+        isAdmin ? [] : [userId]
+      );
+      
+      const totalTemplates = await dbGet(
+        isAdmin
+          ? "SELECT COUNT(*) as total FROM message_templates"
+          : "SELECT COUNT(*) as total FROM message_templates WHERE user_id = ?",
+        isAdmin ? [] : [userId]
+      );
       
       // Hitung total node chatbot
       let totalNodes = 0;
-      const flows = await dbAll("SELECT nodes FROM chatbot_flows");
+      const flows = await dbAll(
+        isAdmin
+          ? "SELECT nodes FROM chatbot_flows"
+          : "SELECT nodes FROM chatbot_flows WHERE user_id = ?",
+        isAdmin ? [] : [userId]
+      );
       for (const f of flows) {
         try {
           totalNodes += JSON.parse(f.nodes || '[]').length;
@@ -103,9 +175,15 @@ export function createApp(options = {}) {
       let chatbotAiErrors = [];
       try {
         chatbotAiErrors = await dbAll(
-          `SELECT session_id, last_error, last_error_at 
-           FROM chatbot_ai_settings 
-           WHERE last_error IS NOT NULL`
+          isAdmin
+            ? `SELECT session_id, last_error, last_error_at 
+               FROM chatbot_ai_settings 
+               WHERE last_error IS NOT NULL`
+            : `SELECT cs.session_id, cs.last_error, cs.last_error_at 
+               FROM chatbot_ai_settings cs 
+               INNER JOIN sessions s ON cs.session_id = s.session_id
+               WHERE cs.last_error IS NOT NULL AND s.user_id = ?`,
+          isAdmin ? [] : [userId]
         );
       } catch (e) {
         chatbotAiErrors = [];

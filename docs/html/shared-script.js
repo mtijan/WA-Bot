@@ -97,25 +97,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 2. Select all zoomable images in the main document
-  const zoomableImages = document.querySelectorAll('.mermaid-container img, .gallery-item img, .content-card img, .gallery-grid img');
+  // 2. Event delegation for zoomable images and dynamically rendered Mermaid SVGs
+  document.body.addEventListener('click', (e) => {
+    const target = e.target.closest('img, .mermaid svg');
+    if (!target) return;
 
-  zoomableImages.forEach(img => {
-    img.addEventListener('click', (e) => {
-      if (img.parentElement && img.parentElement.tagName === 'A') {
-        e.preventDefault();
-      }
-      const src = img.getAttribute('src');
-      const alt = img.getAttribute('alt') || 'Tampilan gambar';
-      lightboxImg.setAttribute('src', src);
-      lightboxImg.setAttribute('alt', alt);
-      
-      // Reset zoom/pan status to initial state when opening new image
-      resetZoom();
-      
-      lightbox.classList.add('active');
-      document.body.style.overflow = 'hidden'; // Disable scroll under overlay
-    });
+    // Verify it belongs to a zoomable container
+    const isZoomableImg = target.tagName.toLowerCase() === 'img' && target.closest('.mermaid-container, .gallery-item, .content-card, .gallery-grid');
+    const isMermaidSvg = target.tagName.toLowerCase() === 'svg' && target.closest('.mermaid');
+
+    if (!isZoomableImg && !isMermaidSvg) return;
+
+    if (target.parentElement && target.parentElement.tagName === 'A') {
+      e.preventDefault();
+    }
+
+    let src;
+    let alt = target.getAttribute('alt') || 'Tampilan gambar';
+
+    if (isMermaidSvg) {
+      const svgData = new XMLSerializer().serializeToString(target);
+      src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
+      alt = "Diagram Diagram";
+    } else {
+      src = target.getAttribute('src');
+    }
+
+    if (!src) return;
+
+    lightboxImg.setAttribute('src', src);
+    lightboxImg.setAttribute('alt', alt);
+    
+    // Reset zoom/pan status to initial state when opening new image
+    resetZoom();
+    
+    lightbox.classList.add('active');
+    document.body.style.overflow = 'hidden'; // Disable scroll under overlay
   });
 
   // Toggle zoom on image click
@@ -187,4 +204,29 @@ document.addEventListener('DOMContentLoaded', () => {
       closeLightbox();
     }
   });
+
+  // Inject Mermaid JS for diagram rendering
+  const mermaidScript = document.createElement('script');
+  mermaidScript.type = 'module';
+  mermaidScript.textContent = `
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark' || 
+                   (!document.documentElement.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                   
+    mermaid.initialize({ 
+      startOnLoad: true, 
+      theme: isDark ? 'dark' : 'default',
+      securityLevel: 'loose'
+    });
+    
+    // Optional: Reload to re-render mermaid with new theme if toggle is clicked
+    const toggleBtn = document.querySelector('.theme-toggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        setTimeout(() => location.reload(), 50);
+      });
+    }
+  `;
+  document.body.appendChild(mermaidScript);
 });

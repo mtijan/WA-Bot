@@ -1,7 +1,7 @@
 # WA-Bot Monitoring & Alert Template
 
 **Status:** Staging Telegram alert timer installed; healthy timer, forced alert evidence, and browser feature smoke evidence recorded  
-**Last updated:** 2026-06-07
+**Last updated:** 2026-06-16
 
 Dokumen ini menjadi acuan monitoring sebelum deploy publik. Targetnya adalah memastikan proses mati, endpoint tidak ready, disk penuh, sesi WhatsApp putus, campaign macet, dan backup gagal bisa diketahui sebelum berdampak ke pengguna.
 
@@ -107,6 +107,37 @@ Preferred production baseline before full granular split:
 npm run start:api
 npm run start:worker
 ```
+
+## 4.1 User Quota & Resource Usage Monitoring (Admin-Only)
+
+Administrator dapat memantau penggunaan sumber daya dan kuota masing-masing pengguna langsung melalui dashboard System Monitoring di rute `/monitoring`.
+
+Metrik berikut dipantau secara real-time:
+* **Devices / Sesi WhatsApp**: Jumlah sesi terdaftar per user (termasuk status aktif/koneksi saat ini) dibandingkan dengan limit paket (`max_sessions`).
+* **Bulk Messages (Bulan Ini)**: Jumlah pesan broadcast yang dikirim oleh user pada bulan berjalan dibandingkan dengan limit bulanan (`max_campaigns_per_month`).
+* **Chatbot Flows**: Jumlah alur chatbot yang dibuat oleh user dibandingkan dengan limit paket (`max_flows`).
+
+### Mekanisme API
+
+Saat admin mengakses endpoint `/api/monitoring/status`, backend menjalankan kueri optimal berikut:
+```sql
+SELECT 
+  u.id, 
+  u.username, 
+  u.display_name,
+  p.name as plan_name,
+  COALESCE(p.max_sessions, 0) as max_sessions,
+  COALESCE(p.max_campaigns_per_month, 0) as max_campaigns_per_month,
+  COALESCE(p.max_flows, 0) as max_flows,
+  (SELECT COUNT(*) FROM sessions WHERE user_id = u.id) as current_sessions,
+  (SELECT COUNT(*) FROM sessions WHERE user_id = u.id AND status = 'CONNECTED') as active_sessions,
+  (SELECT COUNT(*) FROM campaigns WHERE user_id = u.id AND created_at >= ?) as current_campaigns,
+  (SELECT COUNT(*) FROM chatbot_flows WHERE user_id = u.id) as current_flows
+FROM users u
+LEFT JOIN subscription_plans p ON u.plan_id = p.id
+ORDER BY u.username ASC
+```
+Data ini di-render dalam tabel glassmorphic responsif dengan penyorotan warna merah jika limit terlampaui.
 
 ## 5. Application Health Queries
 
@@ -242,3 +273,14 @@ Manual staging browser smoke passed after the split-process socket delegation wo
 | Warmer start/stop | PASS |
 
 Full Chatbot Flow export performance evidence from authenticated VPS curl: HTTP `200`, `time=14.570861s`, `size=50929353` bytes (49 MB). This is expected for full exports because all flow nodes are included.
+
+## 11. Post-2026-06-16 Runtime Checks
+
+After deploying the auth and Chatbot Flow runtime-scaling changes, add these checks to release evidence:
+
+| Area | Check |
+|------|-------|
+| Auth token revocation | Login, refresh once, confirm old refresh token is rejected, logout clears cookies, and password change invalidates the previous access token. |
+| User lifecycle | Admin can create/update/deactivate users; non-admin routes remain tenant-scoped. |
+| Chatbot Flow mapping | New/imported/updated flows create rows in `chatbot_flow_sessions`; inbound messages for one `session_id` do not trigger flows assigned to another session. |
+| Query shape | Hot-path inbound matching uses indexed `chatbot_flow_sessions.session_id` lookup; avoid regressions to global active-flow scans. |

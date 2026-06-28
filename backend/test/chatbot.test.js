@@ -1,7 +1,7 @@
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { getTestAgent, cleanupTestDb } from './helpers/test_app.js';
-import { dbRun, dbAll } from '../src/database.js';
+import { dbRun, dbAll, dbGet } from '../src/database.js';
 import { getFlowsKnowledgeBase } from '../src/services/chatbot_ai.service.js';
 import {
   parseFlowKeywords,
@@ -51,16 +51,23 @@ describe('POST /api/chatbot-flows - Validasi & Pembuatan', () => {
     assert.equal(res.status, 201);
     assert.equal(res.body.status, 'success');
     assert.ok(res.body.data.id);
+
+    const mapping = await dbGet(
+      'SELECT flow_id, session_id FROM chatbot_flow_sessions WHERE flow_id = ? AND session_id = ?',
+      [res.body.data.id, 'session-utama']
+    );
+    assert.ok(mapping, 'Mapping chatbot_flow_sessions harus dibuat saat flow baru disimpan');
   });
 });
 
 describe('Chatbot Session Leak Protection', () => {
   it('memastikan getFlowsKnowledgeBase memfilter session_ids secara presisi dan tidak bocor', async () => {
     // Bersihkan data lama jika ada
+    await dbRun("DELETE FROM chatbot_flow_sessions");
     await dbRun("DELETE FROM chatbot_flows");
 
     // Insert satu flow yang aktif untuk session 'session-12' (mengandung substring 'session-1')
-    await dbRun(
+    const result = await dbRun(
       `INSERT INTO chatbot_flows (flow_name, keywords, session_ids, status, nodes) 
        VALUES (?, ?, ?, ?, ?)`,
       [
@@ -70,6 +77,11 @@ describe('Chatbot Session Leak Protection', () => {
         'ACTIVE',
         JSON.stringify([{ message_content: 'Ini adalah respon dari sesi 12' }])
       ]
+    );
+    await dbRun(
+      `INSERT INTO chatbot_flow_sessions (flow_id, session_id, user_id)
+       VALUES (?, ?, ?)`,
+      [result.id, 'session-12', 1]
     );
 
     // Panggil getFlowsKnowledgeBase untuk session-1

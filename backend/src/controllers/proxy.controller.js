@@ -5,6 +5,7 @@ import { getDownloadStatus, startDownload } from '../services/iplocate.service.j
 import { maskProxyRecord, maskSecret } from '../utils/secret_masking.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
+import { auditLog } from '../services/audit.service.js';
 
 export const getProxies = async (req, res) => {
   try {
@@ -24,6 +25,7 @@ export const createProxy = async (req, res) => {
       'INSERT INTO proxies (name, proxy_url, status) VALUES (?, ?, ?)',
       [name, proxy_url.trim(), 'ACTIVE']
     );
+    auditLog(req, 'PROXY_CREATE', 'proxy', String(result.id), 'success', { name });
     return sendSuccess(res, { id: result.id }, 201, { message: 'Proxy berhasil ditambahkan.' });
   } catch (error) {
     logError('createProxy', error, { body: req.body });
@@ -37,6 +39,7 @@ export const deleteProxy = async (req, res) => {
     // Kembalikan sesi-sesi yang memakai proxy ini ke null
     await dbRun('UPDATE sessions SET proxy_id = NULL WHERE proxy_id = ?', [id]);
     await dbRun('DELETE FROM proxies WHERE id = ?', [id]);
+    auditLog(req, 'PROXY_DELETE', 'proxy', String(id), 'success');
     return sendSuccess(res, null, 200, { message: 'Proxy berhasil dihapus.' });
   } catch (error) {
     logError('deleteProxy', error, { params: req.params });
@@ -173,6 +176,13 @@ export const saveSetting = async (req, res) => {
     } else {
       await dbRun('INSERT INTO settings (key, value) VALUES (?, ?)', [key, value]);
     }
+    // Mask value in audit metadata — sensitive keys (e.g. iplocate_api_key) must not be logged
+    const isSensitiveKey = key.toLowerCase().includes('key') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('token');
+    auditLog(req, 'SETTING_SAVE', 'setting', key, 'success', {
+      key,
+      value: isSensitiveKey ? '[REDACTED]' : String(value).slice(0, 100),
+      action: existing ? 'update' : 'create',
+    });
     return sendSuccess(res, null, 200, { message: 'Pengaturan berhasil disimpan.' });
   } catch (error) {
     logError('saveSetting', error, { params: req.params, body: req.body });

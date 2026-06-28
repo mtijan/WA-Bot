@@ -1,5 +1,5 @@
 import whatsappService from '../services/whatsapp.service.js';
-import { dbAll } from '../database.js';
+import { dbAll, dbGet } from '../database.js';
 import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
@@ -76,10 +76,29 @@ const normalizePhoneForMatching = (num) => {
   return clean;
 };
 
+const verifySessionOwnership = async (req, res, sessionId) => {
+  if (req.auth.role === 'admin') return true;
+
+  const session = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
+  if (!session) {
+    sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi WhatsApp tidak ditemukan.');
+    return false;
+  }
+
+  if (session.user_id !== req.auth.userId) {
+    sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi WhatsApp ini.');
+    return false;
+  }
+
+  return true;
+};
+
 export const getDetailedGroups = async (req, res) => {
   const { sessionId } = req.params;
 
   try {
+    if (!await verifySessionOwnership(req, res, sessionId)) return;
+
     const response = isSessionManagerClientEnabled()
       ? await sessionManagerClient.getDetailedGroups(sessionId)
       : { data: await whatsappService.getDetailedGroups(sessionId) };
@@ -96,6 +115,8 @@ export const getInviteLink = async (req, res) => {
   const { sessionId, groupId } = req.body;
 
   try {
+    if (!await verifySessionOwnership(req, res, sessionId)) return;
+
     const response = isSessionManagerClientEnabled()
       ? await sessionManagerClient.getGroupInviteLink(sessionId, groupId)
       : { data: { inviteLink: await whatsappService.getGroupInviteLink(sessionId, groupId) } };
@@ -110,6 +131,8 @@ export const getInviteLink = async (req, res) => {
 export const forceSyncContacts = async (req, res) => {
   const { sessionId } = req.body;
   try {
+    if (!await verifySessionOwnership(req, res, sessionId)) return;
+
     const response = isSessionManagerClientEnabled()
       ? await sessionManagerClient.forceSyncContacts(sessionId)
       : { data: await whatsappService.forceSyncContacts(sessionId) };
@@ -124,6 +147,8 @@ export const exportParticipants = async (req, res) => {
   const { sessionId, groupIds } = req.body;
 
   try {
+    if (!await verifySessionOwnership(req, res, sessionId)) return;
+
     let sock = null;
     let selectedGroups = [];
 
@@ -208,7 +233,15 @@ export const exportParticipants = async (req, res) => {
     // ========== FASE 1: Kumpulkan semua kontak dari berbagai sumber ==========
 
     // 1a. Kontak dari database lokal (input manual user)
-    const dbContacts = await dbAll("SELECT name, phone_number FROM contacts");
+    const dbContacts = req.auth.role === 'admin'
+      ? await dbAll("SELECT name, phone_number FROM contacts")
+      : await dbAll(
+        `SELECT c.name, c.phone_number
+         FROM contacts c
+         INNER JOIN contact_groups cg ON c.group_id = cg.id
+         WHERE cg.user_id = ?`,
+        [req.auth.userId]
+      );
     const contactsMap = new Map();
     for (const c of dbContacts) {
       const normalized = normalizePhoneForMatching(c.phone_number);

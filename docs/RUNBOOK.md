@@ -1,7 +1,7 @@
 # WA-Bot Pro Operations Runbook
 
 **Status:** Internal baseline  
-**Last updated:** 2026-06-07
+**Last updated:** 2026-06-16
 
 ## 1. Local Start
 
@@ -179,13 +179,19 @@ Current migration module:
 backend/src/migrations/index.js
 ```
 
-Latest schema note: migration `006_chatbot_flow_delivery_metrics` adds accurate Chatbot Flow counters. Historical `sent_count` values are copied into `trigger_count`, then `sent_count` starts from `0` so future counts represent successfully sent node messages only. `failed_count` records node send failures.
+Latest schema notes:
+
+- Migration `014_auth_token_revocation_and_campaign_owner` adds `users.token_version`, `password_changed_at`, `user_refresh_tokens`, and campaign owner indexing for revocable JWT sessions and tenant-safe campaign processing.
+- Migration `015_chatbot_flow_session_mapping` adds `chatbot_flow_sessions` and backfills existing `chatbot_flows.session_ids` assignments. Runtime inbound matching now looks up active candidate flows by indexed `session_id`, then lazy-loads full flow nodes only after a candidate matches.
+- Migration `016_user_device_limit` adds `users.device_limit` so platform admins can control how many WhatsApp devices a non-admin tenant may connect.
+- Migration `006_chatbot_flow_delivery_metrics` adds accurate Chatbot Flow counters. Historical `sent_count` values are copied into `trigger_count`, then `sent_count` starts from `0` so future counts represent successfully sent node messages only. `failed_count` records node send failures.
 
 Chatbot Flow large-data behavior:
 
 - `GET /api/chatbot-flows` returns lightweight metadata and `node_count`; it should not include large `nodes` JSON.
 - `GET /api/chatbot-flows/:id` returns full flow detail for editing.
 - `PATCH /api/chatbot-flows/:id/settings` updates status/device/settings metadata without resending large `nodes`.
+- Runtime flow matching uses `chatbot_flow_sessions` for assignment lookup; do not reintroduce global active-flow scans or SQLite `LIKE '%session_id%'` matching against JSON text.
 - Import endpoints use `WA_BOT_IMPORT_BODY_LIMIT`; staging should keep this at `60mb` unless there is a deliberate security decision to lower it.
 
 Migration evidence to record for release candidates:
@@ -223,7 +229,7 @@ Record the result:
 | Screenshot directory | `qa_tests/screenshots/` |
 | Known gaps accepted | |
 
-The QA script checks all 16 application tables. Keep the table list aligned with future schema migrations.
+The QA script checks the core application tables. Keep the table list aligned with future schema migrations, especially auth tables (`users`, `user_refresh_tokens`) and flow assignment tables (`chatbot_flow_sessions`).
 
 ## 7. SQLite Backup
 
@@ -306,6 +312,7 @@ Frontend production builds default to `/api`, so the recommended public layout i
 `frontend/package.json` runs `scripts/assert-production-api-url.mjs` after every production build. This guard fails the build when generated assets contain direct private backend URLs such as `:3001/api`. If staging login fails with `Failed to fetch` and DevTools shows requests to `:3001/api/auth/login`, set `VITE_API_URL=/api` in the frontend env, rebuild, reload the reverse proxy, and hard-refresh the browser cache.
 
 See `docs/SECURITY.md` for the production checklist.
+For paid multi-tenant operation, also follow `docs/SAAS_OPERATIONS.md` before activating customers. It records the tenant/admin policy, manual-billing baseline, audit-log requirement, backup and retention gates, and WhatsApp/Baileys acceptable-use limits.
 
 Security checks before VPS exposure:
 

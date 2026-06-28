@@ -56,10 +56,16 @@ class CampaignService {
     // Pastikan nomor target unik untuk menghindari pengiriman dobel
     const uniqueTargets = [...new Set(targets.map(num => num.trim()).filter(Boolean))];
 
+    const sessionRow = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
+    if (!sessionRow) {
+      throw new Error(`Sesi ${sessionId} tidak ditemukan. Kampanye tidak dapat dibuat tanpa pemilik tenant.`);
+    }
+    const userId = sessionRow.user_id;
+
     // Buat kampanye utama
     const campaignResult = await dbRun(
-      'INSERT INTO campaigns (session_id, name, message, status, attachment_url, attachment_type, attachment_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [sessionId, name || null, message, 'PENDING', attachmentUrl, attachmentType, attachmentName]
+      'INSERT INTO campaigns (session_id, name, message, status, attachment_url, attachment_type, attachment_name, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [sessionId, name || null, message, 'PENDING', attachmentUrl, attachmentType, attachmentName, userId]
     );
     const campaignId = campaignResult.id;
 
@@ -71,8 +77,8 @@ class CampaignService {
     // Buat logs untuk masing-masing target
     for (const target of uniqueTargets) {
       await dbRun(
-        'INSERT INTO delivery_logs (campaign_id, target_number, status) VALUES (?, ?, ?)',
-        [campaignId, target, 'PENDING']
+        'INSERT INTO delivery_logs (campaign_id, target_number, status, user_id) VALUES (?, ?, ?, ?)',
+        [campaignId, target, 'PENDING', userId]
       );
     }
 
@@ -97,9 +103,27 @@ class CampaignService {
         return;
       }
 
+      const sessionOwner = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [campaign.session_id]);
+      if (!sessionOwner) {
+        await dbRun(
+          'UPDATE campaigns SET status = ? WHERE id = ?',
+          ['FAILED', campaignId]
+        );
+        await dbRun(
+          `UPDATE delivery_logs
+           SET status = ?, error_message = ?
+           WHERE campaign_id = ? AND status = 'PENDING'`,
+          ['FAILED', 'Sesi kampanye tidak ditemukan. Kampanye dihentikan untuk mencegah salah tenant.', campaignId]
+        );
+        console.warn(`[Campaign Worker] Kampanye #${campaignId} dihentikan: sesi ${campaign.session_id} tidak ditemukan.`);
+        this.activeCampaigns.delete(campaignId);
+        return;
+      }
+      const userId = sessionOwner.user_id;
+
       // Tandai sedang berjalan
       await dbRun('UPDATE campaigns SET status = ? WHERE id = ?', ['RUNNING', campaignId]);
-      console.log(`[Campaign Worker] Mulai memproses kampanye #${campaignId} dengan akun: ${campaign.session_id}`);
+      console.log(`[Campaign Worker] Mulai memproses kampanye #${campaignId} dengan akun: ${campaign.session_id} (User ID: ${userId})`);
 
       // Ambil daftar target tersisa
       const pendingLogs = await dbAll(
@@ -108,7 +132,7 @@ class CampaignService {
       );
 
       for (const log of pendingLogs) {
-        if (await isOptedOut(log.target_number)) {
+        if (await isOptedOut(log.target_number, userId)) {
           await dbRun(
             'UPDATE delivery_logs SET status = ?, error_message = ? WHERE id = ?',
             ['SKIPPED_OPT_OUT', 'Penerima berada dalam suppression list.', log.id]
@@ -141,8 +165,13 @@ class CampaignService {
           }
           
           const contactRow = await dbGet(
-            'SELECT name FROM contacts WHERE phone_number = ? OR phone_number = ? OR phone_number = ? LIMIT 1',
-            [log.target_number, cleanNum, altNum]
+            `SELECT c.name
+             FROM contacts c
+             INNER JOIN contact_groups cg ON c.group_id = cg.id
+             WHERE cg.user_id = ?
+               AND (c.phone_number = ? OR c.phone_number = ? OR c.phone_number = ?)
+             LIMIT 1`,
+            [userId, log.target_number, cleanNum, altNum]
           );
           if (contactRow && contactRow.name) {
             targetName = contactRow.name;

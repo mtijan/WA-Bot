@@ -5,8 +5,11 @@ import {
   getFailedReplies, 
   updateFailedReplyStatus 
 } from '../controllers/monitoring.controller.js';
+import { requireRole } from '../middleware/admin_auth.middleware.js';
 
 const router = express.Router();
+
+router.use(requireRole('admin'));
 
 router.get('/status', getMonitoringStatus);
 router.get('/repair-logs', getRepairLogs);

@@ -339,7 +339,7 @@
 
   <!-- Hero -->
   <section class="hero">
-    <div class="hero__badge">Dokumentasi Resmi v2.8.8</div>
+    <div class="hero__badge">Dokumentasi Resmi v2.9.4</div>
     <h1>WA-Bot Pro Documentation</h1>
     <p class="hero__subtitle">
       Pusat dokumentasi teknis lengkap untuk WhatsApp Multi-Account & Bulk Messaging System.
@@ -501,6 +501,36 @@
               <td>8 Juni 2026</td>
               <td>Tim QA & Lead Architect</td>
               <td>Fitur auto-repair otomatis dengan rate-limiter, systemd timer/service setiap 1 jam, penambahan kolom database <code>last_error</code>/<code>last_error_at</code>, dan integrasi Alert Box merah di dashboard UI.</td>
+            </tr>
+            <tr>
+              <td><code>v2.9.3</code></td>
+              <td>28 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Penyimpanan Sesi WhatsApp at-rest Hardening: Implementasi <code>useEncryptedMultiFileAuthState</code> berbasis enkripsi AES-256-GCM terintegrasi penuh untuk melindungi file-file kredensial sesi Baileys di folder <code>sessions</code>, lengkap dengan penanganan fallback migrasi yang aman.</td>
+            </tr>
+            <tr>
+              <td><code>v2.9.4</code></td>
+              <td>28 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Codebase Audit & Scalability Fixes: Penyelesaian temuan audit berupa perbaikan bug kritis ReferenceError pada variabel <code>isGroup</code> di <code>messages.upsert</code> event handler, peningkatan performa dan skalabilitas database via penyetelan pragma koneksi SQLite (<code>busy_timeout = 5000</code> dan <code>journal_mode = WAL</code>), serta verifikasi build dan test suite backend (84/84 PASS).</td>
+            </tr>
+            <tr>
+              <td><code>v2.9.1</code></td>
+              <td>28 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Penyusunan dokumen legal (Terms of Service, Privacy Policy, Acceptable Use Policy, Data Deletion Policy) secara komprehensif, implementasi SaaS Billing UI dengan subscription plans, serta penambahan dashboard monitoring per-user.</td>
+            </tr>
+            <tr>
+              <td><code>v2.9.0</code></td>
+              <td>28 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Sinkronisasi SaaS readiness: OpenAPI parity 106 operasi, User Management dengan device_limit, Monitoring admin-only, dan dokumentasi HTML saas-operations.html.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.9</code></td>
+              <td>16 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>JWT multi-user auth hardening, refresh token revocation, tenant isolation, campaign tenant personalization, dan Chatbot Flow runtime scaling via chatbot_flow_sessions indexed lookup.</td>
             </tr>
             <tr>
               <td><code>v2.8.8</code></td>
@@ -666,7 +696,43 @@
         </div>
       </a>
 
-      <!-- Card 9: Interface Showcase -->
+      <!-- Card 9: SaaS Operations -->
+      <a href="saas-operations.html" class="doc-card" id="card-saas-operations">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--cyan">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M19 8v6"/></svg>
+        </div>
+        <h3 class="doc-card__title">SaaS Operations</h3>
+        <p class="doc-card__desc">Decision record tenant/admin, kuota device per user, Monitoring admin-only, billing MVP, audit log, backup, retention, legal, dan WhatsApp/Baileys governance.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">Tenant Policy</span>
+          <span class="doc-card__tag">Device Quota</span>
+          <span class="doc-card__tag">Billing</span>
+          <span class="doc-card__tag">Launch Gates</span>
+        </div>
+      </a>
+
+      <!-- Card 10: Legal & Kebijakan -->
+      <a href="legal.html" class="doc-card" id="card-legal">
+        <div class="doc-card__arrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
+        </div>
+        <div class="doc-card__icon doc-card__icon--blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <h3 class="doc-card__title">Legal &amp; Kebijakan</h3>
+        <p class="doc-card__desc">Ketentuan Layanan, Kebijakan Penggunaan Diterima (AUP), Kebijakan Privasi, dan Ketentuan Penangguhan &amp; Penghapusan Data pelanggan.</p>
+        <div class="doc-card__tags">
+          <span class="doc-card__tag">ToS</span>
+          <span class="doc-card__tag">AUP</span>
+          <span class="doc-card__tag">Privacy Policy</span>
+          <span class="doc-card__tag">Retention</span>
+        </div>
+      </a>
+
+      <!-- Card 11: Interface Showcase -->
       <a href="showcase.html" class="doc-card" id="card-showcase">
         <div class="doc-card__arrow">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg>
@@ -748,7 +814,7 @@
 
   <!-- Footer -->
   <footer>
-    <p>WA-Bot Pro Documentation &mdash; Generated from <code>sdlc_documentation.md</code> v2.8.8</p>
+    <p>WA-Bot Pro Documentation &mdash; Generated from <code>sdlc_documentation.md</code> v2.9.4</p>
     <p style="margin-top: 0.5rem;">IP address data powered by <a href="https://iplocate.io" target="_blank" rel="noopener">IPLocate.io</a></p>
   </footer>
 

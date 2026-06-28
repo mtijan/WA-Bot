@@ -1,57 +1,51 @@
 import { dbRun, dbAll, dbGet } from '../database.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
+import {
+  normalizeFlowSessionIds,
+  removeFlowSessionAssignments,
+  syncFlowSessionAssignments
+} from '../services/chatbot_flow_sessions.service.js';
+import { auditLog } from '../services/audit.service.js';
 
 export const getFlows = async (req, res) => {
   try {
-    const summaryQuery = `SELECT
-        id,
-        flow_name,
-        description,
-        session_ids,
-        target_type,
-        keywords,
-        match_type,
-        case_sensitive,
-        cooldown,
-        delay,
-        status,
-        sent_count,
-        trigger_count,
-        failed_count,
-        created_at,
-        CASE
-          WHEN json_valid(nodes) THEN json_array_length(nodes)
-          ELSE 0
-        END AS node_count
-      FROM chatbot_flows
-      ORDER BY id DESC`;
-    const fallbackSummaryQuery = `SELECT
-        id,
-        flow_name,
-        description,
-        session_ids,
-        target_type,
-        keywords,
-        match_type,
-        case_sensitive,
-        cooldown,
-        delay,
-        status,
-        sent_count,
-        0 AS trigger_count,
-        0 AS failed_count,
-        created_at,
-        0 AS node_count
-      FROM chatbot_flows
-      ORDER BY id DESC`;
+    const summaryQuery = req.auth.role === 'admin'
+      ? `SELECT
+          id, flow_name, description, session_ids, target_type, keywords, match_type,
+          case_sensitive, cooldown, delay, status, sent_count, trigger_count, failed_count, created_at,
+          CASE WHEN json_valid(nodes) THEN json_array_length(nodes) ELSE 0 END AS node_count
+        FROM chatbot_flows
+        ORDER BY id DESC`
+      : `SELECT
+          id, flow_name, description, session_ids, target_type, keywords, match_type,
+          case_sensitive, cooldown, delay, status, sent_count, trigger_count, failed_count, created_at,
+          CASE WHEN json_valid(nodes) THEN json_array_length(nodes) ELSE 0 END AS node_count
+        FROM chatbot_flows
+        WHERE user_id = ?
+        ORDER BY id DESC`;
+
+    const fallbackSummaryQuery = req.auth.role === 'admin'
+      ? `SELECT
+          id, flow_name, description, session_ids, target_type, keywords, match_type,
+          case_sensitive, cooldown, delay, status, sent_count, 0 AS trigger_count, 0 AS failed_count, created_at,
+          0 AS node_count
+        FROM chatbot_flows
+        ORDER BY id DESC`
+      : `SELECT
+          id, flow_name, description, session_ids, target_type, keywords, match_type,
+          case_sensitive, cooldown, delay, status, sent_count, 0 AS trigger_count, 0 AS failed_count, created_at,
+          0 AS node_count
+        FROM chatbot_flows
+        WHERE user_id = ?
+        ORDER BY id DESC`;
 
     let flows;
     try {
-      flows = await dbAll(summaryQuery);
+      flows = await dbAll(summaryQuery, req.auth.role === 'admin' ? [] : [req.auth.userId]);
     } catch (error) {
       logError('getFlowsSummaryQuery', error);
-      flows = await dbAll(fallbackSummaryQuery);
+      flows = await dbAll(fallbackSummaryQuery, req.auth.role === 'admin' ? [] : [req.auth.userId]);
     }
 
     return sendSuccess(res, flows);
@@ -69,6 +63,10 @@ export const getFlowById = async (req, res) => {
       return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
     }
 
+    if (req.auth.role !== 'admin' && flow.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke alur chatbot ini.');
+    }
+
     return sendSuccess(res, flow);
   } catch (error) {
     logError('getFlowById', error, { params: req.params });
@@ -80,12 +78,22 @@ export const createFlow = async (req, res) => {
   const { flow_name, description, session_ids, target_type, keywords, match_type, case_sensitive, cooldown, delay, nodes, status } = req.body;
 
   try {
+    const sIds = normalizeFlowSessionIds(session_ids || []);
+    if (req.auth.role !== 'admin') {
+      for (const sid of sIds) {
+        const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sid]);
+        if (!sess || sess.user_id !== req.auth.userId) {
+          return sendError(res, 403, 'FORBIDDEN_ACCESS', `Anda tidak memiliki akses ke sesi ${sid}.`);
+        }
+      }
+    }
+
     const result = await dbRun(
-      'INSERT INTO chatbot_flows (flow_name, description, session_ids, target_type, keywords, match_type, case_sensitive, cooldown, delay, nodes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO chatbot_flows (flow_name, description, session_ids, target_type, keywords, match_type, case_sensitive, cooldown, delay, nodes, status, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         flow_name, 
         description || null, 
-        JSON.stringify(session_ids || []), 
+        JSON.stringify(sIds), 
         target_type || 'ALL', 
         keywords, 
         match_type || 'CONTAINS', 
@@ -93,9 +101,12 @@ export const createFlow = async (req, res) => {
         cooldown || 0, 
         delay || 0, 
         JSON.stringify(nodes || []), 
-        status || 'ACTIVE'
+        status || 'ACTIVE',
+        req.auth.userId
       ]
     );
+    await syncFlowSessionAssignments(result.id, sIds, req.auth.userId);
+    auditLog(req, 'CHATBOT_FLOW_CREATE', 'chatbot_flow', String(result.id), 'success', { flow_name, status: status || 'ACTIVE' });
     return sendSuccess(res, { id: result.id }, 201, { message: 'Alur chatbot berhasil disimpan.' });
   } catch (error) {
     logError('createFlow', error, { body: req.body });
@@ -113,12 +124,26 @@ export const updateFlow = async (req, res) => {
       return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
     }
 
+    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke alur chatbot ini.');
+    }
+
+    const sIds = normalizeFlowSessionIds(session_ids || []);
+    if (req.auth.role !== 'admin') {
+      for (const sid of sIds) {
+        const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sid]);
+        if (!sess || sess.user_id !== req.auth.userId) {
+          return sendError(res, 403, 'FORBIDDEN_ACCESS', `Anda tidak memiliki akses ke sesi ${sid}.`);
+        }
+      }
+    }
+
     await dbRun(
       'UPDATE chatbot_flows SET flow_name = ?, description = ?, session_ids = ?, target_type = ?, keywords = ?, match_type = ?, case_sensitive = ?, cooldown = ?, delay = ?, nodes = ?, status = ? WHERE id = ?',
       [
         flow_name, 
         description || null, 
-        JSON.stringify(session_ids || []), 
+        JSON.stringify(sIds), 
         target_type, 
         keywords, 
         match_type, 
@@ -130,6 +155,8 @@ export const updateFlow = async (req, res) => {
         id
       ]
     );
+    await syncFlowSessionAssignments(id, sIds, existing.user_id || req.auth.userId);
+    auditLog(req, 'CHATBOT_FLOW_UPDATE', 'chatbot_flow', String(id), 'success', { flow_name, status });
     return sendSuccess(res, null, 200, { message: 'Alur chatbot berhasil diperbarui.' });
   } catch (error) {
     logError('updateFlow', error, { params: req.params, body: req.body });
@@ -142,9 +169,23 @@ export const updateFlowSettings = async (req, res) => {
   const { flow_name, description, session_ids, target_type, keywords, match_type, case_sensitive, cooldown, delay, status } = req.body;
 
   try {
-    const existing = await dbGet('SELECT id FROM chatbot_flows WHERE id = ?', [id]);
+    const existing = await dbGet('SELECT * FROM chatbot_flows WHERE id = ?', [id]);
     if (!existing) {
       return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
+    }
+
+    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke alur chatbot ini.');
+    }
+
+    const sIds = normalizeFlowSessionIds(session_ids || []);
+    if (req.auth.role !== 'admin') {
+      for (const sid of sIds) {
+        const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sid]);
+        if (!sess || sess.user_id !== req.auth.userId) {
+          return sendError(res, 403, 'FORBIDDEN_ACCESS', `Anda tidak memiliki akses ke sesi ${sid}.`);
+        }
+      }
     }
 
     await dbRun(
@@ -152,7 +193,7 @@ export const updateFlowSettings = async (req, res) => {
       [
         flow_name,
         description || null,
-        JSON.stringify(session_ids || []),
+        JSON.stringify(sIds),
         target_type,
         keywords,
         match_type,
@@ -163,6 +204,8 @@ export const updateFlowSettings = async (req, res) => {
         id
       ]
     );
+    await syncFlowSessionAssignments(id, sIds, existing.user_id || req.auth.userId);
+    auditLog(req, 'CHATBOT_FLOW_SETTINGS_UPDATE', 'chatbot_flow', String(id), 'success', { flow_name, status });
     return sendSuccess(res, null, 200, { message: 'Pengaturan alur chatbot berhasil diperbarui.' });
   } catch (error) {
     logError('updateFlowSettings', error, { params: req.params, body: req.body });
@@ -178,7 +221,13 @@ export const deleteFlow = async (req, res) => {
       return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
     }
 
+    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke alur chatbot ini.');
+    }
+
+    await removeFlowSessionAssignments(id);
     await dbRun('DELETE FROM chatbot_flows WHERE id = ?', [id]);
+    auditLog(req, 'CHATBOT_FLOW_DELETE', 'chatbot_flow', String(id), 'success', { flow_name: existing.flow_name });
     return sendSuccess(res, null, 200, { message: 'Alur chatbot berhasil dihapus.' });
   } catch (error) {
     logError('deleteFlow', error, { params: req.params });
@@ -195,7 +244,12 @@ export const updateFlowStatus = async (req, res) => {
       return sendError(res, 404, 'FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan.');
     }
 
+    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke alur chatbot ini.');
+    }
+
     await dbRun('UPDATE chatbot_flows SET status = ? WHERE id = ?', [status, id]);
+    auditLog(req, 'CHATBOT_FLOW_STATUS_UPDATE', 'chatbot_flow', String(id), 'success', { status });
     return sendSuccess(res, null, 200, { message: 'Status alur chatbot berhasil diperbarui.' });
   } catch (error) {
     logError('updateFlowStatus', error, { params: req.params, body: req.body });
@@ -205,7 +259,10 @@ export const updateFlowStatus = async (req, res) => {
 
 export const exportFlows = async (req, res) => {
   try {
-    const flows = await dbAll('SELECT * FROM chatbot_flows');
+    const sql = req.auth.role === 'admin'
+      ? 'SELECT * FROM chatbot_flows'
+      : 'SELECT * FROM chatbot_flows WHERE user_id = ?';
+    const flows = await dbAll(sql, req.auth.role === 'admin' ? [] : [req.auth.userId]);
     
     const exportedFlows = flows.map(flow => {
       let sessionIds = [];
@@ -360,12 +417,27 @@ export const importFlows = async (req, res) => {
         };
       });
 
-      await dbRun(
-        'INSERT INTO chatbot_flows (flow_name, description, session_ids, target_type, keywords, match_type, case_sensitive, cooldown, delay, nodes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      // Filter session IDs based on user ownership if not admin
+      let validatedSessionIds = [];
+      if (session_ids.length > 0) {
+        if (req.auth.role === 'admin') {
+          validatedSessionIds = session_ids;
+        } else {
+          for (const sid of session_ids) {
+            const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sid]);
+            if (sess && sess.user_id === req.auth.userId) {
+              validatedSessionIds.push(sid);
+            }
+          }
+        }
+      }
+
+      const result = await dbRun(
+        'INSERT INTO chatbot_flows (flow_name, description, session_ids, target_type, keywords, match_type, case_sensitive, cooldown, delay, nodes, status, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           flow_name,
           description,
-          JSON.stringify(session_ids),
+          JSON.stringify(validatedSessionIds),
           target_type,
           keywords,
           match_type,
@@ -373,9 +445,11 @@ export const importFlows = async (req, res) => {
           cooldown,
           delay,
           JSON.stringify(mappedNodes),
-          status
+          status,
+          req.auth.userId
         ]
       );
+      await syncFlowSessionAssignments(result.id, validatedSessionIds, req.auth.userId);
       importCount++;
     }
 

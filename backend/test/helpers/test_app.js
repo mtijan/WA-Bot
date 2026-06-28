@@ -18,6 +18,7 @@ const testTmpDir = mkdtempSync(join(tmpdir(), 'wa-bot-test-'));
 const testDbPath = join(testTmpDir, 'test.sqlite');
 
 // Set env var sebelum import apapun dari app agar database.js membaca path ini
+process.env.NODE_ENV = 'test';
 process.env.WA_BOT_DB_PATH = testDbPath;
 process.env.WA_BOT_INTERNAL_TOKEN = 'testing-internal-token-secret-placeholder';
 
@@ -44,6 +45,16 @@ let _app = null;
 export async function getTestAgent() {
   if (!_app) {
     await databaseReady;
+    
+    // Seed admin user dengan ID 1 jika belum ada agar foreign key constraint tidak gagal
+    const { dbGet, dbRun } = await import('../../src/database.js');
+    const existing = await dbGet('SELECT id FROM users WHERE id = 1');
+    if (!existing) {
+      await dbRun(
+        "INSERT INTO users (id, username, password_hash, display_name, role, is_active) VALUES (1, 'admin', 'dummy_hash', 'Administrator', 'admin', 1)"
+      );
+    }
+    
     _app = createApp({ runtimeRole: 'all' });
   }
   return supertest(_app);
@@ -61,8 +72,28 @@ export async function getAuthenticatedAgent() {
 
   // Buat ulang app dengan auth enabled
   await databaseReady;
-  const authApp = createApp({ runtimeRole: 'all' });
+  const authApp = createApp({ runtimeRole: 'all', authEnabled: true });
   const agent = supertest(authApp);
+
+  // Secara dinamis seed admin user ke database test
+  const bcrypt = await import('bcryptjs');
+  const { dbRun, dbGet } = await import('../../src/database.js');
+  const salt = await bcrypt.default.genSalt(12);
+  const hash = await bcrypt.default.hash('test-admin-password-12345', salt);
+  
+  const existing = await dbGet('SELECT id FROM users WHERE username = ?', ['admin']);
+  if (existing) {
+    await dbRun(
+      "UPDATE users SET password_hash = ?, token_version = 0, is_active = 1 WHERE username = ?",
+      [hash, 'admin']
+    );
+    await dbRun('DELETE FROM user_refresh_tokens WHERE user_id = ?', [existing.id]);
+  } else {
+    await dbRun(
+      "INSERT INTO users (username, password_hash, display_name, role, is_active) VALUES ('admin', ?, 'Administrator', 'admin', 1)",
+      [hash]
+    );
+  }
 
   // Login untuk mendapatkan cookie
   const loginRes = await agent
@@ -70,7 +101,9 @@ export async function getAuthenticatedAgent() {
     .send({ username: 'admin', password: 'test-admin-password-12345' });
 
   const cookies = loginRes.headers['set-cookie'];
-  const cookie = Array.isArray(cookies) ? cookies[0] : (cookies || '');
+  const cookie = Array.isArray(cookies) 
+    ? cookies.map(c => c.split(';')[0]).join('; ') 
+    : (cookies || '');
 
   return { agent, cookie };
 }

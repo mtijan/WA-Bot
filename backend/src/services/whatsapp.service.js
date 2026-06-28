@@ -1,4 +1,5 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, generateWAMessageFromContent, proto } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, generateWAMessageFromContent, proto } from '@whiskeysockets/baileys';
+import { useEncryptedMultiFileAuthState } from '../utils/encrypted_auth_state.js';
 import { revealSecret } from './secret.service.js';
 import { isOptOutKeyword, recordOptOut } from './opt_out.service.js';
 import { dirname, join } from 'path';
@@ -11,6 +12,7 @@ import { HttpsProxyAgent } from 'https-proxy-agent';
 import { dbRun, dbGet, dbAll } from '../database.js';
 import { resolveUploadedMediaPath } from './upload.service.js';
 import { resolveKnowledgeBase } from './chatbot_ai.service.js';
+import { getActiveFlowSummariesForSession } from './chatbot_flow_sessions.service.js';
 import {
   getMediaSource,
   getMimeTypeFromUrl,
@@ -71,7 +73,7 @@ class WhatsAppService {
     }
 
     const sessionFolder = join(SESSIONS_DIR, sessionId);
-    const { state, saveCreds } = await useMultiFileAuthState(sessionFolder);
+    const { state, saveCreds } = await useEncryptedMultiFileAuthState(sessionFolder);
 
     let version = [2, 3000, 1017531287];
     try {
@@ -296,6 +298,8 @@ class WhatsAppService {
         const senderId = msg.key.remoteJid;
         if (!senderId || senderId.endsWith('@newsletter') || senderId.endsWith('@broadcast') || senderId === 'status@broadcast') continue;
 
+        const isGroup = senderId.endsWith('@g.us');
+
         // Simpan push name (nama publik WA) dari pengirim pesan ke DB whatsapp_contacts
         const pushName = msg.pushName || null;
         const senderParticipant = msg.key.participant || senderId;
@@ -339,13 +343,19 @@ class WhatsAppService {
         
         if (!text) continue;
 
-        const isGroup = senderId.endsWith('@g.us');
         if (!isGroup && isOptOutKeyword(text)) {
-          await recordOptOut(senderId, 'INBOUND_KEYWORD');
+          const sessionRow = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
+          if (!sessionRow) {
+            logger.warn(`[Opt-Out] Sesi ${sessionId} tidak ditemukan. Opt-out inbound dari ${senderId} tidak dicatat agar tidak salah tenant.`);
+            continue;
+          }
+          const userId = sessionRow.user_id;
+
+          await recordOptOut(senderId, userId, 'INBOUND_KEYWORD');
           await sock.sendMessage(senderId, {
             text: 'Permintaan berhenti menerima pesan telah dicatat. Anda tidak akan menerima pesan kampanye berikutnya.'
           });
-          logger.info(`[Opt-Out] Suppression list diperbarui untuk ${senderId}`);
+          logger.info(`[Opt-Out] Suppression list diperbarui untuk ${senderId} (User ID: ${userId})`);
           continue;
         }
         
@@ -363,17 +373,8 @@ class WhatsAppService {
         let activeFlowCount = 0;
         let candidateFlowCount = 0;
         if (chatbotMode === 'flow' || chatbotMode === 'both') {
-          // Check chatbot flows
-          const allActiveFlows = await dbAll("SELECT * FROM chatbot_flows WHERE status = 'ACTIVE'");
-          activeFlowCount = allActiveFlows.length;
-          const flows = allActiveFlows.filter(flow => {
-            try {
-              const ids = JSON.parse(flow.session_ids || '[]');
-              return Array.isArray(ids) && ids.includes(sessionId);
-            } catch (e) {
-              return false;
-            }
-          });
+          const flows = await getActiveFlowSummariesForSession(sessionId);
+          activeFlowCount = flows.length;
           candidateFlowCount = flows.length;
 
           matchedFlow = flows.find((flow) => doesFlowMatchIncomingText(flow, cleanText, { isGroup }));
@@ -385,7 +386,8 @@ class WhatsAppService {
           if (matchedFlow.delay > 0) {
              await new Promise(r => setTimeout(r, matchedFlow.delay * 1000));
           }
-          const stats = await this.executeFlowNodes(sock, senderId, matchedFlow, sessionId, cleanText);
+          const flowDetail = await dbGet('SELECT * FROM chatbot_flows WHERE id = ?', [matchedFlow.id]);
+          const stats = await this.executeFlowNodes(sock, senderId, flowDetail || matchedFlow, sessionId, cleanText);
           await this.recordFlowDeliveryStats(matchedFlow.id, {
             triggered: 1,
             sent: stats.sent,

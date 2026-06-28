@@ -294,6 +294,29 @@ npm run start:worker
         </div>
       </div>
 
+      <!-- ==================== USER QUOTA MONITORING ==================== -->
+      <div class="content-card" id="user-quota-monitoring">
+        <h3 class="content-card__title" style="font-size: 1.25rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Monitoring Kuota & Penggunaan User (Admin-Only)
+          <a href="#user-quota-monitoring" class="section-anchor">#</a>
+        </h3>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Administrator dapat memantau penggunaan sumber daya dan alokasi kuota per masing-masing pengguna secara real-time pada dashboard System Monitoring (<code>/monitoring</code>).
+        </p>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Metrik yang dipantau meliputi:
+        </p>
+        <ul style="color:var(--text-secondary); padding-left:1.5rem; line-height:1.6; margin-top:0.5rem; margin-bottom:1rem;">
+          <li><strong>Devices / Sesi WhatsApp</strong>: Jumlah sesi terdaftar per user dibandingkan dengan limit paket (<code>max_sessions</code>).</li>
+          <li><strong>Bulk Messages (Bulan Ini)</strong>: Jumlah pesan broadcast yang dikirim oleh user pada bulan berjalan dibandingkan dengan limit bulanan (<code>max_campaigns_per_month</code>).</li>
+          <li><strong>Chatbot Flows</strong>: Jumlah alur chatbot yang dibuat oleh user dibandingkan dengan limit paket (<code>max_flows</code>).</li>
+        </ul>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Saat admin mengakses rute monitoring, backend mengeksekusi kueri agregasi teroptimasi pada tabel <code>users</code>, <code>subscription_plans</code>, <code>sessions</code>, <code>campaigns</code>, dan <code>chatbot_flows</code> untuk menghitung rasio pemakaian vs limit per pengguna secara dinamis.
+        </p>
+      </div>
+
       <!-- ==================== HEALTH QUERIES ==================== -->
       <div class="content-card" id="health-queries">
         <h3 class="content-card__title" style="font-size: 1.25rem;">
@@ -422,7 +445,7 @@ WHERE status = 'RUNNING'
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.8.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
     <p style="margin-top:0.5rem;">IP address data powered by <a href="https://iplocate.io" target="_blank" rel="noopener">IPLocate.io</a></p>
   </footer>
 

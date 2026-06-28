@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { config } from '../config.js';
+import { dbGet, dbRun } from '../database.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,6 +74,31 @@ export const createMediaFilename = (file) => {
 
 export const getMediaPublicPath = (filename) => `/api/uploads/media/${filename}`;
 
+export const getUploadedMediaByFilename = (filename) => {
+  return dbGet('SELECT * FROM uploaded_media WHERE filename = ?', [filename]);
+};
+
+export const recordUploadedMedia = ({ filename, originalName, mimeType, mediaType, sizeBytes, userId }) => {
+  return dbRun(
+    `INSERT INTO uploaded_media
+      (filename, original_name, mime_type, media_type, size_bytes, user_id)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [filename, originalName, mimeType, mediaType, sizeBytes, userId]
+  );
+};
+
+export const resolveMediaFilePath = (filename) => {
+  if (!filename || typeof filename !== 'string') return null;
+  if (filename.includes('/') || filename.includes('\\')) return null;
+
+  const absolutePath = path.resolve(MEDIA_UPLOAD_DIR, filename);
+  const relative = path.relative(MEDIA_UPLOAD_DIR, absolutePath);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return null;
+  }
+  return absolutePath;
+};
+
 export const resolveUploadedMediaPath = (value) => {
   if (!value || typeof value !== 'string') return value;
 
@@ -81,10 +107,8 @@ export const resolveUploadedMediaPath = (value) => {
   if (markerIndex === -1) return value;
 
   const filename = decodeURIComponent(value.slice(markerIndex + marker.length)).split(/[?#]/)[0];
-  if (!filename || filename.includes('/') || filename.includes('\\')) return value;
-
-  const absolutePath = path.resolve(MEDIA_UPLOAD_DIR, filename);
-  if (!absolutePath.startsWith(MEDIA_UPLOAD_DIR)) return value;
+  const absolutePath = resolveMediaFilePath(filename);
+  if (!absolutePath) return value;
 
   return absolutePath;
 };

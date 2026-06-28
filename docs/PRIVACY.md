@@ -29,7 +29,9 @@ Maintain a record for every contact source:
 
 Automated enforcement is implemented for private inbound keywords `STOP`, `UNSUBSCRIBE`, and `BERHENTI`. Bulk campaigns skip suppressed numbers. Single-message sending rejects suppressed numbers unless the caller uses an explicit override for a lawful and necessary message. Review the suppression list through `/api/opt-outs`.
 
-Chatbot AI hanya membalas pesan pribadi (personal chat). Pesan grup (`isGroup = true`) secara otomatis diabaikan untuk mencegah loop respons tak terbatas. Chatbot Flow bersifat session-scoped; flow yang ditugaskan ke satu sesi tidak akan merespons pesan dari sesi lain.
+Chatbot AI hanya membalas pesan pribadi (personal chat). Pesan grup (`isGroup = true`) secara otomatis diabaikan untuk mencegah loop respons tak terbatas. Chatbot Flow bersifat session-scoped; flow yang ditugaskan ke satu sesi tidak akan merespons pesan dari sesi lain. Assignment flow-ke-sesi disimpan di tabel `chatbot_flow_sessions` agar lookup runtime presisi dan tidak bergantung pada pencarian teks JSON.
+
+Data aplikasi bersifat tenant-scoped melalui `user_id`. Pengguna non-admin hanya boleh melihat dan memodifikasi data miliknya sendiri, sedangkan admin memiliki visibilitas global untuk operasi manajemen. Refresh token dashboard disimpan sebagai hash/JTI di tabel `user_refresh_tokens`, bukan sebagai plaintext token.
 
 ## 4. Retention
 
@@ -52,3 +54,7 @@ Panduan pengelolaan:
 ## 6. Platform Risk
 
 Baileys is an unofficial WhatsApp integration. Do not use automation to evade platform controls. Evaluate the official WhatsApp Business Platform for business-critical production use.
+
+## 7. SaaS Operations
+
+For paid multi-tenant use, follow `docs/SAAS_OPERATIONS.md`. That decision record defines the platform admin model, tenant ownership boundary, billing/suspension baseline, audit-log requirement, backup/retention policy, acceptable-use expectations, and launch gates for private pilot versus public SaaS.

@@ -186,6 +186,7 @@
       <ul class="toc-sidebar__list" style="font-size: 0.8rem;">
         <li class="toc-sidebar__item"><a href="#intro" class="toc-sidebar__link">Pengantar & Autentikasi</a></li>
         <li class="toc-sidebar__item"><a href="#standard-errors" class="toc-sidebar__link">Standardisasi Error</a></li>
+        <li class="toc-sidebar__item"><a href="#user-management" class="toc-sidebar__link">User Management</a></li>
         <li class="toc-sidebar__item"><a href="#sessions" class="toc-sidebar__link">Session Management</a></li>
         <li class="toc-sidebar__item"><a href="#campaigns" class="toc-sidebar__link">Campaign (Bulk Message)</a></li>
         <li class="toc-sidebar__item"><a href="#group-grabber" class="toc-sidebar__link">Group Grabber</a></li>
@@ -218,6 +219,9 @@
         <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
           <strong>Status implementasi:</strong> middleware autentikasi tersedia dan aktif ketika environment variable <code>WA_BOT_API_KEY</code> diisi. Untuk deployment browser publik, gunakan authenticated gateway atau server-side session layer agar secret backend tidak ditanam di JavaScript frontend:
           <br><code style="background:rgba(255,255,255,0.05); padding:0.2rem 0.5rem; border-radius:4px; display:inline-block; margin-top:0.5rem; color:var(--color-text-accent);">X-API-Key: &lt;YOUR_API_KEY&gt;</code>
+        </p>
+        <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+          Dashboard browser memakai JWT access/refresh cookie HttpOnly. Role <code>admin</code> dapat mengelola user, melihat Monitoring, dan mengatur kuota device; role <code>user</code> hanya mengakses resource miliknya sendiri. OpenAPI utama berada di <code>docs/openapi.yaml</code> dan saat ini parity dengan 106 handler Express.
         </p>
 
         <h4 style="color:var(--color-title); font-size:0.95rem; margin:1.5rem 0 0.5rem; font-weight:600;">Kebijakan Jeda Kecepatan (Rate Limiting):</h4>
@@ -272,6 +276,42 @@
 }</pre>
       </div>
 
+      <!-- ==================== USER MANAGEMENT APIs ==================== -->
+      <h2 class="api-group-title" id="user-management">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M19 8v6"/></svg>
+        User Management &amp; SaaS Controls
+      </h2>
+
+      <div class="endpoint-card">
+        <div class="endpoint-card__header">
+          <span class="endpoint-card__method method--get">GET</span>
+          <span class="endpoint-card__method method--post">POST</span>
+          <span class="endpoint-card__method method--patch">PATCH</span>
+          <span class="endpoint-card__path">/api/users</span>
+          <span class="endpoint-card__title">Admin-only user lifecycle</span>
+        </div>
+        <div class="endpoint-card__body">
+          <p class="endpoint-card__desc">Endpoint User Management hanya untuk admin. Admin dapat membuat user tenant, mengubah role/status, mengganti password, dan mengatur kuota WhatsApp device melalui field <code>device_limit</code>.</p>
+          <div class="endpoint-card__section-title">Field Entitlement</div>
+          <table class="param-table">
+            <thead><tr><th>Parameter</th><th>Tipe</th><th>Keterangan</th></tr></thead>
+            <tbody>
+              <tr><td>device_limit</td><td>integer <span class="param-optional">optional</span></td><td>Rentang 0-100. Default 1. User non-admin ditolak membuat session baru ketika jumlah session miliknya sudah mencapai nilai ini.</td></tr>
+              <tr><td>role</td><td>string <span class="param-optional">optional</span></td><td><code>admin</code> memiliki akses global dan Monitoring; <code>user</code> hanya tenant-scoped.</td></tr>
+              <tr><td>is_active</td><td>boolean <span class="param-optional">optional</span></td><td>Menonaktifkan akses user tanpa menghapus data tenant.</td></tr>
+            </tbody>
+          </table>
+          <div class="endpoint-card__section-title">Request Example</div>
+          <pre class="code-block">{
+  <span class="code-property">"username"</span>: <span class="code-string">"tenant-a"</span>,
+  <span class="code-property">"password"</span>: <span class="code-string">"PasswordMinimal12!"</span>,
+  <span class="code-property">"display_name"</span>: <span class="code-string">"Tenant A"</span>,
+  <span class="code-property">"role"</span>: <span class="code-string">"user"</span>,
+  <span class="code-property">"device_limit"</span>: <span class="code-number">3</span>
+}</pre>
+        </div>
+      </div>
+
       <!-- ==================== SESSION APIs ==================== -->
       <h2 class="api-group-title" id="sessions">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -286,7 +326,7 @@
           <span class="endpoint-card__title">Create New Session</span>
         </div>
         <div class="endpoint-card__body">
-          <p class="endpoint-card__desc">Membuat sesi WhatsApp baru dan menghasilkan QR Code Base64 untuk dipindai oleh perangkat pengguna.</p>
+          <p class="endpoint-card__desc">Membuat sesi WhatsApp baru dan menghasilkan QR Code Base64 untuk dipindai oleh perangkat pengguna. Untuk role <code>user</code>, backend memeriksa <code>users.device_limit</code> sebelum membuat session baru.</p>
 
           <div class="endpoint-card__section-title">Request Body Parameters</div>
           <table class="param-table">
@@ -317,6 +357,12 @@
   <span class="code-property">"status"</span>: <span class="code-string">"error"</span>,
   <span class="code-property">"error_code"</span>: <span class="code-string">"DUPLICATE_SESSION"</span>,
   <span class="code-property">"message"</span>: <span class="code-string">"Sesi dengan ID 'wa-kantor-1' sudah ada."</span>
+}</pre>
+          <div class="endpoint-card__section-title">Error Response <span class="status-code status-code--4xx">403 Forbidden</span></div>
+          <pre class="code-block">{
+  <span class="code-property">"status"</span>: <span class="code-string">"error"</span>,
+  <span class="code-property">"error_code"</span>: <span class="code-string">"DEVICE_LIMIT_REACHED"</span>,
+  <span class="code-property">"message"</span>: <span class="code-string">"Batas perangkat WhatsApp akun Anda adalah 1. Hubungi admin untuk menambah kuota device."</span>
 }</pre>
         </div>
       </div>
@@ -1376,7 +1422,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.8.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
     <p style="margin-top:0.5rem;">IP address data powered by <a href="https://iplocate.io" target="_blank" rel="noopener">IPLocate.io</a></p>
   </footer>
   <script>

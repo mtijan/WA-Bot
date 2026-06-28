@@ -81,8 +81,9 @@ const SessionManager = () => {
         alert('Gagal membuat sesi baru: ' + json.message);
         setQrSessionId('');
       }
-    } catch {
-      alert('Gagal menghubungi server API.');
+    } catch (err) {
+      const detail = err?.payload?.message || err?.message || 'Gagal menghubungi server API.';
+      alert(detail);
       setQrSessionId('');
     } finally {
       setLoadingQr(false);

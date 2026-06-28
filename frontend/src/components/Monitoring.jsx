@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Network,
   TrendingUp,
+  Users,
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
@@ -451,6 +452,72 @@ const Monitoring = () => {
           </div>
         </Card>
       </div>
+
+      {/* ---- ROW 4: User Resource Usage Breakdown (Only for Admin) ---- */}
+      {data?.users_usage && data.users_usage.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginBottom: 16 }}>
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <IconBox color="#6366f1" bg="rgba(99, 102, 241, 0.1)">
+                <Users size={18} />
+              </IconBox>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                Penggunaan Sumber Daya & Kuota Pengguna
+              </h3>
+            </div>
+            
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                    <th style={{ padding: '10px 8px' }}>Pengguna</th>
+                    <th style={{ padding: '10px 8px' }}>Paket Langganan</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center' }}>Devices</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center' }}>Bulk Messages (Bulan Ini)</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'center' }}>Chatbot Flows</th>
+                  </tr>
+                </thead>
+                <tbody style={{ fontSize: '0.85rem' }}>
+                  {data.users_usage.map((u) => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid #f1f5f9' }} className="table-row-hover">
+                      <td style={{ padding: '12px 8px' }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a' }}>{u.display_name || 'Tanpa Nama'}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>@{u.username}</div>
+                      </td>
+                      <td style={{ padding: '12px 8px' }}>
+                        <span className="badge badge-primary" style={{ fontWeight: 600 }}>
+                          {u.plan_name || 'Tanpa Paket'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 8px', textAlign: 'center' }}>
+                        <span style={{ fontWeight: 600, color: u.current_sessions > u.max_sessions ? '#dc2626' : 'inherit' }}>
+                          {u.current_sessions}
+                        </span>
+                        <span style={{ color: '#94a3b8' }}> / {u.max_sessions}</span>
+                        <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '2px' }}>
+                          {u.active_sessions} Aktif
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px 8px', textAlign: 'center' }}>
+                        <span style={{ fontWeight: 600, color: u.current_campaigns > u.max_campaigns_per_month ? '#dc2626' : 'inherit' }}>
+                          {u.current_campaigns}
+                        </span>
+                        <span style={{ color: '#94a3b8' }}> / {u.max_campaigns_per_month}</span>
+                      </td>
+                      <td style={{ padding: '12px 8px', textAlign: 'center' }}>
+                        <span style={{ fontWeight: 600, color: u.current_flows > u.max_flows ? '#dc2626' : 'inherit' }}>
+                          {u.current_flows}
+                        </span>
+                        <span style={{ color: '#94a3b8' }}> / {u.max_flows}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* ---- FOOTER ---- */}
       <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.75rem', padding: '6px 0 24px' }}>

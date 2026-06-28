@@ -3,8 +3,8 @@
 WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
-**Versi Dokumen/Sistem:** 2.8.8  
-**Terakhir Diperbarui:** 2026-06-14  
+**Versi Dokumen/Sistem:** 2.8.9  
+**Terakhir Diperbarui:** 2026-06-16  
 
 ---
 
@@ -27,6 +27,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Bulk Campaign:** Pengiriman pesan massal ke daftar kontak dengan penjadwalan, penundaan acak (random delay) untuk keselamatan akun, personalisasi template (contoh: `{{name|first}}`), dan spintax engine (contoh: `{Hi|Hello}`).
 - **Account Warmer:** Simulasi percakapan otomatis dua arah antar-sesi internal secara berkala untuk memanaskan reputasi pengirim dan mengurangi risiko pemblokiran.
 - **Chatbot Flow:** Alur auto-reply interaktif berbasis node dengan perancang visual yang mendukung teks, gambar, video, audio, dokumen, dan template respons.
+- **Chatbot Flow Runtime Scaling:** Assignment flow-ke-sesi dinormalisasi melalui `chatbot_flow_sessions`, sehingga pesan masuk hanya mencari flow aktif untuk sesi terkait lewat index dan tidak melakukan scan semua flow aktif.
 - **Chatbot AI:** Integrasi penyedia AI (seperti OpenAI GPT atau Google Gemini) dengan mode operasional fleksibel per-sesi (off, chatbot flow saja, AI saja, atau kombinasi keduanya).
 - **Group Grabber:** Ekstraksi anggota grup WhatsApp secara instan ke file CSV 14 kolom dengan resolusi LID (Lid-to-Jid resolution) untuk penargetan campaign yang aman.
 - **Single Message Composer:** Pengiriman pesan individual cepat dengan dukungan lampiran media dan pembuatan jajak pendapat (polls).
@@ -36,6 +37,10 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Chatbot AI Error logs & Dashboard Alerts:** Deteksi dan pencatatan error API/saldo chatbot AI secara persisten ke database serta visualisasi Alert Box glassmorphic merah self-healing di dashboard admin.
 - **Database & File Pruner Otomatis:** Script pruner berkala (`npm run logs:prune:apply`) untuk menghapus log pengiriman lama, log warmer, file ekspor lawas, dan berkas cadangan (backup) kedaluwarsa secara otomatis serta melakukan SQLite VACUUM untuk merampingkan ukuran database.
 - **Security Hardening Baseline:** Login dashboard admin berbasis secure cookie HttpOnly, proteksi kunci API server-to-server (X-API-Key), Content Security Policy (CSP) ketat yang mendukung Google Fonts & Websocket staging, serta in-memory API rate limiter.
+- **Multi-User RBAC & Tenant Isolation:** Login JWT dual-cookie dengan access/refresh token, refresh token rotation/revocation, User Management admin-only, role `admin`/`user`, serta isolasi data per `user_id`.
+- **Admin-Controlled Device Quota:** Admin dapat mengatur limit device WhatsApp per user; user non-admin tidak dapat menambah device melebihi kuota.
+- **Admin-Only Monitoring:** Menu dan route Monitoring hanya untuk admin/operator platform; user tenant biasa fokus pada data dan device miliknya sendiri.
+- **SaaS Operations Baseline:** Keputusan tenant/admin global, billing manual MVP, audit-log requirement, backup/retention, acceptable use, dan launch gates dicatat di `docs/SAAS_OPERATIONS.md`.
 - **Fully Transparent QR Code Generator:** Pembuatan QR Code kustom dengan latar belakang transparan penuh pada sela-sela modul dan pola mata pojok (finder pattern) menggunakan HTML5 Canvas 2D compositing, dengan opsi gaya transparansi terpisah untuk menjaga kemudahan pemindaian (scannable).
 
 ---
@@ -118,7 +123,7 @@ Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan
 ## Panduan Pengujian (Testing)
 
 ### Pengujian Unit & Integrasi Backend
-Memvalidasi seluruh logika internal backend (validator input, parser spintax, engine enkripsi, pruner logs, dan isolasi sesi flow) menggunakan SQLite memori tanpa memerlukan server berjalan.
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation, campaign tenant personalization, pruner logs, kuota device user, dan isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite terakhir: 81 test pass.
 ```bash
 cd backend
 npm test
@@ -132,7 +137,7 @@ npm run test:smoke
 ```
 
 ### Pengujian Integrasi Sistem QA
-Melakukan simulasi QA menyeluruh (verifikasi skema database 16 tabel dan pengujian endpoint API melalui Axios). Memerlukan server backend API berjalan di port `3001`.
+Melakukan simulasi QA menyeluruh (verifikasi skema database inti dan pengujian endpoint API melalui Axios). Memerlukan server backend API berjalan di port `3001`.
 ```bash
 # Terminal 1:
 cd backend && npm run start:api

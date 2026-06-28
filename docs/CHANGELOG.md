@@ -5,6 +5,49 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.2] - 2026-06-28
+
+### Added
+- Opsi B (Modal Popup Internal) untuk Kebijakan Platform: Menambahkan komponen `PolicyModal.jsx` yang menyajikan Ketentuan Layanan (Terms of Service), Kebijakan Privasi (Privacy Policy), Kebijakan Penggunaan Diterima (AUP), serta Kebijakan Penangguhan & Penghapusan Data langsung di dalam aplikasi menggunakan layout glassmorphic premium yang ramah a11y.
+- Tautan Kebijakan di Halaman Login: Ditambahkan tautan "Ketentuan • Privasi • AUP • Retensi" di bagian bawah form login (`Login.jsx`) untuk transparansi sebelum masuk sistem.
+- Tautan Kebijakan di Sidebar: Ditambahkan menu footer "Kebijakan Platform" di navigasi sidebar (`Sidebar.jsx`) untuk mempermudah pengguna membaca dokumen legal kapan saja dari dalam dashboard.
+
+## [2.9.1] - 2026-06-28
+
+### Added
+- SaaS Billing & Entitlement Enforcement (P0.2): Added `subscription_plans` table, dynamically validating quotas (`QUOTA_EXCEEDED` on session count, monthly campaigns count, chatbot flow count), Plans Management UI dashboard (`PlansManagement.jsx`), and User Management quota/billing editing capabilities.
+- Admin-controlled Monitoring: Detailed user resource usage and quota breakdown table in the System Monitoring page (under `/monitoring`) displaying users, their plans, active devices, campaigns, and chatbot flows.
+
+### Changed
+- Sidebar labels updated across the admin pages to match menu names: `"Batas Devices"`, `"Batas Bulk Messages / Bulan"`, and `"Batas Chatbot Flows"`.
+- Adjusted `session_device_limit.test.js` to assert `QUOTA_EXCEEDED` (HTTP 403) instead of the old `DEVICE_LIMIT_REACHED` error code.
+
+### Fixed
+- Misplaced escape backslashes on backticks in `entitlement.middleware.js` and `plan.controller.js` that caused test suite compilation failures.
+- Fixed React array mapping crashes in `PlansManagement.jsx` and `UserManagement.jsx` by extracting `json.data` properly from API response envelopes.
+- Redesigned `PlansManagement.jsx` to match global design system classes (`index.css`), replacing uncompiled Tailwind utility classes with a pricing card grid layout.
+- Responsive layout constraints for modals in `UserManagement.jsx` with max height limits and overflow scrolling.
+
+## [2.9.0] - 2026-06-28
+
+### Added
+- Admin-controlled WhatsApp device quota through `users.device_limit`, User Management UI, backend session quota enforcement, and `DEVICE_LIMIT_REACHED` API error documentation.
+- Admin-only Monitoring visibility in frontend navigation/route docs.
+- SaaS operations HTML documentation aligned with `docs/SAAS_OPERATIONS.md`.
+
+### Changed
+- Documentation baseline updated to 81/81 backend tests and OpenAPI route parity 106/106.
+
+## [2.8.9] - 2026-06-16
+
+### Added
+- JWT multi-user auth hardening: hashed/JTI refresh token storage, refresh rotation/revocation, password-change session invalidation via `users.token_version`, 12-character password validation, and admin-only User Management documentation.
+- Chatbot Flow runtime scaling: migration `015_chatbot_flow_session_mapping`, new `chatbot_flow_sessions` table, assignment sync service, indexed inbound lookup by `session_id`, and Chatbot AI flow knowledge lookup by mapping.
+- Backend test coverage note updated to 78/78 passing, including auth token revocation, campaign tenant personalization, and chatbot flow session mapping/isolation.
+
+### Changed
+- SDLC Mermaid diagrams, ERD, data dictionary, README, runbook, security/privacy notes, staging notes, monitoring checks, checklist HTML, and generated HTML docs now reflect multi-user tenant isolation and normalized Chatbot Flow session mapping.
+
 ## [2.8.8] - 2026-06-14
 
 ### Fixed

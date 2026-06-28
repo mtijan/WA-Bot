@@ -6,6 +6,7 @@ import {
   MessageSquare,
   FileText,
   Users,
+  User,
   Send,
   Flame,
   UserMinus,
@@ -15,21 +16,28 @@ import {
   LogOut,
   MoreVertical,
   Activity,
-  QrCode
+  QrCode,
+  Shield
 } from 'lucide-react';
+import PolicyModal from './PolicyModal';
 
 const Sidebar = ({ authState, onLogout }) => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const [selectedPolicy, setSelectedPolicy] = useState(null);
+
+  const openPolicy = (type) => {
+    setSelectedPolicy(type);
+    setPolicyModalOpen(true);
+  };
+
   const navItems = [
     { path: '/', name: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    { path: '/monitoring', name: 'Monitoring', icon: <Activity size={20} /> },
     { path: '/devices', name: 'Devices', icon: <Smartphone size={20} /> },
     { path: '/single-message', name: 'Single Message', icon: <MessageSquare size={20} /> },
     { path: '/templates', name: 'Templates', icon: <FileText size={20} /> },
     { path: '/contacts', name: 'Contacts', icon: <Users size={20} /> },
     { path: '/bulk', name: 'Bulk Messages', icon: <Send size={20} /> },
-    // { path: '/proxies', name: 'Proxies' },
-
     { path: '/warmer', name: 'Warmer', icon: <Flame size={20} /> },
     { path: '/opt-out', name: 'Opt-Out Management', icon: <UserMinus size={20} /> },
     { path: '/chatbot-ai', name: 'Chatbot AI', icon: <Bot size={20} /> },
@@ -37,6 +45,12 @@ const Sidebar = ({ authState, onLogout }) => {
     { path: '/group-grabber', name: 'Group Grabber', icon: <Layers size={20} /> },
     { path: '/qrcode-generator', name: 'QR Generator', icon: <QrCode size={20} /> },
   ];
+
+  if (authState?.role === 'admin') {
+    navItems.splice(1, 0, { path: '/monitoring', name: 'Monitoring', icon: <Activity size={20} /> });
+    navItems.push({ path: '/users', name: 'User Management', icon: <User size={20} /> });
+    navItems.push({ path: '/plans', name: 'Subscription Plans', icon: <Shield size={20} /> });
+  }
 
   return (
     <div style={{
@@ -98,13 +112,36 @@ const Sidebar = ({ authState, onLogout }) => {
             left: '16px',
             right: '16px',
             bottom: '86px',
-            padding: '10px',
-            border: '1px solid rgba(239, 68, 68, 0.18)',
+            padding: '12px 10px',
+            border: '1px solid var(--border-color)',
             borderRadius: '14px',
             background: '#ffffff',
             boxShadow: '0 18px 45px rgba(15, 23, 42, 0.16)',
-            zIndex: 20
+            zIndex: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
           }}>
+            {/* Tautan Kebijakan */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              paddingBottom: '8px',
+              borderBottom: '1px solid var(--border-color)',
+              fontSize: '0.73rem',
+              color: 'var(--text-muted)'
+            }}>
+              <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>Kebijakan Platform</div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <span onClick={() => { setProfileMenuOpen(false); openPolicy('tos'); }} style={{ color: 'var(--primary-color)', cursor: 'pointer', textDecoration: 'underline' }}>Ketentuan</span>
+                <span>&bull;</span>
+                <span onClick={() => { setProfileMenuOpen(false); openPolicy('privacy'); }} style={{ color: 'var(--primary-color)', cursor: 'pointer', textDecoration: 'underline' }}>Privasi</span>
+                <span>&bull;</span>
+                <span onClick={() => { setProfileMenuOpen(false); openPolicy('aup'); }} style={{ color: 'var(--primary-color)', cursor: 'pointer', textDecoration: 'underline' }}>AUP</span>
+              </div>
+            </div>
+
             <button
               onClick={() => {
                 setProfileMenuOpen(false);
@@ -141,13 +178,15 @@ const Sidebar = ({ authState, onLogout }) => {
           border: '1px solid var(--border-color)'
         }}>
           <div style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0f172a', fontWeight: 700 }}>
-            A
+            {authState?.username ? authState.username.charAt(0).toUpperCase() : 'A'}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>
               {authState?.username || 'Admin User'}
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Pro Plan</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              {authState?.role ? authState.role.charAt(0).toUpperCase() + authState.role.slice(1) : 'Pro Plan'}
+            </div>
           </div>
           {authState?.enabled && (
             <button
@@ -172,6 +211,12 @@ const Sidebar = ({ authState, onLogout }) => {
           )}
         </div>
       </div>
+
+      <PolicyModal
+        isOpen={policyModalOpen}
+        onClose={() => setPolicyModalOpen(false)}
+        policyType={selectedPolicy}
+      />
     </div>
   );
 };

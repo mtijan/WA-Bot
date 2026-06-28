@@ -23,14 +23,16 @@
     "logs:prune": "node scripts/prune_delivery_logs.js",
     "logs:prune:apply": "node scripts/prune_delivery_logs.js --apply",
     "test": "node --test test/**/*.test.js",
-    "test:smoke": "node scripts/deploy_smoke_test.js"
+    "test:smoke": "node scripts/deploy_smoke_test.js",
+    "user:create": "node scripts/seed_admin_user.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.9",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "https-proxy-agent": "^9.0.0",
-    "multer": "^2.1.1",
+    "multer": "^2.2.0",
     "openai": "^6.39.1",
     "pino": "^9.1.0",
     "qrcode": "^1.5.3",
@@ -38,5 +40,11 @@
   },
   "devDependencies": {
     "supertest": "^7.2.2"
+  },
+  "overrides": {
+    "form-data": "^4.0.6",
+    "multer": "^2.2.0",
+    "protobufjs": "^7.6.4",
+    "undici": "^6.27.0"
   }
 }

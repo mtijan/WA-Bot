@@ -53,6 +53,7 @@
         <li class="toc-sidebar__item"><a href="#tbl-settings" class="toc-sidebar__link">Tabel settings</a></li>
         <li class="toc-sidebar__item"><a href="#tbl-chatbot-ai-settings" class="toc-sidebar__link">Tabel chatbot_ai_settings</a></li>
         <li class="toc-sidebar__item"><a href="#tbl-opt-out-contacts" class="toc-sidebar__link">Tabel opt_out_contacts</a></li>
+        <li class="toc-sidebar__item"><a href="#database-optimization" class="toc-sidebar__link">Optimasi &amp; Keandalan</a></li>
       </ul>
     </nav>
 
@@ -464,11 +465,34 @@
       </div>
     </div>
 
+    <!-- Database Optimization & Reliability Section -->
+    <div class="content-card" id="database-optimization">
+      <h3 class="content-card__title" style="font-size: 1.25rem;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        Optimasi &amp; Keandalan SQLite3 (v2.9.4)
+        <a href="#database-optimization" class="section-anchor">#</a>
+      </h3>
+      <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
+        Untuk menjamin keandalan transaksi data saat diakses oleh banyak pengguna secara bersamaan, sistem menerapkan optimasi dan parameterisasi koneksi SQLite3 langsung pada tingkat inisialisasi driver:
+      </p>
+      <ul style="color:var(--text-secondary); padding-left:1.5rem; line-height:1.6; margin-bottom:1rem;">
+        <li>
+          <strong>Write-Ahead Logging (WAL) Mode</strong>: Diaktifkan menggunakan <code>PRAGMA journal_mode = WAL;</code> untuk mengizinkan operasi baca (read) dan tulis (write) berjalan beriringan secara konkuren tanpa saling memblokir satu sama lain.
+        </li>
+        <li>
+          <strong>Relational Foreign Keys</strong>: Dipaksakan menggunakan <code>PRAGMA foreign_keys = ON;</code> pada setiap koneksi baru untuk menjamin konsistensi data referensial di SQLite.
+        </li>
+        <li>
+          <strong>Busy Timeout</strong>: Ditetapkan ke 5000ms menggunakan <code>PRAGMA busy_timeout = 5000;</code> untuk memberitahu SQLite agar menunggu hingga 5 detik ketika terjadi perebutan kunci (lock) transaksi, sehingga mencegah munculnya kesalahan <code>SQLITE_BUSY: database is locked</code>.
+        </li>
+      </ul>
+    </div>
+
     </main>
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.8.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
   </footer>
   <script>
     const toggleBtn = document.querySelector('.theme-toggle');

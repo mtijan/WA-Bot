@@ -2,6 +2,8 @@
 
 Dokumen ini merinci kebijakan tata kelola platform, evaluasi risiko integrasi, serta protokol operasional untuk meminimalkan risiko pemblokiran nomor pada sistem WA-Bot.
 
+Untuk keputusan operasional SaaS lintas-tenant, billing, audit log, backup, retention, launch gate, dan customer policy, gunakan [SAAS_OPERATIONS.md](./SAAS_OPERATIONS.md) sebagai decision record pendamping.
+
 ---
 
 ## 1. Evaluasi Teknis & Kepatuhan: Baileys vs WhatsApp Business Platform Resmi

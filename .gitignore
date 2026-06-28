@@ -47,6 +47,14 @@ backend/src/thoth_raw_metadata.json
 test-kroki.js
 
 # Local agent handoff and generated documentation not needed in GitHub source
+.agents/
+.codex/
+.cursor/
+.windsurf/
+.continue/
+.aider*
+**/skills/
+**/SKILL.md
 AGENTS.md
 HANDOFF.md
 checklist.html

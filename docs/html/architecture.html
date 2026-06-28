@@ -69,8 +69,20 @@
           <a href="#dfd0" class="section-anchor">#</a>
         </h3>
         <p style="color:var(--text-secondary); margin-bottom:1rem;">Mendefinisikan aliran data global masuk dan keluar dari sistem. Menunjukkan interaksi antara Administrator, WhatsApp Bot System, dan Meta WA Servers.</p>
-        <div class="mermaid-container">
-          <img src="../images/3_1_dfd_level_0_context_diagram.png" alt="DFD Level 0 Context Diagram: Aliran data dua arah antara Administrator (menginput kredensial, target, alur chatbot, proxy, dan menerima laporan/log/CSV kontak) dengan sistem utama WA-Bot Pro, yang kemudian terhubung ke Meta WA Servers via protokol WSS asinkron." loading="lazy">
+        <div class="mermaid-container" style="overflow-x: auto;">
+          <div class="mermaid">
+flowchart LR
+    Admin([Administrator / Tenant User])
+    System((WA-Bot Pro System))
+    Meta([Meta WhatsApp Servers])
+    AI([SumoPod AI / External LLM])
+
+    Admin --&gt;|Login Credentials, Roles, Campaigns, Chatbot Flows, Proxy Settings| System
+    System --&gt;|Delivery Reports, Logs, CSV Contacts, Auth Tokens| Admin
+    
+    System &lt;--&gt;|WSS Protocol: Auth, Messages, Acks, Status| Meta
+    System &lt;--&gt;|REST API: Prompts, Context| AI
+          </div>
           <div class="mermaid-label">Gambar 3.1 -- DFD Level 0: Context Diagram</div>
         </div>
       <div class="callout callout--info">
@@ -92,8 +104,50 @@
         <a href="#dfd1" class="section-anchor">#</a>
       </h3>
       <p style="color:var(--text-secondary); margin-bottom:1rem;">Merinci aliran data spesifik ke dalam subsistem utama: Admin Auth Gateway, REST Controllers, Media Upload Manager, Session Manager Worker, Campaign Polling Worker, Warmer Polling Worker, dan Log Pruner Worker.</p>
-      <div class="mermaid-container">
-        <img src="../images/3_2_dfd_level_1_data_flow_diagram.png" alt="DFD Level 1 Data Flow Diagram: Merinci aliran data ke proses API (Gateway, Controllers, Upload) dan Worker Processes (Session, Campaign, Warmer, Pruner). Diagram menunjukkan isolasi tugas dan interaksi dengan berbagai DB lokal dan file system." loading="lazy">
+      <div class="mermaid-container" style="overflow-x: auto;">
+        <div class="mermaid">
+flowchart TD
+    Admin([Admin / User])
+    Meta([Meta WA Servers])
+    AI([AI Provider])
+    
+    subgraph System ["WA-Bot Pro System"]
+        Gateway[0.0 JWT Auth & RBAC Gateway]
+        SessionWorker[1.0 Session Manager Worker]
+        RESTController[2.0 REST API Controllers]
+        CampaignWorker[3.0 Campaign Polling Worker]
+        WarmerWorker[4.0 Warmer Polling Worker]
+        UploadManager[8.0 Media Upload Manager]
+        ChatbotService[8.5 Chatbot Flow Service]
+        PrunerWorker[9.0 Log & File Pruner]
+        
+        DB[(SQLite3 Database)]
+        FS[(Local File System)]
+    end
+    
+    Admin &lt;--&gt;|HTTP/REST| Gateway
+    Gateway &lt;--&gt; RESTController
+    Gateway &lt;--&gt; UploadManager
+    Gateway &lt;--&gt; ChatbotService
+    
+    RESTController &lt;--&gt;|Read/Write| DB
+    UploadManager --&gt;|Save Files| FS
+    ChatbotService --&gt;|Sync Mapping| DB
+    
+    SessionWorker &lt;--&gt;|WSS| Meta
+    SessionWorker &lt;--&gt;|REST| AI
+    SessionWorker &lt;--&gt;|Read/Write State| DB
+    SessionWorker &lt;--&gt;|Read Media| FS
+    
+    CampaignWorker --&gt;|Poll Pending| DB
+    CampaignWorker --&gt;|Internal HTTP Dispatch| SessionWorker
+    
+    WarmerWorker --&gt;|Poll Active| DB
+    WarmerWorker --&gt;|Internal HTTP Dispatch| SessionWorker
+    
+    PrunerWorker --&gt;|Schedule Delete| DB
+    PrunerWorker --&gt;|Schedule Delete| FS
+        </div>
         <div class="mermaid-label">Gambar 3.2 -- DFD Level 1: Data Flow Diagram</div>
       </div>
 
@@ -125,8 +179,50 @@
         <a href="#component" class="section-anchor">#</a>
       </h3>
       <p style="color:var(--text-secondary); margin-bottom:1rem;">Menunjukkan bagaimana modul-modul <em>backend</em> terisolasi dan berinteraksi. Dibagi menjadi layer Frontend, Backend Gateway dengan Admin Auth Middleware, Core Engine, dan SQLite Storage.</p>
-      <div class="mermaid-container">
-        <img src="../images/3_3_component_diagram_uml.png" alt="Component Diagram: Visualisasi 4-layer arsitektur sistem. React UI mengirim HTTP request/WSS event ke Express API Gateway. API Gateway memanggil Core Engine (BaileysCore untuk koneksi socket dan QueueWorker untuk antrean). Seluruh data disimpan dan diakses secara lokal melalui SQLite3 Database File." loading="lazy">
+      <div class="mermaid-container" style="overflow-x: auto;">
+        <div class="mermaid">
+flowchart TD
+    subgraph Frontend ["Frontend Layer (React/Vite)"]
+        UI[React UI Components]
+        APIClient[apiRequest Interceptor]
+    end
+    
+    subgraph Gateway ["API Gateway Layer (Express)"]
+        AuthMid[Auth & RBAC Middleware]
+        SecMid[Security & Rate Limiter]
+        Controllers[REST Controllers]
+    end
+    
+    subgraph Core ["Core Engine Layer (Workers)"]
+        SessionManager[Session Manager]
+        Baileys[Baileys WSS Client]
+        CampaignWorker[Campaign Worker]
+        WarmerWorker[Warmer Worker]
+    end
+    
+    subgraph Storage ["Storage Layer"]
+        SQLite[(SQLite3 DB)]
+        MediaFS[(Uploads & Logs FS)]
+    end
+    
+    UI &lt;--&gt; APIClient
+    APIClient &lt;--&gt;|HTTPS| SecMid
+    SecMid &lt;--&gt; AuthMid
+    AuthMid &lt;--&gt; Controllers
+    
+    Controllers --&gt;|Internal HTTP| SessionManager
+    Controllers &lt;--&gt; SQLite
+    Controllers &lt;--&gt; MediaFS
+    
+    CampaignWorker --&gt;|Poll| SQLite
+    CampaignWorker --&gt;|Internal HTTP| SessionManager
+    WarmerWorker --&gt;|Poll| SQLite
+    WarmerWorker --&gt;|Internal HTTP| SessionManager
+    
+    SessionManager &lt;--&gt; Baileys
+    Baileys &lt;--&gt; SQLite
+    Baileys &lt;--&gt; MediaFS
+        </div>
         <div class="mermaid-label">Gambar 3.3 -- Component Diagram: UML Arsitektur Modular</div>
       </div>
     </div>
@@ -147,8 +243,31 @@
       <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:1rem; line-height:1.5;">
         Mendokumentasikan proses inisiasi instansi WhatsApp, pembentukan socket Baileys di Session Manager Worker, pengiriman gambar QR Base64 ke frontend, pemindaian smartphone, hingga penyimpanan file kredensial ke disk lokal.
       </p>
-      <div class="mermaid-container" style="margin-bottom:1.5rem;">
-        <img src="../images/3_6_1_sequence_diagram_alur_koneksi_sesi_autentikasi.png" alt="Sequence Diagram Sesi &amp; Autentikasi: Admin klik tambah sesi -> React UI POST /api/sessions -> Express API meneruskan via internal HTTP ke Session Worker -> Session Worker menginisiasi soket Baileys -> Baileys menghasilkan QR Code Base64 -> Admin memindai QR Code via smartphone -> Handshake dengan server Meta sukses -> API memperbarui status sesi menjadi CONNECTED." loading="lazy">
+      <div class="mermaid-container" style="margin-bottom:1.5rem; overflow-x: auto;">
+        <div class="mermaid">
+sequenceDiagram
+    actor Admin
+    participant UI as React UI
+    participant API as Express API
+    participant Worker as Session Worker
+    participant Baileys as Baileys WSS
+    participant Meta as Meta WA Servers
+    
+    Admin-&gt;&gt;UI: Klik Tambah Sesi
+    UI-&gt;&gt;API: POST /api/sessions
+    API-&gt;&gt;Worker: Internal HTTP Init Session
+    Worker-&gt;&gt;Baileys: Initialize Socket
+    Baileys-&gt;&gt;Meta: Handshake (WSS)
+    Meta--&gt;&gt;Baileys: QR Code Data
+    Baileys--&gt;&gt;Worker: Generate QR Base64
+    Worker--&gt;&gt;API: Status Pending + QR
+    API--&gt;&gt;UI: Return QR Image
+    UI--&gt;&gt;Admin: Render QR Code
+    Admin-&gt;&gt;Meta: Scan QR via Smartphone
+    Meta--&gt;&gt;Baileys: Auth Success
+    Baileys-&gt;&gt;Worker: Save Credentials to Disk
+    Worker-&gt;&gt;API: Status CONNECTED
+        </div>
         <div class="mermaid-label">Gambar 3.6.1 -- Sequence Diagram: Alur Sesi &amp; Autentikasi QR Code</div>
       </div>
 
@@ -157,8 +276,31 @@
       <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:1rem; line-height:1.5;">
         Mendokumentasikan siklus hidup pengiriman pesan massal asinkron, antrean proses di Campaign Polling Worker, penguraian personalisasi modifier teks, pengiriman media, dan interaksi ke Session Manager.
       </p>
-      <div class="mermaid-container" style="margin-bottom:1.5rem;">
-        <img src="../images/3_6_2_sequence_diagram_alur_kampanye_pesan_massal.png" alt="Sequence Diagram Pesan Massal: Admin kirim form beserta media ke UI -> API Upload Simpan File -> API masukkan kampanye PENDING ke DB -> Campaign Worker polling target -> Worker cek suppression list -> Worker request internal HTTP send message ke Session Worker -> Session Worker eksekusi di Baileys Socket -> Status update (SENT/FAILED) dikembalikan ke DB." loading="lazy">
+      <div class="mermaid-container" style="margin-bottom:1.5rem; overflow-x: auto;">
+        <div class="mermaid">
+sequenceDiagram
+    actor Admin
+    participant UI as React UI
+    participant API as Upload &amp; API
+    participant DB as SQLite3 DB
+    participant CampWorker as Campaign Worker
+    participant SesWorker as Session Worker
+    
+    Admin-&gt;&gt;UI: Submit Bulk Message + Media
+    UI-&gt;&gt;API: Upload File &amp; Create Campaign
+    API-&gt;&gt;API: Save File to FS
+    API-&gt;&gt;DB: Insert Campaign (PENDING)
+    API--&gt;&gt;UI: Success Response
+    
+    loop Polling Interval
+        CampWorker-&gt;&gt;DB: Poll PENDING Targets
+        CampWorker-&gt;&gt;CampWorker: Check Opt-Outs
+        CampWorker-&gt;&gt;SesWorker: Internal Request (Send Message)
+        SesWorker-&gt;&gt;SesWorker: Execute via Baileys
+        SesWorker--&gt;&gt;CampWorker: Status (SENT/FAILED)
+        CampWorker-&gt;&gt;DB: Update Delivery Log
+    end
+        </div>
         <div class="mermaid-label">Gambar 3.6.2 -- Sequence Diagram: Alur Kampanye Pesan Massal</div>
       </div>
 
@@ -167,8 +309,27 @@
       <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:1rem; line-height:1.5;">
         Mendokumentasikan pemrosesan pesan masuk, pencocokan kata kunci oleh Session Worker, eksekusi node statis, serta integrasi pemrosesan NLP oleh AI provider (OpenAI/Claude).
       </p>
-      <div class="mermaid-container" style="margin-bottom:1.5rem;">
-        <img src="../images/3_6_3_sequence_diagram_alur_chatbot_balasan_otomatis.png" alt="Sequence Diagram Chatbot &amp; Balasan Otomatis: Pengirim kirim pesan -> Baileys picu messages.upsert ke Session Worker -> Cek opt-out -> Cek mode chatbot (flow/ai) -> Jika mode flow: cari node cocok, jalankan delay, balasan dikirim -> Jika mode AI: Generate AI response dari provider eksternal, balasan dikirim." loading="lazy">
+      <div class="mermaid-container" style="margin-bottom:1.5rem; overflow-x: auto;">
+        <div class="mermaid">
+sequenceDiagram
+    actor User as WhatsApp User
+    participant Baileys as Session Worker (Baileys)
+    participant FlowLogic as Chatbot Service
+    participant AI as AI Provider
+    
+    User-&gt;&gt;Baileys: Kirim Pesan Masuk (WSS)
+    Baileys-&gt;&gt;Baileys: Cek Opt-Out &amp; Mode
+    
+    alt Mode Flow Statis
+        Baileys-&gt;&gt;FlowLogic: Cari Keyword/Node
+        FlowLogic--&gt;&gt;Baileys: Node Cocok (Simulasikan Delay)
+        Baileys-&gt;&gt;User: Kirim Balasan Node
+    else Mode AI
+        Baileys-&gt;&gt;AI: Generate Prompt &amp; Context
+        AI--&gt;&gt;Baileys: AI Response Text
+        Baileys-&gt;&gt;User: Kirim Balasan AI
+    end
+        </div>
         <div class="mermaid-label">Gambar 3.6.3 -- Sequence Diagram: Alur Dynamic Chatbot &amp; Balasan Otomatis</div>
       </div>
 
@@ -177,8 +338,22 @@
       <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:1rem; line-height:1.5;">
         Mendokumentasikan penarikan metadata grup WA via delegasi API ke Session Worker, pemecahan Linked ID (LID) menjadi JID telepon, dan pembuatan file CSV.
       </p>
-      <div class="mermaid-container" style="margin-bottom:1.5rem;">
-        <img src="../images/3_6_4_sequence_diagram_alur_ekstraksi_peserta_grup.png" alt="Sequence Diagram Group Grabber: Admin klik muat grup -> API panggil internal HTTP ke Session Worker -> Session Worker fetch meta dari Baileys -> API minta batch lookup USync ke Session Worker -> Meta kembalikan nomor asli -> API ekspor CSV." loading="lazy">
+      <div class="mermaid-container" style="margin-bottom:1.5rem; overflow-x: auto;">
+        <div class="mermaid">
+sequenceDiagram
+    actor Admin
+    participant API as Express API
+    participant Worker as Session Worker
+    participant Meta as Meta Servers
+    
+    Admin-&gt;&gt;API: Muat Meta Grup
+    API-&gt;&gt;Worker: Internal Request Fetch Meta
+    Worker-&gt;&gt;Meta: Fetch Group Metadata (WSS)
+    Meta--&gt;&gt;Worker: List of Member LIDs
+    Worker-&gt;&gt;Worker: Batch USync Lookup (LID to JID)
+    Worker--&gt;&gt;API: Daftar Nomor Asli
+    API--&gt;&gt;Admin: Kembalikan JSON / Ekspor CSV
+        </div>
         <div class="mermaid-label">Gambar 3.6.4 -- Sequence Diagram: Alur Ekstraksi Peserta Grup</div>
       </div>
 
@@ -187,8 +362,29 @@
       <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:1rem; line-height:1.5;">
         Mendokumentasikan peluncuran warmer oleh Warmer Polling Worker, rotasi pengirim dan penerima lewat internal HTTP ke Session Manager, emulasi typing, dan update logs.
       </p>
-      <div class="mermaid-container" style="margin-bottom:1.5rem;">
-        <img src="../images/3_6_5_sequence_diagram_alur_simulasi_warmer_pemanasan_akun.png" alt="Sequence Diagram Account Warmer: Admin klik mulai di UI -> API simpan warmer_campaigns RUNNING -> Warmer Polling Worker proses antrean -> Rotasikan Sesi A &amp; Sesi B, minta Session Manager Worker kirim composing signal dan pesan -> Setelah durasi habis, status diubah ke COMPLETED." loading="lazy">
+      <div class="mermaid-container" style="margin-bottom:1.5rem; overflow-x: auto;">
+        <div class="mermaid">
+sequenceDiagram
+    actor Admin
+    participant API as Express API
+    participant DB as SQLite DB
+    participant WarmerWorker as Warmer Worker
+    participant SessionWorker as Session Worker
+    
+    Admin-&gt;&gt;API: Mulai Warmer Campaign
+    API-&gt;&gt;DB: Set status RUNNING
+    
+    loop Warmer Loop (Tiap Interval)
+        WarmerWorker-&gt;&gt;DB: Ambil Antrean Warmer
+        WarmerWorker-&gt;&gt;WarmerWorker: Rotasi Sesi A &amp; B
+        WarmerWorker-&gt;&gt;SessionWorker: Request Kirim Typing &amp; Pesan (A-&gt;B)
+        SessionWorker-&gt;&gt;SessionWorker: Eksekusi Baileys
+        SessionWorker--&gt;&gt;WarmerWorker: Sukses
+        WarmerWorker-&gt;&gt;DB: Log Interaksi
+    end
+    
+    WarmerWorker-&gt;&gt;DB: Update status COMPLETED (jika durasi habis)
+        </div>
         <div class="mermaid-label">Gambar 3.6.5 -- Sequence Diagram: Alur Simulasi Pemanasan Akun</div>
       </div>
     </div>
@@ -201,8 +397,33 @@
         <a href="#activity" class="section-anchor">#</a>
       </h3>
       <p style="color:var(--text-secondary); margin-bottom:1rem;">Menggambarkan alur kerja (<em>workflow</em>) pengguna saat menjalankan fitur pengiriman pesan massal berbasis non-blocking UI.</p>
-      <div class="mermaid-container">
-        <img src="../images/3_7_activity_diagram_workflow_pesan_massal.png" alt="Activity Diagram: Menunjukkan alur paralel user interface dan backend. Admin menginput dan men-submit formulir bulk message. UI merender progress horizontal card dengan indikator persentase asinkron. Admin dapat secara paralel membuka slide-over progress drawer untuk memantau log pengiriman baris demi baris, atau menutup laci tersebut untuk menjelajahi menu lain tanpa menginterupsi pengiriman di latar belakang." loading="lazy">
+      <div class="mermaid-container" style="overflow-x: auto;">
+        <div class="mermaid">
+stateDiagram-v2
+    [*] --&gt; InputForm: Admin Buka Menu Campaign
+    InputForm --&gt; Submit: Isi Data &amp; Submit
+    
+    state "Parallel Processing" as Parallel {
+        state "Frontend UI" as UI {
+            Submit --&gt; ShowProgress: Render Progress Card
+            ShowProgress --&gt; OpenDrawer: Admin Buka Laci Log
+            OpenDrawer --&gt; ViewLog: Pantau Log per Baris
+            OpenDrawer --&gt; CloseDrawer: Tutup Laci (Tidak Menginterupsi)
+            CloseDrawer --&gt; ShowProgress
+        }
+        
+        state "Backend Worker" as Backend {
+            Submit --&gt; InsertDB: API Insert PENDING
+            InsertDB --&gt; Polling: Worker Poll Campaign
+            Polling --&gt; ProcessBatch: Kirim per Batch
+            ProcessBatch --&gt; UpdateLog: Catat Log
+            UpdateLog --&gt; ProcessBatch: Lanjut Target
+            ProcessBatch --&gt; Finish: Status COMPLETED
+        }
+    }
+    
+    Finish --&gt; [*]
+        </div>
         <div class="mermaid-label">Gambar 3.7 -- Activity Diagram: Workflow Pesan Massal Non-Blocking</div>
       </div>
     </div>
@@ -215,8 +436,30 @@
         <a href="#flowchart" class="section-anchor">#</a>
       </h3>
       <p style="color:var(--text-secondary); margin-bottom:1rem;">Diagram alur (<em>Flowchart</em>) yang merepresentasikan logika program utama saat mengeksekusi antrean pesan massal di background worker lengkap dengan modular personalisasi nama.</p>
-      <div class="mermaid-container">
-        <img src="../images/3_8_flowchart_alur_logika_program_utama.png" alt="Flowchart Alur Logika: Menunjukkan logika background worker. Proses dimulai dari start queue, mengambil campaign berikutnya, memecah daftar target menjadi array. Untuk setiap target: periksa parameter nama dan sapaan waktu (parsing {{name}} / {{greeting}}), kirim pesan via Baileys socket, rekam status SENT/FAILED di DB. Terapkan random delay sebelum melanjutkan ke target berikutnya untuk menghindari blokir spam WA. Ulangi hingga seluruh target selesai." loading="lazy">
+      <div class="mermaid-container" style="overflow-x: auto;">
+        <div class="mermaid">
+flowchart TD
+    Start([Start Worker]) --&gt; Poll[Poll PENDING Campaign]
+    Poll --&gt; Cond1{Ada Campaign?}
+    Cond1 -- Tidak --&gt; Delay[Delay Polling Interval] --&gt; Poll
+    Cond1 -- Ya --&gt; GetTargets[Ambil Daftar Target &amp; Media]
+    
+    GetTargets --&gt; LoopStart((Loop Target))
+    LoopStart --&gt; Parse[Parse Modifiers: name, greeting]
+    Parse --&gt; Format[Format Final Message]
+    Format --&gt; Send[Send Message Baileys]
+    Send --&gt; Cond2{Sukses?}
+    
+    Cond2 -- Ya --&gt; LogS[Log SENT]
+    Cond2 -- Tidak --&gt; LogF[Log FAILED]
+    
+    LogS --&gt; RDelay[Random Delay]
+    LogF --&gt; RDelay
+    
+    RDelay --&gt; Cond3{Masih Ada Target?}
+    Cond3 -- Ya --&gt; LoopStart
+    Cond3 -- Tidak --&gt; UpdateStatus[Update Campaign COMPLETED] --&gt; Poll
+        </div>
         <div class="mermaid-label">Gambar 3.8 -- Flowchart: Alur Logika Program Utama</div>
       </div>
     </div>
@@ -229,8 +472,41 @@
         <a href="#class-diagram" class="section-anchor">#</a>
       </h3>
       <p style="color:var(--text-secondary); margin-bottom:1rem;">Mempresentasikan struktur <em>Class</em> utama pada kode Backend (Node.js) yang mengatur klien WhatsApp, basis data, dan antrean pesan massal modular personalisasi.</p>
-      <div class="mermaid-container">
-        <img src="../images/3_9_class_diagram_oop_backend_structure.png" alt="Class Diagram: Menunjukkan visual kelas utama Node.js. WhatsAppClient (mengelola session_id, menginisiasi koneksi socket, generate QR, sendMessage), berasosiasi 1-ke-banyak dengan CampaignQueue (mengelola antrean kampanye, memproses pesan, mengurai parameter nama dan sapaan waktu). Kedua kelas tersebut bergantung pada kelas pembungkus SQLiteDatabase untuk operasi baca/tulis DB." loading="lazy">
+      <div class="mermaid-container" style="overflow-x: auto;">
+        <div class="mermaid">
+classDiagram
+    class WhatsAppService {
+        -Map sessions
+        +initializeSession(id, user_id)
+        +sendMessage(jid, text, media)
+        +repairSession(id)
+        +deleteSession(id)
+    }
+    
+    class CampaignWorker {
+        -int pollingInterval
+        +startPolling()
+        +processPendingCampaign()
+        -personalizeText(text, contact)
+    }
+    
+    class ChatbotService {
+        +processInboundMessage(session, msg)
+        -evaluateStaticFlow()
+        -evaluateAIProvider()
+    }
+    
+    class Database {
+        +query()
+        +run()
+    }
+    
+    WhatsAppService --&gt; Database : Reads/Writes
+    CampaignWorker --&gt; WhatsAppService : Requests Send
+    CampaignWorker --&gt; Database : Reads Targets
+    ChatbotService --&gt; WhatsAppService : Replies
+    ChatbotService --&gt; Database : Reads Flow Settings
+        </div>
         <div class="mermaid-label">Gambar 3.9 -- Class Diagram: OOP Backend Structure</div>
       </div>
 
@@ -285,7 +561,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.8.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
   </footer>
   <script>
     const toggleBtn = document.querySelector('.theme-toggle');

@@ -66,7 +66,7 @@
         </p>
         <div class="callout callout--info" style="margin-top:1.25rem;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          <div>Standar aktif: ISO/IEC/IEEE 12207, ISO/IEC/IEEE 29148 (requirements), IEEE 1016 (design), dan ISO/IEC/IEEE 29119 (testing). IEEE 830 dan IEEE 829 dipertahankan sebagai referensi historis. Versi dokumen: <strong>2.8.8</strong>. Pembaruan terakhir: <strong>14 Juni 2026</strong>.</div>
+          <div>Standar aktif: ISO/IEC/IEEE 12207, ISO/IEC/IEEE 29148 (requirements), IEEE 1016 (design), dan ISO/IEC/IEEE 29119 (testing). IEEE 830 dan IEEE 829 dipertahankan sebagai referensi historis. Versi dokumen: <strong>2.9.0</strong>. Pembaruan terakhir: <strong>28 Juni 2026</strong>.</div>
         </div>
       </div>
 
@@ -99,10 +99,10 @@
                 <td>1</td>
                 <td><code>P0</code></td>
                 <td>Admin authentication</td>
-                <td><strong>PARTIAL</strong></td>
-                <td>Login admin server-side memakai cookie HttpOnly ketika <code>WA_BOT_ADMIN_PASSWORD</code> dikonfigurasi; <code>WA_BOT_API_KEY</code> tidak ditanam di frontend; logout UI tersedia; staging HTTPS memakai secure cookie dan CORS domain staging.</td>
-                <td>Pastikan secret admin/session kuat, lakukan browser smoke login/logout HTTPS, dan/atau tambahkan reverse proxy auth bila dibutuhkan.</td>
-                <td>Browser publik tidak dapat mengakses <code>/api/*</code> tanpa identitas admin; cookie secure aktif di HTTPS; backend tidak diekspos langsung.</td>
+                <td><strong>DONE</strong></td>
+                <td>JWT multi-user auth aktif dengan HttpOnly access/refresh cookies, role admin/user, User Management admin-only, refresh token rotation/revocation, <code>users.token_version</code> invalidation, tenant isolation berbasis <code>user_id</code>, dan admin dapat mengatur <code>users.device_limit</code> untuk user tenant.</td>
+                <td>Simpan admin password di password manager dan review secret lifecycle secara berkala.</td>
+                <td>Browser publik tidak dapat mengakses <code>/api/*</code> tanpa identitas sah; refresh token lama ditolak setelah rotasi/logout/password change; backend tidak diekspos langsung.</td>
               </tr>
               <tr>
                 <td>2</td>
@@ -118,7 +118,7 @@
                 <td><code>P0</code></td>
                 <td>Database migration</td>
                 <td><strong>DONE</strong></td>
-                <td><code>database.js</code> menjalankan migration runner; <code>backend/src/migrations/index.js</code> berisi migration versioned; tabel <code>schema_migrations</code> tersedia; <code>npm run db:migrate</code> membuat backup sebelum migrasi.</td>
+                <td><code>database.js</code> menjalankan migration runner; <code>backend/src/migrations/index.js</code> berisi 16 migration versioned; tabel <code>schema_migrations</code> tersedia; <code>npm run db:migrate</code> membuat backup sebelum migrasi; migration 014 menambah token revocation/campaign owner; migration 015 menambah <code>chatbot_flow_sessions</code>; migration 016 menambah kuota device user.</td>
                 <td>Tambahkan migration baru untuk setiap perubahan skema berikutnya; jangan menambah <code>CREATE TABLE</code>/<code>ALTER TABLE</code> inline baru di <code>database.js</code>.</td>
                 <td>Ada migrasi versi yang dapat dijalankan ulang aman; perubahan skema tidak lagi tersebar inline; backup dibuat sebelum migrasi.</td>
               </tr>
@@ -181,7 +181,7 @@
                 <td><code>P2</code></td>
                 <td>Test coverage</td>
                 <td><strong>DONE</strong></td>
-                <td>QA browser, build frontend, OpenAPI parity, smoke test internal delegation, 54 test cases backend integration &amp; unit test suite (validator, auth, templates, opt-outs, chatbot flows session isolation, single-message delegation, spintax engine, dan log/file pruner), serta automated deploy smoke test 100% lulus.</td>
+                <td>QA browser, build frontend, OpenAPI parity 106/106, smoke test internal delegation, 81 test cases backend integration &amp; unit test suite (validator, auth token rotation/revocation, tenant isolation, device quota, templates, opt-outs, chatbot flow session mapping/isolation, campaign tenant personalization, single-message delegation, spintax engine, dan log/file pruner), serta automated deploy smoke test 100% lulus.</td>
                 <td>-</td>
                 <td>CI/manual release dapat menjalankan test cepat tanpa Puppeteer dan test end-to-end saat kandidat rilis.</td>
               </tr>
@@ -206,9 +206,9 @@
               <tr>
                 <td>13</td>
                 <td><code>P1</code></td>
-                <td>Chatbot Flow large-data UX and metrics</td>
+                <td>Chatbot Flow large-data UX, metrics, and runtime scaling</td>
                 <td><strong>DONE</strong></td>
-                <td>Import body limit default 60mb, import/export progress UI, lightweight list response, full detail fetch by ID, lightweight settings/device PATCH, migration 006_chatbot_flow_delivery_metrics, split counters trigger_count, sent_count, failed_count, tabel UI kembali ringkas dengan Sent per-flow dan laporan agregat Triggered/Failed, serta export besar memiliki validasi response and download progress.</td>
+                <td>Import body limit default 60mb, import/export progress UI, lightweight list response, full detail fetch by ID, lightweight settings/device PATCH, migration 006_chatbot_flow_delivery_metrics, split counters trigger_count/sent_count/failed_count, export validation/progress, dan migration 015 <code>chatbot_flow_sessions</code> untuk indexed runtime lookup per <code>session_id</code>.</td>
                 <td>Pertahankan smoke import/export/edit/settings/nodes/media/counter pada setiap rilis staging. Export lengkap dapat besar (contoh staging 49 MB, sekitar 14.57 detik via VPS curl) karena membawa semua nodes; ini normal untuk full export.</td>
                 <td>Flow besar dapat diimpor lebih jelas, edit tidak lambat karena list tidak membawa nodes, save device/settings tidak mengirim payload besar, metrik sent menghitung pesan node yang benar-benar terkirim, dan export tidak lagi menghasilkan file null saat response invalid.</td>
               </tr>
@@ -244,7 +244,32 @@
         </div>
         <div class="callout callout--warning" style="margin-top:1.25rem;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-          <div>Tahap saat ini: item 2 Process architecture, item 3 Database migration, item 4 Backup and restore, item 5 lightweight VPS monitoring baseline, item 6 Database reliability, item 7 Codebase quality, item 8 Security hardening, item 9 Deploy automation, item 10 Test coverage, item 11 Platform governance, item 12 Media upload attachments, item 13 Chatbot Flow large-data UX/metrics, item 14 Session Auto-Repair &amp; Chatbot AI Alerting, item 15 Session Reconnect &amp; Heartbeat Stability, dan item 16 Fully Transparent QR Code Cutting sudah DONE; staging VPS terverifikasi dengan domain HTTPS, secure cookie/CORS, rotated placeholders, UFW, provider firewall review, local backup/restore/healthcheck/alertcheck timers, Telegram offsite backup, logrotate, HTTP/HTTPS smoke, auth HTTPS smoke, manual browser smoke HTTPS, browser feature smoke socket-heavy PASS pada 2026-06-07, frontend production API URL guard, seluruh React UI API client + backend controllers migrations, serta skrip smoke test otomatis (npm run test:smoke). Stabilitas sesi WhatsApp diperkuat (auto-repair loop dinonaktifkan & log libsignal disaring), serta test suite backend integration & unit test lulus 100%.</div>
+          <div>Tahap saat ini: item 1 Admin authentication, item 2 Process architecture, item 3 Database migration, item 4 Backup and restore, item 5 lightweight VPS monitoring baseline, item 6 Database reliability, item 7 Codebase quality, item 8 Security hardening, item 9 Deploy automation, item 10 Test coverage, item 11 Platform governance, item 12 Media upload attachments, item 13 Chatbot Flow large-data UX/metrics/runtime scaling, item 14 Session Auto-Repair &amp; Chatbot AI Alerting, item 15 Session Reconnect &amp; Heartbeat Stability, dan item 16 Fully Transparent QR Code Cutting sudah DONE. Auth multi-user, revocable refresh token, tenant isolation, campaign tenant personalization, kuota device user, Monitoring admin-only, dan Chatbot Flow indexed session mapping sudah diverifikasi melalui backend integration test 81/81.</div>
+        </div>
+
+        <h4 style="color:var(--color-title); font-size:1rem; margin:1.75rem 0 0.75rem; font-weight:600;">SaaS Production Gap Cross-Check</h4>
+        <p style="color:var(--text-secondary); line-height:1.7; margin-bottom:1rem;">Tabel ini membandingkan roadmap SDLC dengan note prioritas di <code>docs/SAAS_OPERATIONS.md</code>. SDLC mencatat baseline teknis yang sudah tersedia; note SaaS mencatat lapisan tambahan yang masih dibutuhkan sebelum public SaaS.</p>
+        <div class="doc-table-caption">Tabel 1.1.2 -- Cross-Check Prioritas SaaS terhadap Baseline SDLC</div>
+        <div class="doc-table-wrapper">
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Priority</th>
+                <th>SaaS note</th>
+                <th>SDLC baseline comparison</th>
+                <th>Decision</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>P0</code></td><td>Audit log</td><td>SDLC sudah punya auth, tenant isolation, logger, dan test coverage, tetapi belum mencatat implementasi <code>audit_logs</code>.</td><td>Tambahkan append-only audit log sebelum public SaaS.</td></tr>
+              <tr><td><code>P0</code></td><td>Billing and entitlement enforcement</td><td>SDLC sudah mencatat <code>users.device_limit</code>; belum ada subscription/plan, invoice, renewal, campaign-volume limit, atau entitlement middleware.</td><td>Tambahkan subscription/entitlement layer setelah pilot manual stabil.</td></tr>
+              <tr><td><code>P0</code></td><td>Legal/customer policy</td><td>SDLC dan privacy docs mencatat consent/opt-out/platform risk; belum ada customer-facing Terms/AUP/DPA/suspension/deletion policy lengkap.</td><td>Siapkan dokumen legal/customer policy sebelum public sale.</td></tr>
+              <tr><td><code>P1</code></td><td>Backup and retention production target</td><td>SDLC menandai backup/restore DONE untuk encrypted backup + Telegram offsite staging/pilot; security docs masih menyarankan object storage/managed destination untuk public SaaS.</td><td>Tetapkan offsite backup production-grade dan evidence restore.</td></tr>
+              <tr><td><code>P1</code></td><td>Session credential at-rest hardening</td><td>SDLC mencatat local directory isolation dan ACL; belum terbukti encrypted at-rest untuk session credentials.</td><td>Terapkan/rekam disk encryption, ACL final, session rotation, dan compromise removal procedure.</td></tr>
+              <tr><td><code>P1</code></td><td>Production monitoring and incident response</td><td>SDLC mencatat lightweight staging monitoring DONE; public traffic masih membutuhkan operator, escalation, dan incident drill yang eksplisit.</td><td>Perluas monitoring sesuai traffic dan tetapkan named operator.</td></tr>
+              <tr><td><code>P2</code></td><td>Platform governance</td><td>SDLC mencatat risiko Baileys dan governance DONE untuk pilot/operasi terbatas.</td><td>Pertahankan batas penggunaan pilot, lalu WhatsApp Business Platform path.</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -480,30 +505,54 @@
             </tr>
             <tr>
               <td><code>FR-25</code></td>
+              <td>Multi-User RBAC &amp; Tenant Isolation</td>
+              <td>Sistem mendukung banyak user dengan role admin/user, token login yang dapat dicabut, dan isolasi data per <code>user_id</code> untuk sessions, campaigns, flows, contacts, templates, warmer, dan dashboard stats.</td>
+              <td><span class="badge badge--high">Tinggi</span></td>
+            </tr>
+            <tr>
+              <td><code>FR-26</code></td>
+              <td>Scalable Chatbot Flow Session Mapping</td>
+              <td>Sistem menyimpan assignment flow-ke-sesi pada tabel normal <code>chatbot_flow_sessions</code> sehingga pesan masuk hanya mencari flow aktif untuk session terkait melalui index.</td>
+              <td><span class="badge badge--high">Tinggi</span></td>
+            </tr>
+            <tr>
+              <td><code>FR-27</code></td>
+              <td>Admin-Controlled Device Quota</td>
+              <td>Sistem memungkinkan admin mengatur <code>users.device_limit</code> dan menolak user non-admin membuat WhatsApp session baru ketika kuota device sudah tercapai.</td>
+              <td><span class="badge badge--high">Tinggi</span></td>
+            </tr>
+            <tr>
+              <td><code>FR-28</code></td>
+              <td>Admin-Only Monitoring Visibility</td>
+              <td>Sistem menyembunyikan menu dan route Monitoring dari user tenant biasa, sementara admin/operator tetap memiliki visibilitas operasional global.</td>
+              <td><span class="badge badge--high">Tinggi</span></td>
+            </tr>
+            <tr>
+              <td><code>FR-29</code></td>
               <td>Manual Session Reconnect</td>
               <td>Sistem mendukung pemutusan koneksi soket Baileys secara bersih dan menghubungkan kembali sesi tanpa menghapus kredensial atau Signal cache dari UI Devices secara manual.</td>
               <td><span class="badge badge--high">Tinggi</span></td>
             </tr>
             <tr>
-              <td><code>FR-26</code></td>
+              <td><code>FR-30</code></td>
               <td>Baileys Keep-Alive Heartbeat</td>
               <td>Sistem mengirimkan ping secara berkala untuk menjaga koneksi soket Baileys tetap aktif guna mencegah zombie connection.</td>
               <td><span class="badge badge--high">Tinggi</span></td>
             </tr>
             <tr>
-              <td><code>FR-27</code></td>
+              <td><code>FR-31</code></td>
               <td>Accurate System Memory Progress Bar</td>
               <td>Sistem mengukur penggunaan memori RSS (Resident Set Size) aplikasi terhadap batas RAM fisik server host secara akurat.</td>
               <td><span class="badge badge--high">Tinggi</span></td>
             </tr>
             <tr>
-              <td><code>FR-28</code></td>
+              <td><code>FR-32</code></td>
               <td>Browser Local Time Log Parsing</td>
               <td>Sistem mengonversi string tanggal UTC yang disimpan di database menjadi waktu lokal peramban pengguna saat merender log.</td>
               <td><span class="badge badge--high">Tinggi</span></td>
             </tr>
             <tr>
-              <td><code>FR-29</code></td>
+              <td><code>FR-33</code></td>
               <td>Fully Transparent QR Code Canvas Cutting</td>
               <td>Sistem memotong latar belakang secara transparan penuh pada modul QR, margin, dan pola mata pojok (finder pattern) menggunakan HTML5 Canvas 2D compositing.</td>
               <td><span class="badge badge--high">Tinggi</span></td>
@@ -557,11 +606,15 @@
             <tr><td><code>FR-22</code></td><td>Chatbot Flow Large Import &amp; Accurate Metrics</td><td><code>chatbot.controller.js</code>, <code>ChatbotFlows.jsx</code>, <code>whatsapp.service.js</code>, migration <code>006</code></td><td><span class="badge badge--info">TC-FLOW-03</span></td></tr>
             <tr><td><code>FR-23</code></td><td>Automatic Session Repair</td><td><code>auto_repair_disconnected.js</code>, <code>wa-bot-repair.timer</code></td><td><span class="badge badge--info">TC-RECON-02</span></td></tr>
             <tr><td><code>FR-24</code></td><td>Chatbot AI Dashboard Error Alerts</td><td><code>whatsapp.service.js</code>, <code>Dashboard.jsx</code>, <code>chatbot_ai_settings</code></td><td><span class="badge badge--info">TC-FLOW-04</span></td></tr>
-            <tr><td><code>FR-25</code></td><td>Manual Session Reconnect</td><td><code>whatsapp.service.js</code>, <code>session.controller.js</code>, <code>SessionManager.jsx</code></td><td><span class="badge badge--info">TC-RECON-03</span></td></tr>
-            <tr><td><code>FR-26</code></td><td>Baileys Keep-Alive Heartbeat</td><td><code>whatsapp.service.js</code> (Baileys socket config)</td><td><span class="badge badge--info">TC-RECON-04</span></td></tr>
-            <tr><td><code>FR-27</code></td><td>Accurate System Memory Progress Bar</td><td><code>Monitoring.jsx</code> (RSS memory vs physical system RAM)</td><td><span class="badge badge--info">TC-MON-01</span></td></tr>
-            <tr><td><code>FR-28</code></td><td>Browser Local Time Log Parsing</td><td><code>Dashboard.jsx</code> (UTC-to-local timezone)</td><td><span class="badge badge--info">TC-LOG-01</span></td></tr>
-            <tr><td><code>FR-29</code></td><td>Fully Transparent QR Code Canvas Cutting</td><td><code>QRCodeGenerator.jsx</code> (HTML5 Canvas destination-out clearing)</td><td><span class="badge badge--info">TC-UI-04</span></td></tr>
+            <tr><td><code>FR-25</code></td><td>Multi-User RBAC &amp; Tenant Isolation</td><td><code>auth.controller.js</code>, <code>admin_auth.middleware.js</code>, <code>user.controller.js</code>, <code>UserManagement.jsx</code>, migrations <code>011</code>, <code>012</code>, <code>014</code></td><td><span class="badge badge--info">TC-AUTH-03</span>, <span class="badge badge--info">TC-AUTH-04</span></td></tr>
+            <tr><td><code>FR-26</code></td><td>Scalable Chatbot Flow Session Mapping</td><td><code>chatbot_flow_sessions.service.js</code>, <code>chatbot.controller.js</code>, <code>whatsapp.service.js</code>, migration <code>015</code></td><td><span class="badge badge--info">TC-FLOW-05</span></td></tr>
+            <tr><td><code>FR-27</code></td><td>Admin-Controlled Device Quota</td><td><code>user.controller.js</code>, <code>session.controller.js</code>, <code>UserManagement.jsx</code>, migration <code>016</code></td><td><span class="badge badge--info">TC-AUTH-05</span></td></tr>
+            <tr><td><code>FR-28</code></td><td>Admin-Only Monitoring Visibility</td><td><code>Sidebar.jsx</code>, <code>App.jsx</code>, <code>Monitoring.jsx</code></td><td><span class="badge badge--info">TC-MON-02</span></td></tr>
+            <tr><td><code>FR-29</code></td><td>Manual Session Reconnect</td><td><code>whatsapp.service.js</code>, <code>session.controller.js</code>, <code>SessionManager.jsx</code></td><td><span class="badge badge--info">TC-RECON-03</span></td></tr>
+            <tr><td><code>FR-30</code></td><td>Baileys Keep-Alive Heartbeat</td><td><code>whatsapp.service.js</code> (Baileys socket config)</td><td><span class="badge badge--info">TC-RECON-04</span></td></tr>
+            <tr><td><code>FR-31</code></td><td>Accurate System Memory Progress Bar</td><td><code>Monitoring.jsx</code> (RSS memory vs physical system RAM)</td><td><span class="badge badge--info">TC-MON-01</span></td></tr>
+            <tr><td><code>FR-32</code></td><td>Browser Local Time Log Parsing</td><td><code>Dashboard.jsx</code> (UTC-to-local timezone)</td><td><span class="badge badge--info">TC-LOG-01</span></td></tr>
+            <tr><td><code>FR-33</code></td><td>Fully Transparent QR Code Canvas Cutting</td><td><code>QRCodeGenerator.jsx</code> (HTML5 Canvas destination-out clearing)</td><td><span class="badge badge--info">TC-UI-04</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -640,7 +693,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.8.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
   </footer>
   <script>
     const toggleBtn = document.querySelector('.theme-toggle');

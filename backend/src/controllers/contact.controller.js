@@ -4,20 +4,121 @@ import { isSessionManagerClientEnabled, sessionManagerClient } from '../services
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
 
+// Helper: Deteksi Info Negara
+const getCountryInfo = (num) => {
+  if (num.startsWith('62')) {
+    return { code: '+62', name: 'Indonesia' };
+  } else if (num.startsWith('1')) {
+    return { code: '+1', name: 'United States' };
+  } else if (num.startsWith('60')) {
+    return { code: '+60', name: 'Malaysia' };
+  } else if (num.startsWith('65')) {
+    return { code: '+65', name: 'Singapore' };
+  } else if (num.startsWith('84')) {
+    return { code: '+84', name: 'Vietnam' };
+  } else if (num.startsWith('91')) {
+    return { code: '+91', name: 'India' };
+  } else if (num.startsWith('44')) {
+    return { code: '+44', name: 'United Kingdom' };
+  } else if (num.startsWith('61')) {
+    return { code: '+61', name: 'Australia' };
+  } else if (num.startsWith('81')) {
+    return { code: '+81', name: 'Japan' };
+  } else if (num.startsWith('82')) {
+    return { code: '+82', name: 'South Korea' };
+  } else if (num.startsWith('966')) {
+    return { code: '+966', name: 'Saudi Arabia' };
+  } else if (num.startsWith('971')) {
+    return { code: '+971', name: 'United Arab Emirates' };
+  }
+  
+  if (num.length > 10) {
+    return { code: '+' + num.slice(0, 2), name: 'International' };
+  }
+  return { code: '+62', name: 'Indonesia' }; // Default fallback
+};
+
+// Helper: Format Nomor Telepon (e.g. +62 895-2593-9314)
+const formatPhoneNumber = (num) => {
+  const info = getCountryInfo(num);
+  const code = info.code;
+  const rest = num.slice(code.length - 1); // e.g. for +62 (length 3), slice 2 -> '895...'
+  
+  if (code === '+62' && rest.length >= 9) {
+    return `${code} ${rest.slice(0, 3)}-${rest.slice(3, 7)}-${rest.slice(7)}`;
+  } else if (code === '+1' && rest.length === 10) {
+    return `${code} (${rest.slice(0, 3)}) ${rest.slice(3, 6)}-${rest.slice(6)}`;
+  }
+  
+  if (rest.length > 7) {
+    return `${code} ${rest.slice(0, 3)}-${rest.slice(3, 6)}-${rest.slice(6)}`;
+  }
+  return `${code} ${rest}`;
+};
+
+// Helper: CSV escape (menghindari double quotes berlebih)
+const escapeCSV = (val) => {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
+// Helper: Normalisasi Nomor Telepon untuk Pencocokan Database (e.g. 0812 -> 62812)
+const normalizePhoneForMatching = (num) => {
+  if (!num) return '';
+  let clean = num.toString().replace(/\D/g, '');
+  if (clean.startsWith('0')) {
+    clean = '62' + clean.slice(1);
+  }
+  return clean;
+};
+
+// Helper: Verifikasi kepemilikan Grup Kontak
+const verifyGroupOwnership = async (groupId, req) => {
+  if (req.auth.role === 'admin') return true;
+  const group = await dbGet('SELECT user_id FROM contact_groups WHERE id = ?', [groupId]);
+  return group && group.user_id === req.auth.userId;
+};
+
+// Helper: Verifikasi kepemilikan Kontak
+const verifyContactOwnership = async (contactId, req) => {
+  if (req.auth.role === 'admin') return true;
+  const contact = await dbGet(
+    `SELECT cg.user_id FROM contacts c 
+     INNER JOIN contact_groups cg ON c.group_id = cg.id 
+     WHERE c.id = ?`,
+    [contactId]
+  );
+  return contact && contact.user_id === req.auth.userId;
+};
+
 export const getGroups = async (req, res) => {
   try {
-    const sql = `
-      SELECT 
-        cg.id, cg.name, cg.description, cg.color, cg.created_at,
-        COUNT(c.id) AS total_contacts,
-        SUM(CASE WHEN c.status = 'VERIFIED' THEN 1 ELSE 0 END) AS verified_contacts,
-        SUM(CASE WHEN c.status = 'UNVERIFIED' THEN 1 ELSE 0 END) AS unverified_contacts
-      FROM contact_groups cg
-      LEFT JOIN contacts c ON cg.id = c.group_id
-      GROUP BY cg.id
-      ORDER BY cg.created_at DESC
-    `;
-    const groups = await dbAll(sql);
+    const sql = req.auth.role === 'admin'
+      ? `SELECT 
+          cg.id, cg.name, cg.description, cg.color, cg.created_at,
+          COUNT(c.id) AS total_contacts,
+          SUM(CASE WHEN c.status = 'VERIFIED' THEN 1 ELSE 0 END) AS verified_contacts,
+          SUM(CASE WHEN c.status = 'UNVERIFIED' THEN 1 ELSE 0 END) AS unverified_contacts
+        FROM contact_groups cg
+        LEFT JOIN contacts c ON cg.id = c.group_id
+        GROUP BY cg.id
+        ORDER BY cg.created_at DESC`
+      : `SELECT 
+          cg.id, cg.name, cg.description, cg.color, cg.created_at,
+          COUNT(c.id) AS total_contacts,
+          SUM(CASE WHEN c.status = 'VERIFIED' THEN 1 ELSE 0 END) AS verified_contacts,
+          SUM(CASE WHEN c.status = 'UNVERIFIED' THEN 1 ELSE 0 END) AS unverified_contacts
+        FROM contact_groups cg
+        LEFT JOIN contacts c ON cg.id = c.group_id
+        WHERE cg.user_id = ?
+        GROUP BY cg.id
+        ORDER BY cg.created_at DESC`;
+    
+    const groups = await dbAll(sql, req.auth.role === 'admin' ? [] : [req.auth.userId]);
     return sendSuccess(res, groups);
   } catch (error) {
     logError('getGroupsContacts', error);
@@ -30,8 +131,8 @@ export const createGroup = async (req, res) => {
 
   try {
     const result = await dbRun(
-      'INSERT INTO contact_groups (name, description, color) VALUES (?, ?, ?)',
-      [name, description || null, color || '#3b82f6']
+      'INSERT INTO contact_groups (name, description, color, user_id) VALUES (?, ?, ?, ?)',
+      [name, description || null, color || '#3b82f6', req.auth.userId]
     );
     return sendSuccess(res, { id: result.id }, 201, { message: 'Grup kontak berhasil dibuat.' });
   } catch (error) {
@@ -45,9 +146,9 @@ export const updateGroup = async (req, res) => {
   const { name, description, color } = req.body;
 
   try {
-    const existing = await dbGet('SELECT * FROM contact_groups WHERE id = ?', [id]);
-    if (!existing) {
-      return sendError(res, 404, 'CONTACT_GROUP_NOT_FOUND', 'Grup kontak tidak ditemukan.');
+    const isOwner = await verifyGroupOwnership(id, req);
+    if (!isOwner) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke grup kontak ini.');
     }
 
     await dbRun(
@@ -64,9 +165,9 @@ export const updateGroup = async (req, res) => {
 export const deleteGroup = async (req, res) => {
   const { id } = req.params;
   try {
-    const existing = await dbGet('SELECT * FROM contact_groups WHERE id = ?', [id]);
-    if (!existing) {
-      return sendError(res, 404, 'CONTACT_GROUP_NOT_FOUND', 'Grup kontak tidak ditemukan.');
+    const isOwner = await verifyGroupOwnership(id, req);
+    if (!isOwner) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke grup kontak ini.');
     }
 
     // Manual cascade delete contacts for safety
@@ -86,6 +187,11 @@ export const getContacts = async (req, res) => {
   }
 
   try {
+    const isOwner = await verifyGroupOwnership(groupId, req);
+    if (!isOwner) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke grup kontak ini.');
+    }
+
     let sql = 'SELECT * FROM contacts WHERE group_id = ?';
     let params = [groupId];
 
@@ -132,6 +238,11 @@ export const createContact = async (req, res) => {
   } = req.body;
 
   try {
+    const isOwner = await verifyGroupOwnership(group_id, req);
+    if (!isOwner) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke grup kontak ini.');
+    }
+
     let cleanPhone = phone_number.toString().trim();
     if (cleanPhone.toLowerCase().includes('e+')) {
       const parsed = Number(cleanPhone);
@@ -201,9 +312,9 @@ export const updateContact = async (req, res) => {
   } = req.body;
 
   try {
-    const existing = await dbGet('SELECT * FROM contacts WHERE id = ?', [id]);
-    if (!existing) {
-      return sendError(res, 404, 'CONTACT_NOT_FOUND', 'Kontak tidak ditemukan.');
+    const isOwner = await verifyContactOwnership(id, req);
+    if (!isOwner) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kontak ini.');
     }
 
     let cleanPhone = phone_number.toString().trim();
@@ -252,9 +363,9 @@ export const updateContact = async (req, res) => {
 export const deleteContact = async (req, res) => {
   const { id } = req.params;
   try {
-    const existing = await dbGet('SELECT * FROM contacts WHERE id = ?', [id]);
-    if (!existing) {
-      return sendError(res, 404, 'CONTACT_NOT_FOUND', 'Kontak tidak ditemukan.');
+    const isOwner = await verifyContactOwnership(id, req);
+    if (!isOwner) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kontak ini.');
     }
 
     await dbRun('DELETE FROM contacts WHERE id = ?', [id]);
@@ -269,6 +380,11 @@ export const bulkCreateContacts = async (req, res) => {
   const { group_id, contacts } = req.body;
 
   try {
+    const isOwner = await verifyGroupOwnership(group_id, req);
+    if (!isOwner) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke grup kontak ini.');
+    }
+
     // Jalankan dalam sequence
     for (const c of contacts) {
       let phone = (c.Phone || c.phone_number || c.phone || c.Number || c.number || c.telepon || c.hp || '').toString().trim();
@@ -337,6 +453,11 @@ export const bulkCreateContacts = async (req, res) => {
 export const deleteInvalidContacts = async (req, res) => {
   const { groupId } = req.params;
   try {
+    const isOwner = await verifyGroupOwnership(groupId, req);
+    if (!isOwner) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke grup kontak ini.');
+    }
+
     await dbRun('DELETE FROM contacts WHERE group_id = ? AND status = "INVALID"', [groupId]);
     return sendSuccess(res, null, 200, { message: 'Semua nomor tidak valid berhasil dihapus.' });
   } catch (error) {
@@ -346,6 +467,10 @@ export const deleteInvalidContacts = async (req, res) => {
 };
 
 export const cleanupOrphanedContacts = async (req, res) => {
+  if (req.auth.role !== 'admin') {
+    return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Hanya admin yang dapat membersihkan kontak yatim sistem.');
+  }
+
   try {
     const result = await dbRun('DELETE FROM contacts WHERE group_id NOT IN (SELECT id FROM contact_groups)');
     return sendSuccess(res, null, 200, { message: `Berhasil membersihkan ${result.changes} kontak yatim.` });
@@ -359,22 +484,29 @@ export const verifyGroupContacts = async (req, res) => {
   const { groupId } = req.params;
   const { session_id } = req.body;
 
-  if (isSessionManagerClientEnabled()) {
-    try {
+  try {
+    const isOwner = await verifyGroupOwnership(groupId, req);
+    if (!isOwner) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke grup kontak ini.');
+    }
+
+    if (req.auth.role !== 'admin') {
+      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
+      if (!sess || sess.user_id !== req.auth.userId) {
+        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi WhatsApp ini.');
+      }
+    }
+
+    if (isSessionManagerClientEnabled()) {
       const result = await sessionManagerClient.verifyGroupContacts(groupId, session_id);
       return res.json(result);
-    } catch (error) {
-      logError('delegateVerifyGroupContacts', error, { groupId, sessionId: session_id });
-      return sendError(res, 500, 'DELEGATE_VERIFY_CONTACTS_ERROR', error.message || 'Gagal mendelegasikan verifikasi kontak.');
     }
-  }
 
-  const sock = whatsappService.sockets[session_id];
-  if (!sock) {
-    return sendError(res, 404, 'SESSION_NOT_ACTIVE', `Sesi WhatsApp "${session_id}" tidak aktif atau tidak terhubung.`);
-  }
+    const sock = whatsappService.sockets[session_id];
+    if (!sock) {
+      return sendError(res, 404, 'SESSION_NOT_ACTIVE', `Sesi WhatsApp "${session_id}" tidak aktif atau tidak terhubung.`);
+    }
 
-  try {
     const contacts = await dbAll('SELECT * FROM contacts WHERE group_id = ? AND status = "UNVERIFIED"', [groupId]);
     if (contacts.length === 0) {
       return sendSuccess(res, null, 200, { message: 'Tidak ada kontak belum terverifikasi dalam grup ini.' });

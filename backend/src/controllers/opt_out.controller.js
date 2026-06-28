@@ -4,7 +4,7 @@ import { logError } from '../logger.js';
 
 export const getOptOuts = async (req, res) => {
   try {
-    const list = await listOptOuts();
+    const list = await listOptOuts(req.auth.role === 'admin' ? null : req.auth.userId);
     return sendSuccess(res, list);
   } catch (error) {
     logError('getOptOuts', error);
@@ -15,7 +15,7 @@ export const getOptOuts = async (req, res) => {
 export const createOptOut = async (req, res) => {
   try {
     const { phone_number } = req.body;
-    const phoneNumber = await recordOptOut(phone_number, 'MANUAL');
+    const phoneNumber = await recordOptOut(phone_number, req.auth.userId, 'MANUAL');
     return sendSuccess(res, { phone_number: phoneNumber }, 201, { message: 'Nomor ditambahkan ke suppression list.' });
   } catch (error) {
     logError('createOptOut', error, { body: req.body });
@@ -26,7 +26,7 @@ export const createOptOut = async (req, res) => {
 export const deleteOptOut = async (req, res) => {
   try {
     const { phoneNumber } = req.params;
-    await removeOptOut(phoneNumber);
+    await removeOptOut(phoneNumber, req.auth.role === 'admin' ? null : req.auth.userId);
     return sendSuccess(res, null, 200, { message: 'Nomor dihapus dari suppression list.' });
   } catch (error) {
     logError('deleteOptOut', error, { params: req.params });

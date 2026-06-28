@@ -298,9 +298,9 @@
                 <td><code>backend/src/database.js</code> dan controllers</td>
               </tr>
               <tr>
-                <td>Session credential location</td>
-                <td>File autentikasi Baileys disimpan di bawah direktori backend, di luar webroot frontend.</td>
-                <td><code>backend/sessions/</code></td>
+                <td>Session credential encryption</td>
+                <td>File autentikasi Baileys dienkripsi secara at-rest menggunakan AES-256-GCM dan disimpan di bawah direktori backend.</td>
+                <td><code>backend/sessions/</code> via <code>useEncryptedMultiFileAuthState</code></td>
               </tr>
               <tr>
                 <td>AI API key visual masking</td>
@@ -378,8 +378,17 @@
                 <td>Admin dapat membersihkan cache Signal crypt-key secara manual tanpa menghapus kredensial,
                   menyelesaikan bug dekripsi riwayat sinkronisasi.</td>
                 <td><code>backend/src/services/whatsapp.service.js</code>,
-                  <code>frontend/src/components/SessionManager.jsx</code>, <a href="../images/media__1780840141270.png"
-                    target="_blank">Tangkapan Layar UI</a></td>
+                  <code>frontend/src/components/SessionManager.jsx</code></td>
+              </tr>
+              <tr>
+                <td>Inbound message ReferenceError fix</td>
+                <td>Memperbaiki bug ReferenceError terkait variabel <code>isGroup</code> pada messages.upsert loop untuk menjamin kelancaran pemrosesan pesan masuk.</td>
+                <td><code>backend/src/services/whatsapp.service.js</code></td>
+              </tr>
+              <tr>
+                <td>Connection-level SQLite pragmas &amp; busy_timeout</td>
+                <td>Mengonfigurasi <code>busy_timeout = 5000</code>, <code>journal_mode = WAL</code>, dan <code>foreign_keys = ON</code> secara otomatis pada setiap pembukaan koneksi untuk performa tinggi dan pencegahan lock database.</td>
+                <td><code>backend/src/database.js</code></td>
               </tr>
             </tbody>
           </table>
@@ -458,10 +467,9 @@
             </thead>
             <tbody>
               <tr>
-                <td><span class="status-dot status-dot--gap"></span>Session credentials belum terbukti terenkripsi
-                  at-rest</td>
-                <td>Akses filesystem mengekspos sesi WhatsApp</td>
-                <td>Terapkan OS ACL, enkripsi at-rest, prosedur rotasi sesi</td>
+                <td><span class="status-dot status-dot--done"></span>Session credentials at-rest encryption</td>
+                <td>N/A (Sudah Terenkripsi)</td>
+                <td>Telah diimplementasikan menggunakan penyedia otentikasi kustom berbasis AES-256-GCM (Selesai).</td>
               </tr>
               <tr>
                 <td><span class="status-dot status-dot--partial"></span>Chatbot AI key lama mungkin masih plaintext</td>
@@ -667,7 +675,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.8.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
     <p style="margin-top:0.5rem;">IP address data powered by <a href="https://iplocate.io" target="_blank"
         rel="noopener">IPLocate.io</a></p>
   </footer>

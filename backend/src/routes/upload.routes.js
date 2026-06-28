@@ -1,8 +1,9 @@
 import express from 'express';
 import multer from 'multer';
-import { uploadMedia } from '../controllers/upload.controller.js';
+import { downloadMedia, uploadMedia } from '../controllers/upload.controller.js';
 import { createMediaFilename, ensureMediaUploadDir, getMediaSpec, MEDIA_UPLOAD_DIR } from '../services/upload.service.js';
 import { sendError } from '../utils/http_response.js';
+import { requireActiveSubscription } from '../middleware/entitlement.middleware.js';
 
 ensureMediaUploadDir();
 
@@ -31,7 +32,7 @@ const upload = multer({
 
 const router = express.Router();
 
-router.post('/media', (req, res, next) => {
+router.post('/media', requireActiveSubscription, (req, res, next) => {
   upload.single('media')(req, res, (err) => {
     if (!err) return next();
 
@@ -47,10 +48,6 @@ router.post('/media', (req, res, next) => {
   });
 }, uploadMedia);
 
-router.use('/media', express.static(MEDIA_UPLOAD_DIR, {
-  fallthrough: false,
-  immutable: true,
-  maxAge: '7d'
-}));
+router.get('/media/:filename', downloadMedia);
 
 export default router;

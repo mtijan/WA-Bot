@@ -23,6 +23,17 @@ export async function apiRequest(path, options = {}) {
   });
 
   if (!response.ok) {
+    if (response.status === 401 && !options._isRetry && !path.includes('/auth/login') && !path.includes('/auth/refresh')) {
+      options._isRetry = true;
+      try {
+        await apiRequest('/auth/refresh', { method: 'POST', _isRetry: true });
+        return await apiRequest(path, options);
+      } catch (refreshError) {
+        window.dispatchEvent(new CustomEvent('unauthorized-api-call'));
+        throw refreshError;
+      }
+    }
+
     const contentType = response.headers.get('content-type') || '';
     const payload = contentType.includes('application/json')
       ? await response.json().catch(() => null)

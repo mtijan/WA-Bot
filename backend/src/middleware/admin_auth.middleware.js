@@ -1,8 +1,10 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import { createHmac, createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { config } from '../config.js';
+import { dbGet } from '../database.js';
 import { sendError } from '../utils/http_response.js';
 
-const COOKIE_NAME = 'wa_bot_admin';
+const ACCESS_COOKIE_NAME = 'wa_bot_access';
+const REFRESH_COOKIE_NAME = 'wa_bot_refresh';
 
 function base64UrlEncode(value) {
   return Buffer.from(value).toString('base64url');
@@ -49,28 +51,51 @@ function signPayload(payload) {
   return createHmac('sha256', getSessionSecret()).update(payload).digest('base64url');
 }
 
-export function isAdminAuthEnabled() {
-  return Boolean(process.env.WA_BOT_ADMIN_PASSWORD || config.admin.password);
+export function isAdminAuthEnabled(forceEnabled = false) {
+  if (forceEnabled) {
+    return true;
+  }
+  if (process.env.NODE_ENV === 'test' && !process.env.WA_BOT_ADMIN_PASSWORD) {
+    return false;
+  }
+  return true;
 }
 
-export function getAdminUsername() {
-  return process.env.WA_BOT_ADMIN_USERNAME || config.admin.username;
-}
-
-export function createAdminSessionToken(username = getAdminUsername()) {
+export function signAccessToken(user) {
   const now = Date.now();
-  const ttlMs = config.admin.sessionTtlMs;
+  const ttlMs = 15 * 60 * 1000; // 15 minutes
   const payload = base64UrlEncode(JSON.stringify({
-    sub: username,
+    sub: user.id,
+    username: user.username,
+    role: user.role,
+    ver: user.token_version || 0,
+    type: 'access',
     iat: now,
     exp: now + ttlMs,
     nonce: randomBytes(16).toString('hex')
   }));
-
   return `${payload}.${signPayload(payload)}`;
 }
 
-export function verifyAdminSessionToken(token) {
+export function signRefreshToken(user) {
+  const now = Date.now();
+  const ttlMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+  const jti = randomBytes(24).toString('hex');
+  const payload = base64UrlEncode(JSON.stringify({
+    sub: user.id,
+    username: user.username,
+    role: user.role,
+    ver: user.token_version || 0,
+    jti,
+    type: 'refresh',
+    iat: now,
+    exp: now + ttlMs,
+    nonce: randomBytes(16).toString('hex')
+  }));
+  return `${payload}.${signPayload(payload)}`;
+}
+
+export function verifyToken(token, expectedType) {
   if (!token || !token.includes('.')) return null;
   const [payload, signature] = token.split('.');
   const expectedSignature = signPayload(payload);
@@ -78,54 +103,100 @@ export function verifyAdminSessionToken(token) {
   if (!secretsMatch(signature, expectedSignature)) return null;
 
   try {
-    const session = JSON.parse(base64UrlDecode(payload));
-    if (!session.exp || session.exp < Date.now()) return null;
-    return session;
+    const data = JSON.parse(base64UrlDecode(payload));
+    if (!data.exp || data.exp < Date.now()) return null;
+    if (expectedType && data.type !== expectedType) return null;
+    return data;
   } catch {
     return null;
   }
 }
 
-export function buildAdminCookie(token) {
-  const ttlMs = config.admin.sessionTtlMs;
+export function hashToken(token) {
+  return createHash('sha256').update(String(token)).digest('hex');
+}
+
+export function buildAccessCookie(token) {
   const secure = config.admin.cookieSecure ? '; Secure' : '';
-  return `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(ttlMs / 1000)}${secure}`;
+  return `${ACCESS_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=900${secure}`;
 }
 
-export function buildClearAdminCookie() {
+export function buildRefreshCookie(token) {
   const secure = config.admin.cookieSecure ? '; Secure' : '';
-  return `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
+  return `${REFRESH_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=604800${secure}`;
 }
 
-export function getAdminSession(req) {
-  return verifyAdminSessionToken(getCookie(req, COOKIE_NAME));
+export function buildClearAccessCookie() {
+  const secure = config.admin.cookieSecure ? '; Secure' : '';
+  return `${ACCESS_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
 }
 
-export function validateAdminCredentials(username, password) {
-  const configuredPassword = process.env.WA_BOT_ADMIN_PASSWORD || config.admin.password;
-  return secretsMatch(username, getAdminUsername()) && secretsMatch(password, configuredPassword);
+export function buildClearRefreshCookie() {
+  const secure = config.admin.cookieSecure ? '; Secure' : '';
+  return `${REFRESH_COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/api/auth; Max-Age=0${secure}`;
 }
 
-export function createAdminAuthMiddleware() {
-  return (req, res, next) => {
+export function getSessionFromRequest(req) {
+  return verifyToken(getCookie(req, ACCESS_COOKIE_NAME), 'access');
+}
+
+export function getRefreshSessionFromRequest(req) {
+  return verifyToken(getCookie(req, REFRESH_COOKIE_NAME), 'refresh');
+}
+
+export function createAdminAuthMiddleware(options = {}) {
+  return async (req, res, next) => {
     const apiKey = process.env.WA_BOT_API_KEY || config.apiKey;
     if (apiKey && secretsMatch(req.get('X-API-Key'), apiKey)) {
-      req.auth = { type: 'api-key' };
+      req.auth = { type: 'api-key', userId: 1, username: 'api-key', role: 'admin' };
       return next();
     }
 
-    if (!isAdminAuthEnabled()) {
-      if (!apiKey) return next();
-
-      return sendError(res, 401, 'API_KEY_REQUIRED', 'API key diperlukan untuk mengakses API.');
+    if (!isAdminAuthEnabled(options.enabled === true)) {
+      req.auth = { type: 'session', userId: 1, username: 'admin', role: 'admin' };
+      return next();
     }
 
-    const session = getAdminSession(req);
+    const session = getSessionFromRequest(req);
     if (!session) {
-      return sendError(res, 401, 'ADMIN_AUTH_REQUIRED', 'Login admin diperlukan untuk accessing API.');
+      return sendError(res, 401, 'AUTH_REQUIRED', 'Login diperlukan untuk mengakses API.');
     }
 
-    req.auth = { type: 'admin-session', username: session.sub };
+    try {
+      const user = await dbGet(
+        'SELECT id, username, role, is_active, token_version FROM users WHERE id = ?',
+        [session.sub]
+      );
+      if (!user || Number(user.is_active) !== 1) {
+        return sendError(res, 401, 'AUTH_REQUIRED', 'Login diperlukan untuk mengakses API.');
+      }
+      if (Number(user.token_version || 0) !== Number(session.ver || 0)) {
+        return sendError(res, 401, 'AUTH_REQUIRED', 'Sesi sudah tidak berlaku. Silakan login ulang.');
+      }
+
+      req.auth = {
+        type: 'session',
+        userId: user.id,
+        username: user.username,
+        role: user.role
+      };
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  };
+}
+
+export function requireRole(...roles) {
+  return (req, res, next) => {
+    if (req.auth && req.auth.type === 'api-key') {
+      return next();
+    }
+
+    if (!req.auth || !roles.includes(req.auth.role)) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki hak akses untuk operasi ini.');
+    }
+
     return next();
   };
 }

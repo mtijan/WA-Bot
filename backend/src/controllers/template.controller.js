@@ -1,11 +1,14 @@
 import { dbRun, dbAll, dbGet } from '../database.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
+import { auditLog } from '../services/audit.service.js';
 
 export const getTemplates = async (req, res) => {
   try {
-    const sql = 'SELECT * FROM message_templates ORDER BY created_at DESC';
-    const templates = await dbAll(sql);
+    const sql = req.auth.role === 'admin'
+      ? 'SELECT * FROM message_templates ORDER BY created_at DESC'
+      : 'SELECT * FROM message_templates WHERE user_id = ? ORDER BY created_at DESC';
+    const templates = await dbAll(sql, req.auth.role === 'admin' ? [] : [req.auth.userId]);
     return sendSuccess(res, templates);
   } catch (error) {
     logError('getTemplates', error);
@@ -30,8 +33,8 @@ export const createTemplate = async (req, res) => {
   try {
     const result = await dbRun(
       `INSERT INTO message_templates 
-      (name, content, type, category, attachment_url, attachment_name, contact_name, contact_number, poll_question, poll_options) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (name, content, type, category, attachment_url, attachment_name, contact_name, contact_number, poll_question, poll_options, user_id) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
         content,
@@ -42,9 +45,11 @@ export const createTemplate = async (req, res) => {
         contact_name,
         contact_number,
         poll_question,
-        poll_options
+        poll_options,
+        req.auth.userId
       ]
     );
+    auditLog(req, 'TEMPLATE_CREATE', 'template', String(result.id), 'success', { name, type, category });
     return sendSuccess(res, { 
       id: result.id, 
       name, 
@@ -72,7 +77,12 @@ export const deleteTemplate = async (req, res) => {
       return sendError(res, 404, 'TEMPLATE_NOT_FOUND', 'Template tidak ditemukan.');
     }
 
+    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke template ini.');
+    }
+
     await dbRun('DELETE FROM message_templates WHERE id = ?', [id]);
+    auditLog(req, 'TEMPLATE_DELETE', 'template', String(id), 'success', { name: existing.name });
     return sendSuccess(res, null, 200, { message: 'Template berhasil dihapus.' });
   } catch (error) {
     logError('deleteTemplate', error, { params: req.params });

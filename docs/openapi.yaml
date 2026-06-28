@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: WA-Bot Pro Local API
-  version: 2.3.0
+  version: 2.9.2
   description: |
     Machine-readable baseline for the routes mounted by the local Express backend.
     Rate limiting and restricted CORS origins are enforced by the local backend.
@@ -15,6 +15,7 @@ security:
   - ApiKeyAuth: []
 tags:
   - name: Auth
+  - name: User Management
   - name: Sessions
   - name: Campaigns
   - name: Contacts
@@ -28,6 +29,9 @@ tags:
   - name: Chatbot AI
   - name: Opt Outs
   - name: Uploads
+  - name: Monitoring
+  - name: Plans
+  - name: Audit Logs
   - name: Internal Process API
 paths:
   /auth/me:
@@ -62,6 +66,96 @@ paths:
       security: []
       responses:
         '200': { $ref: '#/components/responses/Success' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token and issue a fresh access cookie
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+  /users:
+    get:
+      tags: [User Management]
+      summary: List dashboard users
+      description: Admin-only. Returns users without password hashes or refresh tokens.
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [User Management]
+      summary: Create a dashboard user
+      description: Admin-only. Passwords must be at least 12 characters and are stored as bcrypt hashes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, role]
+              properties:
+                username: { type: string, minLength: 3, maxLength: 30, pattern: '^[a-zA-Z0-9_.-]+$' }
+                password: { type: string, format: password, minLength: 12, maxLength: 100 }
+                display_name: { type: string, maxLength: 100 }
+                role: { type: string, enum: [admin, user] }
+                device_limit: { type: integer, minimum: 0, maximum: 100, default: 1 }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /users/{id}:
+    patch:
+      tags: [User Management]
+      summary: Update a dashboard user profile, role, or active status
+      description: Admin-only. Role or active-status changes revoke existing sessions through token_version.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name: { type: string, maxLength: 100 }
+                role: { type: string, enum: [admin, user] }
+                is_active: { type: integer, enum: [0, 1] }
+                device_limit: { type: integer, minimum: 0, maximum: 100 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [User Management]
+      summary: Deactivate a dashboard user
+      description: Admin-only. The user is soft-deleted by setting is_active=0 and revoking active sessions.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /users/{id}/password:
+    patch:
+      tags: [User Management]
+      summary: Change a dashboard user password
+      description: Users may change their own password with the old password; admins may reset another user password. Password changes revoke existing sessions.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_password]
+              properties:
+                old_password: { type: string, format: password }
+                new_password: { type: string, format: password, minLength: 12, maxLength: 100 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /sessions:
     get:
       tags: [Sessions]
@@ -95,6 +189,20 @@ paths:
     patch:
       tags: [Sessions]
       summary: Assign or clear a session proxy
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /sessions/{id}/repair:
+    post:
+      tags: [Sessions]
+      summary: Manually repair a disconnected or corrupted session
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /sessions/{id}/reconnect:
+    post:
+      tags: [Sessions]
+      summary: Manually reconnect a WhatsApp session
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/Success' }
@@ -288,6 +396,11 @@ paths:
       summary: List auto-reply rules
       responses:
         '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Auto Replies]
+      summary: Create an auto-reply rule
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
   /auto-replies/{id}:
     put:
       tags: [Auto Replies]
@@ -301,15 +414,15 @@ paths:
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/Success' }
-    post:
-      tags: [Auto Replies]
-      summary: Create an auto-reply rule
-      responses:
-        '200': { $ref: '#/components/responses/Success' }
   /warmer/templates:
     get:
       tags: [Warmer]
       summary: List warmer templates
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Warmer]
+      summary: Create a warmer template
       responses:
         '200': { $ref: '#/components/responses/Success' }
   /warmer/templates/{id}:
@@ -317,11 +430,6 @@ paths:
       tags: [Warmer]
       summary: Delete a warmer template
       parameters: [{ $ref: '#/components/parameters/Id' }]
-      responses:
-        '200': { $ref: '#/components/responses/Success' }
-    post:
-      tags: [Warmer]
-      summary: Create a warmer template
       responses:
         '200': { $ref: '#/components/responses/Success' }
   /warmer/campaigns:
@@ -413,6 +521,13 @@ paths:
       summary: List proxies
       responses:
         '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Proxies]
+      summary: Create a proxy configuration
+      description: Admin-only. Proxy credentials are masked in subsequent responses.
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
   /proxies/{id}:
     delete:
       tags: [Proxies]
@@ -484,6 +599,45 @@ paths:
       summary: Test an AI provider connection
       responses:
         '200': { $ref: '#/components/responses/Success' }
+  /chatbot-ai/credentials:
+    get:
+      tags: [Chatbot AI]
+      summary: List Chatbot AI provider credentials
+      description: Non-admin users only see credentials in their tenant; API keys are masked.
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Chatbot AI]
+      summary: Create a Chatbot AI provider credential
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+  /chatbot-ai/credentials/{id}:
+    put:
+      tags: [Chatbot AI]
+      summary: Update a Chatbot AI provider credential
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Chatbot AI]
+      summary: Delete a Chatbot AI provider credential
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /chatbot-ai/credentials/{id}/toggle:
+    patch:
+      tags: [Chatbot AI]
+      summary: Toggle a Chatbot AI provider credential active status
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /opt-outs:
     get:
       tags: [Opt Outs]
@@ -526,6 +680,140 @@ paths:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '#/components/responses/Error' }
         '413': { $ref: '#/components/responses/Error' }
+  /uploads/media/{filename}:
+    get:
+      tags: [Uploads]
+      summary: Download an uploaded media file
+      description: Requires authentication. Admins can access all uploaded media; regular users can only access media they uploaded.
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Binary media file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /monitoring/status:
+    get:
+      tags: [Monitoring]
+      summary: Get dashboard monitoring status
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /monitoring/repair-logs:
+    get:
+      tags: [Monitoring]
+      summary: List session repair logs
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /monitoring/failed-replies:
+    get:
+      tags: [Monitoring]
+      summary: List failed chatbot replies
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /monitoring/failed-replies/{id}/status:
+    patch:
+      tags: [Monitoring]
+      summary: Update failed chatbot reply status
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /plans:
+    get:
+      tags: [Plans]
+      summary: List subscription plans
+      description: Admin-only management endpoint for SaaS device, campaign, and chatbot-flow quotas.
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Plans]
+      summary: Create a subscription plan
+      description: Admin-only. If is_default is true, existing default plans are unset.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, max_sessions, max_campaigns_per_month, max_flows]
+              properties:
+                name: { type: string }
+                max_sessions: { type: integer, minimum: 0 }
+                max_campaigns_per_month: { type: integer, minimum: 0 }
+                max_flows: { type: integer, minimum: 0 }
+                is_default: { type: boolean }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /plans/{id}:
+    put:
+      tags: [Plans]
+      summary: Update a subscription plan
+      description: Admin-only. Cannot bypass user entitlement checks; runtime quota enforcement reads the current plan values.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, max_sessions, max_campaigns_per_month, max_flows]
+              properties:
+                name: { type: string }
+                max_sessions: { type: integer, minimum: 0 }
+                max_campaigns_per_month: { type: integer, minimum: 0 }
+                max_flows: { type: integer, minimum: 0 }
+                is_default: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Plans]
+      summary: Delete a subscription plan
+      description: Admin-only. Plans assigned to existing users cannot be deleted.
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /audit-logs:
+    get:
+      tags: [Audit Logs]
+      summary: List audit log entries
+      description: Admins can view all audit events; regular users can only view events where they are the actor.
+      parameters:
+        - name: event_type
+          in: query
+          schema: { type: string }
+        - name: target_type
+          in: query
+          schema: { type: string }
+        - name: result
+          in: query
+          schema: { type: string, enum: [success, failure] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
   /internal/health/live:
     get:
       tags: [Internal Process API]
@@ -543,6 +831,15 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '503': { $ref: '#/components/responses/Error' }
+  /internal/health/failed-replies:
+    get:
+      tags: [Internal Process API]
+      summary: Internal failed-replies health summary
+      security:
+        - InternalToken: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
   /internal/sessions:
     get:
       tags: [Internal Process API]
@@ -591,6 +888,26 @@ paths:
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses:
         '200': { $ref: '#/components/responses/Success' }
+  /internal/sessions/{id}/repair:
+    post:
+      tags: [Internal Process API]
+      summary: Repair a session through the session-manager process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+  /internal/sessions/{id}/reconnect:
+    post:
+      tags: [Internal Process API]
+      summary: Reconnect a session through the session-manager process
+      security:
+        - InternalToken: []
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
   /internal/groups/{id}:
     get:
       tags: [Internal Process API]
@@ -690,8 +1007,8 @@ components:
     AdminSession:
       type: apiKey
       in: cookie
-      name: wa_bot_admin
-      description: HttpOnly admin session cookie issued by /auth/login when WA_BOT_ADMIN_PASSWORD is configured.
+      name: wa_bot_access
+      description: HttpOnly JWT access cookie issued by /auth/login. Refresh rotation uses the separate HttpOnly wa_bot_refresh cookie on /api/auth/refresh.
     ApiKeyAuth:
       type: apiKey
       in: header

@@ -10,12 +10,13 @@ import {
   deleteCampaign
 } from '../controllers/warmer.controller.js';
 import { validateBody } from '../utils/validator.js';
+import { requireActiveSubscription } from '../middleware/entitlement.middleware.js';
 
 const router = express.Router();
 
 // Rute Template Warmer
 router.get('/templates', getTemplates);
-router.post('/templates', validateBody({
+router.post('/templates', requireActiveSubscription, validateBody({
   name: { required: true, type: 'string', min: 1, max: 100 },
   messages: { required: true, type: 'string', min: 1 }
 }), createTemplate);
@@ -23,7 +24,7 @@ router.delete('/templates/:id', deleteTemplate);
 
 // Rute Kampanye Warmer
 router.get('/campaigns', getCampaigns);
-router.post('/campaigns', validateBody({
+router.post('/campaigns', requireActiveSubscription, validateBody({
   name: { required: true, type: 'string', min: 1, max: 100 },
   device_ids: { required: true, type: 'string', min: 1 },
   messages: { required: true, type: 'string', min: 1 },

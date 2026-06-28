@@ -19,10 +19,22 @@ const GroupGrabber = lazy(() => import('./components/GroupGrabber'));
 const ChatbotAI = lazy(() => import('./components/ChatbotAI'));
 const Monitoring = lazy(() => import('./components/Monitoring'));
 const QRCodeGenerator = lazy(() => import('./components/QRCodeGenerator'));
+const UserManagement = lazy(() => import('./components/UserManagement'));
+const PlansManagement = lazy(() => import('./components/PlansManagement'));
 
 function App() {
   const [toasts, setToasts] = useState([]);
-  const [authState, setAuthState] = useState({ loading: true, enabled: false, authenticated: false, username: null });
+  const [authState, setAuthState] = useState({ loading: true, enabled: false, authenticated: false, username: null, role: null });
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setAuthState({ loading: false, enabled: true, authenticated: false, username: null, role: null });
+    };
+    window.addEventListener('unauthorized-api-call', handleUnauthorized);
+    return () => {
+      window.removeEventListener('unauthorized-api-call', handleUnauthorized);
+    };
+  }, []);
 
   const addToast = useCallback((message, type = 'info') => {
     const id = Date.now() + Math.random();
@@ -56,7 +68,7 @@ function App() {
         const json = await apiRequest('/auth/me');
         if (!cancelled) setAuthState({ loading: false, ...json.data });
       } catch {
-        if (!cancelled) setAuthState({ loading: false, enabled: true, authenticated: false, username: null });
+        if (!cancelled) setAuthState({ loading: false, enabled: true, authenticated: false, username: null, role: null });
       }
     }
 
@@ -67,8 +79,10 @@ function App() {
   }, []);
 
   const handleLogout = async () => {
-    await apiRequest('/auth/logout', { method: 'POST' });
-    setAuthState({ loading: false, enabled: true, authenticated: false, username: null });
+    try {
+      await apiRequest('/auth/logout', { method: 'POST' });
+    } catch (e) {}
+    setAuthState({ loading: false, enabled: true, authenticated: false, username: null, role: null });
   };
 
   if (authState.loading) {
@@ -95,7 +109,9 @@ function App() {
           }>
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/monitoring" element={<Monitoring />} />
+            {authState.role === 'admin' && (
+              <Route path="/monitoring" element={<Monitoring />} />
+            )}
             <Route path="/devices" element={<SessionManager />} />
             <Route path="/bulk" element={<BulkCampaign />} />
             <Route path="/chatbot-flows" element={<ChatbotFlows />} />
@@ -112,6 +128,12 @@ function App() {
             <Route path="/chatbot-ai" element={<ChatbotAI />} />
             <Route path="/auto-reply" element={<Navigate to="/chatbot-ai" replace />} />
             <Route path="/qrcode-generator" element={<QRCodeGenerator />} />
+            {authState.role === 'admin' && (
+              <>
+                <Route path="/users" element={<UserManagement />} />
+                <Route path="/plans" element={<PlansManagement />} />
+              </>
+            )}
             
             {/* Catch-all redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />

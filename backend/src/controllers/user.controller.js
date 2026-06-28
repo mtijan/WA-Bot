@@ -1,0 +1,241 @@
+import bcrypt from 'bcryptjs';
+import { dbAll, dbGet, dbRun } from '../database.js';
+import { sendError, sendSuccess } from '../utils/http_response.js';
+import { logError } from '../logger.js';
+import { auditLog } from '../services/audit.service.js';
+
+function sanitizeUserBody(body = {}) {
+  const sanitized = { ...body };
+  if ('password' in sanitized) sanitized.password = '[REDACTED]';
+  if ('old_password' in sanitized) sanitized.old_password = '[REDACTED]';
+  if ('new_password' in sanitized) sanitized.new_password = '[REDACTED]';
+  return sanitized;
+}
+
+async function assertPlanExists(planId) {
+  if (planId === undefined || planId === null || planId === '') return null;
+  const numericPlanId = Number(planId);
+  const plan = await dbGet('SELECT id FROM subscription_plans WHERE id = ?', [numericPlanId]);
+  return plan ? numericPlanId : null;
+}
+
+export const listUsers = async (req, res) => {
+  try {
+    const users = await dbAll(
+      `SELECT u.id, u.username, u.display_name, u.role, u.is_active, u.device_limit, u.created_at, u.updated_at,
+              u.plan_id, u.subscription_status, u.subscription_expires_at, u.billing_reference,
+              p.name as plan_name 
+       FROM users u
+       LEFT JOIN subscription_plans p ON u.plan_id = p.id
+       ORDER BY u.created_at DESC`
+    );
+    return sendSuccess(res, users);
+  } catch (error) {
+    logError('listUsers', error);
+    return sendError(res, 500, 'LIST_USERS_ERROR', 'Gagal memuat daftar pengguna.');
+  }
+};
+
+export const createUser = async (req, res) => {
+  try {
+    const { username, password, display_name = '', role = 'user', device_limit = 1, plan_id, subscription_status = 'active', subscription_expires_at, billing_reference = '' } = req.body || {};
+
+    const existingUser = await dbGet('SELECT id FROM users WHERE username = ?', [username]);
+    if (existingUser) {
+      return sendError(res, 400, 'USER_EXISTS', 'Username sudah terdaftar.');
+    }
+
+    const resolvedPlanId = await assertPlanExists(plan_id);
+    if (plan_id && !resolvedPlanId) {
+      return sendError(res, 400, 'INVALID_PLAN', 'Paket langganan tidak ditemukan.');
+    }
+
+    const salt = await bcrypt.genSalt(12);
+    const hash = await bcrypt.hash(password, salt);
+
+    const result = await dbRun(
+      `INSERT INTO users (username, password_hash, display_name, role, is_active, device_limit, plan_id, subscription_status, subscription_expires_at, billing_reference) 
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+      [username, hash, display_name, role, Number(device_limit), resolvedPlanId, subscription_status, subscription_expires_at || null, billing_reference]
+    );
+
+    const newUser = await dbGet(
+      `SELECT id, username, display_name, role, is_active, device_limit, plan_id, subscription_status, subscription_expires_at, billing_reference, created_at, updated_at 
+       FROM users WHERE id = ?`,
+      [result.id]
+    );
+
+    auditLog(req, 'USER_CREATE', 'user', String(result.id), 'success', { username, role, device_limit: Number(device_limit), plan_id: resolvedPlanId, subscription_status });
+    return sendSuccess(res, newUser, 201, { message: 'Pengguna berhasil dibuat.' });
+  } catch (error) {
+    logError('createUser', error, { body: sanitizeUserBody(req.body) });
+    return sendError(res, 500, 'CREATE_USER_ERROR', 'Gagal membuat pengguna baru.');
+  }
+};
+
+export const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { display_name, role, is_active, device_limit, plan_id, subscription_status, subscription_expires_at, billing_reference } = req.body || {};
+
+    const targetUser = await dbGet('SELECT * FROM users WHERE id = ?', [id]);
+    if (!targetUser) {
+      return sendError(res, 404, 'USER_NOT_FOUND', 'Pengguna tidak ditemukan.');
+    }
+
+    const activeUserId = Number(req.auth?.userId);
+    if (Number(id) === activeUserId) {
+      if (is_active !== undefined && Number(is_active) === 0) {
+        return sendError(res, 400, 'SELF_DEACTIVATION_FORBIDDEN', 'Anda tidak dapat menonaktifkan akun sendiri.');
+      }
+      if (role !== undefined && role !== targetUser.role) {
+        return sendError(res, 400, 'SELF_DEMOTION_FORBIDDEN', 'Anda tidak dapat mengubah role akun sendiri.');
+      }
+    }
+
+    const resolvedPlanId = plan_id !== undefined ? await assertPlanExists(plan_id) : targetUser.plan_id;
+    if (plan_id !== undefined && plan_id !== null && plan_id !== '' && !resolvedPlanId) {
+      return sendError(res, 400, 'INVALID_PLAN', 'Paket langganan tidak ditemukan.');
+    }
+
+    const finalDisplayName = display_name !== undefined ? display_name : targetUser.display_name;
+    const finalRole = role !== undefined ? role : targetUser.role;
+    const finalIsActive = is_active !== undefined ? Number(is_active) : targetUser.is_active;
+    const finalDeviceLimit = device_limit !== undefined ? Number(device_limit) : targetUser.device_limit;
+    
+    const finalPlanId = plan_id !== undefined ? resolvedPlanId : targetUser.plan_id;
+    const finalSubscriptionStatus = subscription_status !== undefined ? subscription_status : targetUser.subscription_status;
+    const finalSubscriptionExpiresAt = subscription_expires_at !== undefined ? subscription_expires_at : targetUser.subscription_expires_at;
+    const finalBillingReference = billing_reference !== undefined ? billing_reference : targetUser.billing_reference;
+
+    const shouldInvalidateSessions = finalRole !== targetUser.role || Number(finalIsActive) !== Number(targetUser.is_active);
+
+    await dbRun(
+      `UPDATE users 
+       SET display_name = ?,
+           role = ?,
+           is_active = ?,
+           device_limit = ?,
+           plan_id = ?,
+           subscription_status = ?,
+           subscription_expires_at = ?,
+           billing_reference = ?,
+           token_version = CASE WHEN ? THEN COALESCE(token_version, 0) + 1 ELSE COALESCE(token_version, 0) END,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ?`,
+      [finalDisplayName, finalRole, finalIsActive, finalDeviceLimit, finalPlanId, finalSubscriptionStatus, finalSubscriptionExpiresAt, finalBillingReference, shouldInvalidateSessions ? 1 : 0, id]
+    );
+    if (shouldInvalidateSessions) {
+      await dbRun(
+        'UPDATE user_refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL',
+        [id]
+      );
+    }
+
+    const updatedUser = await dbGet(
+      `SELECT id, username, display_name, role, is_active, device_limit, plan_id, subscription_status, subscription_expires_at, billing_reference, created_at, updated_at 
+       FROM users WHERE id = ?`,
+      [id]
+    );
+
+    auditLog(req, 'USER_UPDATE', 'user', String(id), 'success', {
+      role: finalRole,
+      is_active: finalIsActive,
+      device_limit: finalDeviceLimit,
+      plan_id: finalPlanId,
+      subscription_status: finalSubscriptionStatus,
+      sessions_invalidated: shouldInvalidateSessions,
+    });
+    return sendSuccess(res, updatedUser, 200, { message: 'Pengguna berhasil diperbarui.' });
+  } catch (error) {
+    logError('updateUser', error, { params: req.params, body: sanitizeUserBody(req.body) });
+    return sendError(res, 500, 'UPDATE_USER_ERROR', 'Gagal memperbarui pengguna.');
+  }
+};
+
+export const changePassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { old_password, new_password } = req.body || {};
+    const activeUserId = Number(req.auth?.userId);
+    const activeUserRole = req.auth?.role;
+
+    const targetUser = await dbGet('SELECT * FROM users WHERE id = ?', [id]);
+    if (!targetUser) {
+      return sendError(res, 404, 'USER_NOT_FOUND', 'Pengguna tidak ditemukan.');
+    }
+
+    const isSelf = Number(id) === activeUserId;
+    if (!isSelf && activeUserRole !== 'admin') {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki hak akses untuk mengubah password pengguna lain.');
+    }
+
+    if (isSelf) {
+      if (!old_password) {
+        return sendError(res, 400, 'MISSING_OLD_PASSWORD', 'Password lama wajib diisi.');
+      }
+      const match = await bcrypt.compare(String(old_password), targetUser.password_hash);
+      if (!match) {
+        return sendError(res, 400, 'INVALID_OLD_PASSWORD', 'Password lama tidak cocok.');
+      }
+    }
+
+    const salt = await bcrypt.genSalt(12);
+    const hash = await bcrypt.hash(new_password, salt);
+
+    await dbRun(
+      `UPDATE users 
+       SET password_hash = ?,
+           token_version = COALESCE(token_version, 0) + 1,
+           password_changed_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ?`,
+      [hash, id]
+    );
+    await dbRun(
+      'UPDATE user_refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL',
+      [id]
+    );
+
+    auditLog(req, 'USER_PASSWORD_CHANGE', 'user', String(id), 'success', { changed_by: req.auth?.userId, target_user_id: Number(id) });
+    return sendSuccess(res, null, 200, { message: 'Password berhasil diperbarui.' });
+  } catch (error) {
+    logError('changePassword', error, { params: req.params, body: sanitizeUserBody(req.body) });
+    return sendError(res, 500, 'CHANGE_PASSWORD_ERROR', 'Gagal mengubah password.');
+  }
+};
+
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const activeUserId = Number(req.auth?.userId);
+
+    if (Number(id) === activeUserId) {
+      return sendError(res, 400, 'SELF_DELETION_FORBIDDEN', 'Anda tidak dapat menghapus akun sendiri.');
+    }
+
+    const targetUser = await dbGet('SELECT * FROM users WHERE id = ?', [id]);
+    if (!targetUser) {
+      return sendError(res, 404, 'USER_NOT_FOUND', 'Pengguna tidak ditemukan.');
+    }
+
+    await dbRun(
+      `UPDATE users 
+       SET is_active = 0,
+           token_version = COALESCE(token_version, 0) + 1,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ?`,
+      [id]
+    );
+    await dbRun(
+      'UPDATE user_refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL',
+      [id]
+    );
+
+    auditLog(req, 'USER_DELETE', 'user', String(id), 'success', { username: targetUser.username });
+    return sendSuccess(res, null, 200, { message: 'Pengguna berhasil dinonaktifkan (dihapus).' });
+  } catch (error) {
+    logError('deleteUser', error, { params: req.params });
+    return sendError(res, 500, 'DELETE_USER_ERROR', 'Gagal menghapus pengguna.');
+  }
+};

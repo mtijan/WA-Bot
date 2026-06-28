@@ -15,7 +15,10 @@ const shouldRunInlineWorkers = () => {
 
 export const getTemplates = async (req, res) => {
   try {
-    const templates = await dbAll("SELECT * FROM warmer_templates ORDER BY created_at DESC");
+    const sql = req.auth.role === 'admin'
+      ? "SELECT * FROM warmer_templates ORDER BY created_at DESC"
+      : "SELECT * FROM warmer_templates WHERE user_id = ? ORDER BY created_at DESC";
+    const templates = await dbAll(sql, req.auth.role === 'admin' ? [] : [req.auth.userId]);
     return sendSuccess(res, templates);
   } catch (error) {
     logError('getTemplatesWarmer', error);
@@ -28,8 +31,8 @@ export const createTemplate = async (req, res) => {
 
   try {
     const result = await dbRun(
-      "INSERT INTO warmer_templates (name, description, messages) VALUES (?, ?, ?)",
-      [name, description || null, messages]
+      "INSERT INTO warmer_templates (name, description, messages, user_id) VALUES (?, ?, ?, ?)",
+      [name, description || null, messages, req.auth.userId]
     );
     return sendSuccess(res, { id: result.id, name, description, messages }, 201, { message: 'Template berhasil disimpan.' });
   } catch (error) {
@@ -46,6 +49,10 @@ export const deleteTemplate = async (req, res) => {
       return sendError(res, 404, 'WARMER_TEMPLATE_NOT_FOUND', 'Template tidak ditemukan.');
     }
 
+    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke template warmer ini.');
+    }
+
     await dbRun("DELETE FROM warmer_templates WHERE id = ?", [id]);
     return sendSuccess(res, null, 200, { message: 'Template berhasil dihapus.' });
   } catch (error) {
@@ -60,7 +67,10 @@ export const deleteTemplate = async (req, res) => {
 
 export const getCampaigns = async (req, res) => {
   try {
-    const campaigns = await dbAll("SELECT * FROM warmer_campaigns ORDER BY created_at DESC");
+    const sql = req.auth.role === 'admin'
+      ? "SELECT * FROM warmer_campaigns ORDER BY created_at DESC"
+      : "SELECT * FROM warmer_campaigns WHERE user_id = ? ORDER BY created_at DESC";
+    const campaigns = await dbAll(sql, req.auth.role === 'admin' ? [] : [req.auth.userId]);
     return sendSuccess(res, campaigns);
   } catch (error) {
     logError('getCampaignsWarmer', error);
@@ -77,10 +87,26 @@ export const createCampaign = async (req, res) => {
   }
 
   try {
+    if (req.auth.role !== 'admin') {
+      if (template_id) {
+        const temp = await dbGet("SELECT user_id FROM warmer_templates WHERE id = ?", [template_id]);
+        if (!temp || temp.user_id !== req.auth.userId) {
+          return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Template warmer tidak valid.');
+        }
+      }
+      const devices = device_ids.split(',').filter(Boolean);
+      for (const dev of devices) {
+        const sess = await dbGet("SELECT user_id FROM sessions WHERE session_id = ?", [dev]);
+        if (!sess || sess.user_id !== req.auth.userId) {
+          return sendError(res, 403, 'FORBIDDEN_ACCESS', `Anda tidak memiliki akses ke perangkat ${dev}.`);
+        }
+      }
+    }
+
     const result = await dbRun(
       `INSERT INTO warmer_campaigns 
-      (name, description, device_ids, template_id, messages, min_delay, max_delay, duration, status, started_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (name, description, device_ids, template_id, messages, min_delay, max_delay, duration, status, started_at, user_id) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
         description || null,
@@ -91,7 +117,8 @@ export const createCampaign = async (req, res) => {
         Number.parseInt(max_delay, 10),
         Number.parseInt(duration, 10),
         'RUNNING',
-        new Date().toISOString()
+        new Date().toISOString(),
+        req.auth.userId
       ]
     );
 
@@ -127,6 +154,10 @@ export const stopCampaign = async (req, res) => {
       return sendError(res, 404, 'WARMER_CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
     }
 
+    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kampanye warmer ini.');
+    }
+
     if (isSessionManagerClientEnabled()) {
       await sessionManagerClient.stopWarmerCampaign(id);
     } else {
@@ -145,6 +176,10 @@ export const getCampaignLogs = async (req, res) => {
     const campaign = await dbGet("SELECT * FROM warmer_campaigns WHERE id = ?", [id]);
     if (!campaign) {
       return sendError(res, 404, 'WARMER_CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
+    }
+
+    if (req.auth.role !== 'admin' && campaign.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kampanye warmer ini.');
     }
 
     const logs = await dbAll(
@@ -173,6 +208,10 @@ export const deleteCampaign = async (req, res) => {
     const existing = await dbGet("SELECT * FROM warmer_campaigns WHERE id = ?", [id]);
     if (!existing) {
       return sendError(res, 404, 'WARMER_CAMPAIGN_NOT_FOUND', 'Kampanye tidak ditemukan.');
+    }
+
+    if (req.auth.role !== 'admin' && existing.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kampanye warmer ini.');
     }
 
     // Pastikan mematikan loop aktif jika sedang berjalan

@@ -1,13 +1,22 @@
 import { useState } from 'react';
 import { Bot, Lock, User, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../apiClient';
+import PolicyModal from './PolicyModal';
 
 function Login({ onLogin }) {
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null);
+  
+  const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const [selectedPolicy, setSelectedPolicy] = useState(null);
+
+  const openPolicy = (type) => {
+    setSelectedPolicy(type);
+    setPolicyModalOpen(true);
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -103,7 +112,7 @@ function Login({ onLogin }) {
             textTransform: 'uppercase',
             marginBottom: '4px'
           }}>
-            WA-Bot Pro Admin
+            WA-Bot Pro
           </div>
           <h1 style={{ 
             margin: '4px 0 8px', 
@@ -121,7 +130,7 @@ function Login({ onLogin }) {
             lineHeight: 1.5,
             padding: '0 8px'
           }}>
-            Gunakan kredensial admin dari konfigurasi backend Anda. Kredensial tidak disimpan di frontend.
+            Gunakan kredensial akun Anda. Kredensial tidak disimpan di frontend.
           </p>
         </div>
 
@@ -242,7 +251,32 @@ function Login({ onLogin }) {
         >
           {loading ? 'Memeriksa...' : 'Login'}
         </button>
+
+        {/* Tautan Kebijakan & Legalitas */}
+        <div style={{
+          marginTop: '1.75rem',
+          display: 'flex',
+          justifyContent: 'center',
+          flexWrap: 'wrap',
+          gap: '8px',
+          fontSize: '0.73rem',
+          color: '#64748b'
+        }}>
+          <span onClick={() => openPolicy('tos')} style={{ color: '#818cf8', cursor: 'pointer', textDecoration: 'underline' }}>Ketentuan</span>
+          <span>&bull;</span>
+          <span onClick={() => openPolicy('privacy')} style={{ color: '#818cf8', cursor: 'pointer', textDecoration: 'underline' }}>Privasi</span>
+          <span>&bull;</span>
+          <span onClick={() => openPolicy('aup')} style={{ color: '#818cf8', cursor: 'pointer', textDecoration: 'underline' }}>AUP</span>
+          <span>&bull;</span>
+          <span onClick={() => openPolicy('deletion')} style={{ color: '#818cf8', cursor: 'pointer', textDecoration: 'underline' }}>Retensi</span>
+        </div>
       </form>
+
+      <PolicyModal
+        isOpen={policyModalOpen}
+        onClose={() => setPolicyModalOpen(false)}
+        policyType={selectedPolicy}
+      />
     </div>
   );
 }

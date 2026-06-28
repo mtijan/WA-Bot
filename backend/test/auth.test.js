@@ -51,7 +51,7 @@ describe('POST /api/auth/login', () => {
     const { agent, cookie } = await getAuthenticatedAgent();
 
     assert.ok(cookie, 'Cookie sesi harus dikembalikan setelah login berhasil');
-    assert.ok(cookie.includes('wa_bot_admin'), 'Cookie harus mengandung nama wa_bot_admin');
+    assert.ok(cookie.includes('wa_bot_access'), 'Cookie harus mengandung nama wa_bot_access');
   });
 });
 
@@ -68,5 +68,45 @@ describe('POST /api/auth/logout', () => {
       const clearCookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
       assert.ok(clearCookie.includes('Max-Age=0'), 'Cookie harus dihapus dengan Max-Age=0');
     }
+  });
+});
+
+describe('Refresh token hardening', () => {
+  it('merotasi refresh token dan menolak refresh token lama', async () => {
+    const { agent, cookie } = await getAuthenticatedAgent();
+
+    const refreshRes = await agent
+      .post('/api/auth/refresh')
+      .set('Cookie', cookie);
+
+    assert.equal(refreshRes.status, 200);
+    const rotatedCookie = refreshRes.headers['set-cookie'];
+    assert.ok(String(rotatedCookie).includes('wa_bot_refresh'), 'Refresh harus mengirim cookie refresh baru');
+
+    const oldRefreshRes = await agent
+      .post('/api/auth/refresh')
+      .set('Cookie', cookie);
+
+    assert.equal(oldRefreshRes.status, 401);
+  });
+
+  it('mencabut sesi aktif setelah password akun sendiri diubah', async () => {
+    const { agent, cookie } = await getAuthenticatedAgent();
+
+    const changeRes = await agent
+      .patch('/api/users/1/password')
+      .set('Cookie', cookie)
+      .send({
+        old_password: 'test-admin-password-12345',
+        new_password: 'test-admin-password-67890'
+      });
+
+    assert.equal(changeRes.status, 200);
+
+    const protectedRes = await agent
+      .get('/api/templates')
+      .set('Cookie', cookie);
+
+    assert.equal(protectedRes.status, 401);
   });
 });

@@ -1,3 +1,5 @@
+import bcrypt from 'bcryptjs';
+
 const run = (db, sql, params = []) => {
   return new Promise((resolve, reject) => {
     db.run(sql, params, function onRun(err) {
@@ -391,6 +393,274 @@ const migrations = [
     description: 'Add trigger_type column to session_repair_logs table.',
     up: async (db) => {
       await addColumnIfMissing(db, 'session_repair_logs', 'trigger_type', "TEXT DEFAULT 'RECONNECT'");
+    }
+  },
+  {
+    id: '011_create_users_table',
+    description: 'Create users table and seed initial admin user if configured.',
+    up: async (db) => {
+      await exec(db, [
+        `CREATE TABLE IF NOT EXISTS users (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          username      TEXT    UNIQUE NOT NULL COLLATE NOCASE,
+          password_hash TEXT    NOT NULL,
+          display_name  TEXT,
+          role          TEXT    NOT NULL DEFAULT 'user' CHECK(role IN ('admin', 'user')),
+          is_active     INTEGER NOT NULL DEFAULT 1,
+          token_version INTEGER NOT NULL DEFAULT 0,
+          password_changed_at DATETIME,
+          created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`
+      ]);
+
+      const adminPassword = process.env.WA_BOT_ADMIN_PASSWORD || '';
+      const adminUsername = process.env.WA_BOT_ADMIN_USERNAME || 'admin';
+
+      if (adminPassword) {
+        const usersCount = await get(db, 'SELECT COUNT(*) as count FROM users');
+        if (usersCount.count === 0) {
+          const salt = await bcrypt.genSalt(12);
+          const hash = await bcrypt.hash(adminPassword, salt);
+          await run(db,
+            `INSERT INTO users (username, password_hash, display_name, role, is_active) VALUES (?, ?, ?, 'admin', 1)`,
+            [adminUsername, hash, 'Administrator']
+          );
+        }
+      }
+    }
+  },
+  {
+    id: '012_data_isolation',
+    description: 'Add user_id column to core tables and make opt_out_contacts user-specific.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'sessions', 'user_id', 'INTEGER DEFAULT 1');
+      await addColumnIfMissing(db, 'contact_groups', 'user_id', 'INTEGER DEFAULT 1');
+      await addColumnIfMissing(db, 'message_templates', 'user_id', 'INTEGER DEFAULT 1');
+      await addColumnIfMissing(db, 'warmer_templates', 'user_id', 'INTEGER DEFAULT 1');
+      await addColumnIfMissing(db, 'chatbot_flows', 'user_id', 'INTEGER DEFAULT 1');
+      await addColumnIfMissing(db, 'chatbot_ai_credentials', 'user_id', 'INTEGER DEFAULT 1');
+      await addColumnIfMissing(db, 'warmer_campaigns', 'user_id', 'INTEGER DEFAULT 1');
+      await addColumnIfMissing(db, 'delivery_logs', 'user_id', 'INTEGER DEFAULT 1');
+
+      const optOutTableExists = await get(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='opt_out_contacts'");
+      if (optOutTableExists) {
+        const hasUserId = await columnExists(db, 'opt_out_contacts', 'user_id');
+        if (!hasUserId) {
+          await run(db, "ALTER TABLE opt_out_contacts RENAME TO opt_out_contacts_old");
+          await run(db, `CREATE TABLE opt_out_contacts (
+            user_id INTEGER DEFAULT 1,
+            phone_number TEXT,
+            source TEXT DEFAULT 'MANUAL',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, phone_number),
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+          )`);
+          
+          await run(db, `INSERT OR IGNORE INTO opt_out_contacts (user_id, phone_number, source, created_at)
+                         SELECT 1, phone_number, source, created_at FROM opt_out_contacts_old`);
+          
+          await run(db, "DROP TABLE opt_out_contacts_old");
+        }
+      } else {
+        await run(db, `CREATE TABLE opt_out_contacts (
+          user_id INTEGER DEFAULT 1,
+          phone_number TEXT,
+          source TEXT DEFAULT 'MANUAL',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (user_id, phone_number),
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )`);
+      }
+      
+      await run(db, 'DROP INDEX IF EXISTS idx_opt_out_contacts_phone_number');
+      await run(db, 'CREATE INDEX IF NOT EXISTS idx_opt_out_contacts_user_phone ON opt_out_contacts (user_id, phone_number)');
+      await run(db, 'CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id)');
+      await run(db, 'CREATE INDEX IF NOT EXISTS idx_contact_groups_user_id ON contact_groups (user_id)');
+      await run(db, 'CREATE INDEX IF NOT EXISTS idx_chatbot_flows_user_id ON chatbot_flows (user_id)');
+      await run(db, 'CREATE INDEX IF NOT EXISTS idx_delivery_logs_user_id ON delivery_logs (user_id)');
+    }
+  },
+  {
+    id: '013_performance_indexes',
+    description: 'Add performance indexes for multi-tenant and foreign key queries to prevent full table scans.',
+    useTransaction: false,
+    up: async (db) => {
+      await exec(db, [
+        'CREATE INDEX IF NOT EXISTS idx_campaigns_session_id ON campaigns (session_id)',
+        'CREATE INDEX IF NOT EXISTS idx_warmer_campaigns_user_id ON warmer_campaigns (user_id)',
+        'CREATE INDEX IF NOT EXISTS idx_warmer_templates_user_id ON warmer_templates (user_id)',
+        'CREATE INDEX IF NOT EXISTS idx_message_templates_user_id ON message_templates (user_id)'
+      ]);
+    }
+  },
+  {
+    id: '014_auth_token_revocation_and_campaign_owner',
+    description: 'Add user token revocation metadata, refresh token store, and campaign owner index.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
+      await addColumnIfMissing(db, 'users', 'password_changed_at', 'DATETIME');
+      await addColumnIfMissing(db, 'campaigns', 'user_id', 'INTEGER DEFAULT 1');
+
+      await run(db, `UPDATE campaigns
+        SET user_id = COALESCE((
+          SELECT user_id FROM sessions WHERE sessions.session_id = campaigns.session_id
+        ), user_id, 1)
+        WHERE user_id IS NULL OR user_id = 1`);
+
+      await exec(db, [
+        `CREATE TABLE IF NOT EXISTS user_refresh_tokens (
+          jti TEXT PRIMARY KEY,
+          user_id INTEGER NOT NULL,
+          token_hash TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          expires_at DATETIME NOT NULL,
+          revoked_at DATETIME,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )`,
+        'CREATE INDEX IF NOT EXISTS idx_user_refresh_tokens_user_id ON user_refresh_tokens (user_id)',
+        'CREATE INDEX IF NOT EXISTS idx_user_refresh_tokens_expires_at ON user_refresh_tokens (expires_at)',
+        'CREATE INDEX IF NOT EXISTS idx_campaigns_user_id ON campaigns (user_id)'
+      ]);
+    }
+  },
+  {
+    id: '015_chatbot_flow_session_mapping',
+    description: 'Create normalized chatbot flow session assignment table for scalable runtime matching.',
+    up: async (db) => {
+      await exec(db, [
+        `CREATE TABLE IF NOT EXISTS chatbot_flow_sessions (
+          flow_id INTEGER NOT NULL,
+          session_id TEXT NOT NULL,
+          user_id INTEGER NOT NULL DEFAULT 1,
+          assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (flow_id, session_id),
+          FOREIGN KEY (flow_id) REFERENCES chatbot_flows (id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )`,
+        'CREATE INDEX IF NOT EXISTS idx_chatbot_flow_sessions_session ON chatbot_flow_sessions (session_id, flow_id)',
+        'CREATE INDEX IF NOT EXISTS idx_chatbot_flow_sessions_user_session ON chatbot_flow_sessions (user_id, session_id)'
+      ]);
+
+      const flows = await all(db, 'SELECT id, session_ids, user_id FROM chatbot_flows');
+      const needsLegacyUser = flows.some((flow) => !flow.user_id || Number(flow.user_id) === 1);
+      const legacyUser = needsLegacyUser ? await get(db, 'SELECT id FROM users WHERE id = 1') : null;
+      if (needsLegacyUser && !legacyUser) {
+        await run(
+          db,
+          `INSERT INTO users (id, username, password_hash, display_name, role, is_active)
+           VALUES (1, 'legacy-admin', 'legacy-placeholder', 'Legacy Administrator', 'admin', 0)`
+        );
+      }
+
+      for (const flow of flows) {
+        let sessionIds = [];
+        try {
+          const parsed = JSON.parse(flow.session_ids || '[]');
+          if (Array.isArray(parsed)) {
+            sessionIds = [...new Set(parsed.map((id) => String(id || '').trim()).filter(Boolean))];
+          }
+        } catch {
+          sessionIds = [];
+        }
+
+        for (const sessionId of sessionIds) {
+          await run(
+            db,
+            `INSERT OR IGNORE INTO chatbot_flow_sessions (flow_id, session_id, user_id)
+             VALUES (?, ?, ?)`,
+            [flow.id, sessionId, flow.user_id || 1]
+          );
+        }
+      }
+    }
+  },
+  {
+    id: '016_user_device_limit',
+    description: 'Add per-user WhatsApp device limit for SaaS tenant entitlement control.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'users', 'device_limit', 'INTEGER NOT NULL DEFAULT 1');
+      await run(db, "UPDATE users SET device_limit = 1 WHERE device_limit IS NULL OR device_limit < 0");
+    }
+  },
+  {
+    id: '017_audit_logs',
+    description: 'Create append-only audit_logs table for SaaS compliance trail.',
+    up: async (db) => {
+      await run(db, `CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor_user_id INTEGER,
+        actor_username TEXT,
+        actor_role TEXT,
+        event_type TEXT NOT NULL,
+        target_type TEXT,
+        target_id TEXT,
+        ip_address TEXT,
+        result TEXT NOT NULL DEFAULT 'success',
+        metadata TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+      await run(db, `CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs (actor_user_id)`);
+      await run(db, `CREATE INDEX IF NOT EXISTS idx_audit_logs_event ON audit_logs (event_type)`);
+      await run(db, `CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at)`);
+    }
+  },
+  {
+    id: '018_billing_and_entitlements',
+    description: 'Add subscription_plans table and subscription fields to users for SaaS billing enforcement.',
+    up: async (db) => {
+      await run(db, `CREATE TABLE IF NOT EXISTS subscription_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        max_sessions INTEGER NOT NULL DEFAULT 1,
+        max_campaigns_per_month INTEGER NOT NULL DEFAULT 1,
+        max_flows INTEGER NOT NULL DEFAULT 1,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`);
+
+      // Create a default plan if none exists
+      const planCount = await get(db, 'SELECT COUNT(*) as count FROM subscription_plans');
+      if (planCount.count === 0) {
+        await run(db, `
+          INSERT INTO subscription_plans (id, name, max_sessions, max_campaigns_per_month, max_flows, is_default)
+          VALUES (1, 'Starter', 1, 1, 1, 1)
+        `);
+      }
+
+      await addColumnIfMissing(db, 'users', 'plan_id', 'INTEGER');
+      await addColumnIfMissing(db, 'users', 'subscription_status', "TEXT DEFAULT 'active'");
+      await addColumnIfMissing(db, 'users', 'subscription_expires_at', 'DATETIME');
+      await addColumnIfMissing(db, 'users', 'billing_reference', 'TEXT');
+
+      // Update existing users to the default plan
+      await run(db, `
+        UPDATE users 
+        SET plan_id = 1, 
+            subscription_status = 'active', 
+            subscription_expires_at = datetime('now', '+1 year')
+        WHERE plan_id IS NULL
+      `);
+    }
+  },
+  {
+    id: '019_uploaded_media_metadata',
+    description: 'Create tenant-owned uploaded media metadata for authorized media downloads.',
+    up: async (db) => {
+      await run(db, `CREATE TABLE IF NOT EXISTS uploaded_media (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        filename TEXT NOT NULL UNIQUE,
+        original_name TEXT,
+        mime_type TEXT,
+        media_type TEXT,
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        user_id INTEGER NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`);
+      await run(db, `CREATE INDEX IF NOT EXISTS idx_uploaded_media_user ON uploaded_media (user_id)`);
+      await run(db, `CREATE INDEX IF NOT EXISTS idx_uploaded_media_created ON uploaded_media (created_at)`);
     }
   }
 ];

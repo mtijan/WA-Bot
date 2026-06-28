@@ -10,20 +10,21 @@ import {
   startOfflineDbDownload
 } from '../controllers/proxy.controller.js';
 import { validateBody } from '../utils/validator.js';
+import { requireRole } from '../middleware/admin_auth.middleware.js';
 
 const router = express.Router();
 
 router.get('/', getProxies);
-router.post('/', validateBody({
+router.post('/', requireRole('admin'), validateBody({
   name: { required: true, type: 'string', min: 1, max: 100 },
   proxy_url: { required: true, type: 'string', min: 5 }
 }), createProxy);
 router.get('/offline-db/status', getOfflineDbStatus);
-router.post('/offline-db/download', startOfflineDbDownload);
-router.delete('/:id', deleteProxy);
-router.post('/:id/test', testProxyConnection);
+router.post('/offline-db/download', requireRole('admin'), startOfflineDbDownload);
+router.delete('/:id', requireRole('admin'), deleteProxy);
+router.post('/:id/test', requireRole('admin'), testProxyConnection);
 
 router.get('/settings/:key', getSetting);
-router.post('/settings/:key', saveSetting);
+router.post('/settings/:key', requireRole('admin'), saveSetting);
 
 export default router;

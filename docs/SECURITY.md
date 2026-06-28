@@ -1,7 +1,7 @@
 # WA-Bot Pro Security Baseline
 
 **Status:** Security hardening baseline implemented; production risk review still required  
-**Last updated:** 2026-06-07
+**Last updated:** 2026-06-28
 
 ## 1. Scope
 
@@ -12,10 +12,13 @@ This document separates implemented controls from production requirements. It is
 | Area | Current State | Evidence |
 |------|---------------|----------|
 | SQL query handling | Parameterized SQLite statements are used in application data access. | `backend/src/database.js` and controllers |
-| Session credential location | Baileys auth files are stored under the backend directory, outside the frontend webroot. | `backend/sessions/` |
+| Session credential encryption | Baileys auth files are encrypted at-rest using AES-256-GCM and stored under the backend directory. | `backend/sessions/` via `useEncryptedMultiFileAuthState` |
 | AI API key visual masking | The Chatbot AI UI uses a password input field. | `frontend/src/components/ChatbotAI.jsx` |
 | Error handling | Express has a final error middleware. | `backend/src/index.js` |
-| Admin dashboard authentication | Optional admin login issues an HttpOnly cookie when `WA_BOT_ADMIN_PASSWORD` is configured. | `backend/src/routes/auth.routes.js`, `frontend/src/components/Login.jsx` |
+| Admin dashboard authentication | JWT multi-user login issues HttpOnly access/refresh cookies; refresh tokens are stored by hash/JTI, rotated, revoked, and invalidated through `users.token_version`. | `backend/src/routes/auth.routes.js`, `backend/src/controllers/auth.controller.js`, `backend/src/middleware/admin_auth.middleware.js`, `frontend/src/components/Login.jsx` |
+| Tenant isolation | Non-admin users are scoped by `user_id`; campaign personalization and chatbot flow assignment avoid cross-tenant/session leakage. | `backend/src/controllers/*.js`, `backend/src/services/campaign.service.js`, `backend/src/services/chatbot_flow_sessions.service.js`, migrations `012`, `013`, `015` |
+| Admin-only Monitoring | Frontend navigation and route registration expose Monitoring only to admin/operator users. | `frontend/src/components/Sidebar.jsx`, `frontend/src/App.jsx` |
+| Device quota enforcement | Admins control `users.device_limit`; non-admin session creation is rejected when the user reaches their WhatsApp device quota. | `backend/src/controllers/session.controller.js`, `backend/src/controllers/user.controller.js`, migration `016_user_device_limit` |
 | Security response headers | Native Express middleware sets baseline headers such as tuned CSP (allowing Google Fonts and staging/production websocket), frame denial, referrer policy, permissions policy, and optional HSTS. | `backend/src/middleware/security.middleware.js` |
 | Request-size policy | Default JSON/urlencoded body limit is configurable and lower than import endpoints. | `WA_BOT_JSON_BODY_LIMIT`, `WA_BOT_IMPORT_BODY_LIMIT` |
 | Media upload limits | Admin image/video upload is implemented with explicit size limits and runtime storage outside git. | `WA_BOT_MEDIA_UPLOAD_DIR`, `WA_BOT_IMAGE_UPLOAD_MAX_BYTES`, `WA_BOT_VIDEO_UPLOAD_MAX_BYTES`, `backend/uploads/` |
@@ -25,13 +28,14 @@ This document separates implemented controls from production requirements. It is
 | Upload extension spoofing | Whitelisted MIME-type mapping forces server-side file extension generation (Stored XSS mitigation). | `backend/src/services/upload.service.js` |
 | Timing attacks mitigation | Secure timing-safe comparisons (`crypto.timingSafeEqual`) are enforced for all token and admin credentials. | `backend/src/middleware/` |
 | WhatsApp session state integrity | Disconnected sessions are correctly marked as `DISCONNECTED` in SQLite upon socket close events. | `backend/src/services/whatsapp.service.js` |
-| Session manual repair | Admin can manually clear Signal crypt-key cache without wiping credentials, resolving history sync decrypt bugs. | [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js), [SessionManager.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/SessionManager.jsx), [Tangkapan Layar UI](file:///d:/Self%20Project/WA-Bot/docs/images/media__1780840141270.png) |
+| Session manual repair | Admin can manually clear Signal crypt-key cache without wiping credentials, resolving history sync decrypt bugs. | [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js), [SessionManager.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/SessionManager.jsx) |
+| Inbound message handling ReferenceError fix | Fixed missing `isGroup` variable declaration in the `messages.upsert` event loop to prevent crashing on incoming messages. | [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js) |
+| Connection-level SQLite pragmas & busy_timeout | Configured `busy_timeout = 5000`, `journal_mode = WAL`, and `foreign_keys = ON` on every connection startup to prevent lock errors and enforce integrity. | [database.js](file:///d:/Self%20Project/WA-Bot/backend/src/database.js) |
 
 ## 3. Known Production Gaps
 
 | Gap | Risk | Required Action |
 |-----|------|-----------------|
-| Session credentials are not proven encrypted at-rest | Filesystem access may expose linked WhatsApp sessions. | Apply OS ACLs, encryption at-rest, and session rotation procedures. |
 | Existing Chatbot AI keys may predate field encryption | Older SQLite rows may remain plaintext until saved again. | Configure `WA_BOT_SECRET_ENCRYPTION_KEY` and save each AI configuration again. |
 | Sensitive examples may drift into docs or source code | Secrets can be leaked accidentally. | Use placeholders only and scan before release. |
 | Production alerting is lightweight by design | Domain HTTPS, secure cookie, restricted CORS, provider firewall review, manual browser smoke, Telegram alert timer healthy runs, and forced API readiness alert evidence are complete on staging. | Keep the timer active, review alert logs, and add Uptime Kuma/Netdata only if production needs deeper CPU/RAM/session alerting. |
@@ -42,13 +46,15 @@ This document separates implemented controls from production requirements. It is
 
 Implemented backend hardening:
 
-- Optional admin dashboard login controlled by `WA_BOT_ADMIN_USERNAME`, `WA_BOT_ADMIN_PASSWORD`, and `WA_BOT_ADMIN_SESSION_SECRET`.
+- JWT multi-user dashboard login with user records, bcrypt password hashes, HttpOnly access/refresh cookies, refresh token revocation, and role-based access control.
 - Optional `X-API-Key` access controlled by `WA_BOT_API_KEY` for trusted server-to-server callers.
 - In-memory API rate limiting controlled by `WA_BOT_RATE_LIMIT_MAX` and `WA_BOT_RATE_LIMIT_WINDOW_MS`.
 - Restricted CORS origins controlled by `WA_BOT_ALLOWED_ORIGINS`.
 - Disabled Express `X-Powered-By` response header.
 - Native security headers for CSP, frame denial, MIME sniffing protection, referrer policy, permissions policy, and optional HSTS.
 - Request-size policy controlled by `WA_BOT_JSON_BODY_LIMIT` and `WA_BOT_IMPORT_BODY_LIMIT`; normal API calls default to `2mb`, while import endpoints default to `60mb` for large chatbot flow/contact imports.
+- Password validation for user management requires at least 12 characters. Changing a password revokes existing refresh tokens and invalidates older access tokens through `token_version`.
+- Chatbot Flow hot-path matching uses `chatbot_flow_sessions` indexed lookup. Do not reintroduce broad `LIKE` matching or global active-flow scans that can cause data leakage or degraded performance.
 - Media upload is implemented. Limits are image <= 5 MB and video <= 10 MB, stored under `backend/uploads/` or `WA_BOT_MEDIA_UPLOAD_DIR`.
 - Masked Chatbot AI key responses with `has_api_key` metadata.
 - Optional AES-256-GCM encryption for newly saved Chatbot AI keys controlled by `WA_BOT_SECRET_ENCRYPTION_KEY`.
@@ -65,7 +71,7 @@ The browser must not embed `WA_BOT_API_KEY` in frontend JavaScript. For public d
 - Bind the backend to a private interface or protect it behind a reverse proxy.
 - Terminate TLS at the reverse proxy.
 - Set `WA_BOT_COOKIE_SECURE=true` after HTTPS is active.
-- Configure `WA_BOT_ADMIN_PASSWORD` and `WA_BOT_ADMIN_SESSION_SECRET`, or use a stronger authenticated gateway for every `/api/*` route.
+- Create an initial admin user with `npm run user:create`, configure JWT/cookie secrets, and use a stronger authenticated gateway if exposing the dashboard publicly.
 - Configure `WA_BOT_API_KEY` only for trusted server-to-server clients.
 - Configure and verify rate limiting, request size limits, and restricted CORS origins.
 - Run `npm run security:audit` from `backend/` and record the output in `docs/SECURITY_AUDIT.md`.
@@ -77,6 +83,7 @@ The browser must not embed `WA_BOT_API_KEY` in frontend JavaScript. For public d
 - Record security test evidence for each release candidate.
 
 See `docs/PRIVACY.md` for consent, opt-out, and retention requirements.
+See `docs/SAAS_OPERATIONS.md` for the SaaS tenant/admin, billing, audit-log, backup, retention, and launch-gate decision record.
 
 ## 5. Messaging and Privacy Rules
 

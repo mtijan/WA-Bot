@@ -15,34 +15,43 @@ export function isOptOutKeyword(text = '') {
   return OPT_OUT_KEYWORDS.has(String(text).trim().toLowerCase());
 }
 
-export async function recordOptOut(value, source = 'MANUAL') {
+export async function recordOptOut(value, userId, source = 'MANUAL') {
   const phoneNumber = canonicalPhoneNumber(value);
   if (!phoneNumber) throw new Error('Nomor telepon opt-out tidak valid.');
+  const uId = userId || 1;
 
   await dbRun(
-    `INSERT INTO opt_out_contacts (phone_number, source)
-     VALUES (?, ?)
-     ON CONFLICT(phone_number) DO UPDATE SET
+    `INSERT INTO opt_out_contacts (user_id, phone_number, source)
+     VALUES (?, ?, ?)
+     ON CONFLICT(user_id, phone_number) DO UPDATE SET
        source = excluded.source,
        created_at = CURRENT_TIMESTAMP`,
-    [phoneNumber, source]
+    [uId, phoneNumber, source]
   );
 
   return phoneNumber;
 }
 
-export async function removeOptOut(value) {
+export async function removeOptOut(value, userId) {
   const phoneNumber = canonicalPhoneNumber(value);
   if (!phoneNumber) throw new Error('Nomor telepon opt-out tidak valid.');
-  await dbRun('DELETE FROM opt_out_contacts WHERE phone_number = ?', [phoneNumber]);
+  if (userId) {
+    await dbRun('DELETE FROM opt_out_contacts WHERE phone_number = ? AND user_id = ?', [phoneNumber, userId]);
+  } else {
+    await dbRun('DELETE FROM opt_out_contacts WHERE phone_number = ?', [phoneNumber]);
+  }
 }
 
-export async function isOptedOut(value) {
+export async function isOptedOut(value, userId) {
   const phoneNumber = canonicalPhoneNumber(value);
   if (!phoneNumber) return false;
-  return Boolean(await dbGet('SELECT phone_number FROM opt_out_contacts WHERE phone_number = ?', [phoneNumber]));
+  const uId = userId || 1;
+  return Boolean(await dbGet('SELECT phone_number FROM opt_out_contacts WHERE phone_number = ? AND user_id = ?', [phoneNumber, uId]));
 }
 
-export async function listOptOuts() {
+export async function listOptOuts(userId = null) {
+  if (userId) {
+    return dbAll('SELECT phone_number, source, created_at FROM opt_out_contacts WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+  }
   return dbAll('SELECT phone_number, source, created_at FROM opt_out_contacts ORDER BY created_at DESC');
 }

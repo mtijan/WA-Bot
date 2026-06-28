@@ -7,7 +7,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export const dbPath = process.env.WA_BOT_DB_PATH || join(__dirname, '..', 'database.sqlite');
-const db = new sqlite3.Database(dbPath);
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('[DB Init] Failed to open database:', err);
+  } else {
+    db.run('PRAGMA foreign_keys = ON;');
+    db.run('PRAGMA journal_mode = WAL;');
+    db.run('PRAGMA busy_timeout = 5000;');
+  }
+});
 
 let resolveDatabaseReady;
 let rejectDatabaseReady;

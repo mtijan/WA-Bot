@@ -1,16 +1,8 @@
-import { dbAll } from '../database.js';
+import { getActiveFlowsWithNodesForSession } from './chatbot_flow_sessions.service.js';
 
 export async function getFlowsKnowledgeBase(sessionId) {
   try {
-    const allActiveFlows = await dbAll("SELECT * FROM chatbot_flows WHERE status = 'ACTIVE'");
-    const flows = allActiveFlows.filter(flow => {
-      try {
-        const ids = JSON.parse(flow.session_ids || '[]');
-        return Array.isArray(ids) && ids.includes(sessionId);
-      } catch (e) {
-        return false;
-      }
-    });
+    const flows = await getActiveFlowsWithNodesForSession(sessionId);
     if (flows.length === 0) return '';
     
     let text = "INFORMASI ALUR CHATBOT OTOMATIS YANG TERSEDIA:\n";
