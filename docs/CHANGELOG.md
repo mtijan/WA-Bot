@@ -5,7 +5,26 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.5] - 2026-06-29
+
+### Security
+- **Cross-tenant isolation audit**: Performed a line-by-line review of all 19 backend controllers and all route files. Found and fixed 10 isolation vulnerabilities across 2 audit rounds.
+- **CRITICAL: `auto_reply.controller.js` — zero user isolation fixed**: All CRUD operations had no `user_id` filter. `GET /api/auto-replies` was returning every user's auto-reply data. Refactored all operations to JOIN via `sessions.user_id` and added `getAutoReplyIfOwned` ownership helper.
+- **CRITICAL: `single_message.controller.js` — admin bypass removed**: `getGroups` and `sendMessage` contained `if (req.auth.role !== 'admin')` bypass allowing admin to use any user's WhatsApp session without ownership check. Bypass removed; all callers (including admin) must own the session.
+- **CRITICAL: `contact.controller.js` — admin bypass removed**: `verifyGroupContacts` had the same admin bypass pattern as `single_message`, allowing admin to use another user's WhatsApp session for contact verification. Bypass removed.
+- **MEDIUM: `proxy.routes.js` — 3 endpoints restricted to admin-only**: `GET /api/proxies/offline-db/status` and `GET /api/proxies/settings/:key` (which could expose `iplocate_api_key`) were reachable by any authenticated user. Added `requireRole('admin')` to both.
+- **LOW: `contact.routes.js` — route-level guard added**: `POST /api/contacts/cleanup` had no `requireRole('admin')` at the route level (defense-in-depth). Added.
+- **LOW: `session.controller.js` — session manager metadata leak fixed**: When `isSessionManagerClientEnabled()`, the response used `{ ...payload, data: filteredSessions }` which could expose system-wide session count fields from the session manager daemon. Replaced with `sendSuccess(res, sessionsToReturn)`.
+
+### Fixed
+- **`user.controller.js` — orphaned auto_replies on user deletion**: When a user was deleted via User Management, their `auto_replies` rows were left orphaned in the database. Added explicit cleanup via subquery on `session_id` before user deletion.
+- **User deletion feature**: Added full cascading delete for all user-owned data (sessions, campaigns, chatbot flows, contacts, templates, auto replies, warmer campaigns, chatbot AI settings, credentials, opt-outs, audit logs, refresh tokens) when a user is permanently deleted from User Management.
+
+### Verified
+- Backend test suite: **95/95 pass** after all fixes.
+
 ## [2.9.4] - 2026-06-28
+
 
 ### Added
 - Uploaded media tenant ownership: added `uploaded_media` metadata and authenticated owner/admin download checks for `/api/uploads/media/{filename}`.

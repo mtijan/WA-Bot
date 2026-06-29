@@ -142,5 +142,54 @@ describe('SaaS admin hardening', () => {
     const campaign = await dbGet("SELECT * FROM campaigns WHERE user_id = ?", [targetUserId]);
     assert.equal(campaign, undefined);
   });
+
+  it('isolasi data dashboard stats dan pemantauan target user oleh admin', async () => {
+    const { agent, cookie: adminCookie } = await getAuthenticatedAgent();
+    const adminId = 1;
+
+    // Clean sessions to ensure exact counts
+    await dbRun('DELETE FROM sessions');
+
+    // Seed target user
+    const targetUserId = await seedTenant('dashboard_isolate_user', 'target-password-12345');
+
+    // Seed some data for target user
+    await dbRun("INSERT INTO sessions (session_id, status, user_id) VALUES ('user-session-test', 'CONNECTED', ?)", [targetUserId]);
+
+    // Seed some data for admin user (ID 1)
+    await dbRun("INSERT INTO sessions (session_id, status, user_id) VALUES ('admin-session-test', 'CONNECTED', ?)", [adminId]);
+
+    // 1. Admin gets their own stats by default (without query param)
+    const adminOwnRes = await agent
+      .get('/api/dashboard/stats')
+      .set('Cookie', adminCookie);
+    assert.equal(adminOwnRes.status, 200);
+    assert.equal(adminOwnRes.body.data.totalSessions, 1);
+    assert.equal(adminOwnRes.body.data.activeSessions, 1);
+
+    // 2. Admin gets target user's stats with target_user_id param
+    const adminMonitorRes = await agent
+      .get(`/api/dashboard/stats?target_user_id=${targetUserId}`)
+      .set('Cookie', adminCookie);
+    assert.equal(adminMonitorRes.status, 200);
+    assert.equal(adminMonitorRes.body.data.totalSessions, 1);
+    assert.equal(adminMonitorRes.body.data.activeSessions, 1);
+
+    // 3. Target user gets their own stats by default
+    const userCookie = await login(agent, 'dashboard_isolate_user', 'target-password-12345');
+    const userOwnRes = await agent
+      .get('/api/dashboard/stats')
+      .set('Cookie', userCookie);
+    assert.equal(userOwnRes.status, 200);
+    assert.equal(userOwnRes.body.data.totalSessions, 1);
+    assert.equal(userOwnRes.body.data.activeSessions, 1);
+
+    // 4. Target user tries to get admin's stats by passing target_user_id=1, should be ignored and show user's own stats
+    const userLeakRes = await agent
+      .get(`/api/dashboard/stats?target_user_id=${adminId}`)
+      .set('Cookie', userCookie);
+    assert.equal(userLeakRes.status, 200);
+    assert.equal(userLeakRes.body.data.totalSessions, 1);
+  });
 });
 

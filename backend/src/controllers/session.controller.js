@@ -96,7 +96,7 @@ export const getSessions = async (req, res) => {
         const userSessionIds = new Set(userSessionRows.map(r => r.session_id));
         sessionsToReturn = sessionsToReturn.filter(s => userSessionIds.has(s.session_id));
       }
-      return res.json({ ...payload, data: sessionsToReturn });
+      return sendSuccess(res, sessionsToReturn);
     }
 
     const query = `SELECT s.*, p.name as proxy_name, p.proxy_url as resolved_proxy_url 

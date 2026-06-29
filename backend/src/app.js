@@ -76,86 +76,69 @@ export function createApp(options = {}) {
   // Endpoint statistik dashboard real-time
   app.get('/api/dashboard/stats', async (req, res) => {
     try {
-      const isAdmin = req.auth.role === 'admin';
-      const userId = req.auth.userId;
+      const activeUserId = req.auth.userId;
+      const role = req.auth.role;
+      
+      let targetUserId = activeUserId;
+      if (req.query.target_user_id && role === 'admin') {
+        targetUserId = Number(req.query.target_user_id);
+      }
 
       const sessionStats = await dbGet(
-        isAdmin
-          ? "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'CONNECTED' THEN 1 ELSE 0 END) as active FROM sessions"
-          : "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'CONNECTED' THEN 1 ELSE 0 END) as active FROM sessions WHERE user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'CONNECTED' THEN 1 ELSE 0 END) as active FROM sessions WHERE user_id = ?",
+        [targetUserId]
       );
       
       const campaignSent = await dbGet(
-        isAdmin
-          ? "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NOT NULL"
-          : "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NOT NULL AND user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NOT NULL AND user_id = ?",
+        [targetUserId]
       );
       
       const campaignFailed = await dbGet(
-        isAdmin
-          ? "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'FAILED' AND campaign_id IS NOT NULL"
-          : "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'FAILED' AND campaign_id IS NOT NULL AND user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'FAILED' AND campaign_id IS NOT NULL AND user_id = ?",
+        [targetUserId]
       );
       
       const singleSent = await dbGet(
-        isAdmin
-          ? "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NULL"
-          : "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NULL AND user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT COUNT(*) as count FROM delivery_logs WHERE status = 'SENT' AND campaign_id IS NULL AND user_id = ?",
+        [targetUserId]
       );
       
       const chatbotSent = await dbGet(
-        isAdmin
-          ? "SELECT SUM(sent_count) as total FROM chatbot_flows"
-          : "SELECT SUM(sent_count) as total FROM chatbot_flows WHERE user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT SUM(sent_count) as total FROM chatbot_flows WHERE user_id = ?",
+        [targetUserId]
       );
       
       const chatbotTriggered = await dbGet(
-        isAdmin
-          ? "SELECT SUM(trigger_count) as total FROM chatbot_flows"
-          : "SELECT SUM(trigger_count) as total FROM chatbot_flows WHERE user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT SUM(trigger_count) as total FROM chatbot_flows WHERE user_id = ?",
+        [targetUserId]
       );
       
       const totalContacts = await dbGet(
-        isAdmin
-          ? "SELECT COUNT(DISTINCT target_number) as total FROM delivery_logs"
-          : "SELECT COUNT(DISTINCT target_number) as total FROM delivery_logs WHERE user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT COUNT(DISTINCT target_number) as total FROM delivery_logs WHERE user_id = ?",
+        [targetUserId]
       );
       
       const activeCampaigns = await dbGet(
-        isAdmin
-          ? "SELECT COUNT(*) as active FROM campaigns WHERE status = 'RUNNING'"
-          : "SELECT COUNT(c.id) as active FROM campaigns c INNER JOIN sessions s ON c.session_id = s.session_id WHERE c.status = 'RUNNING' AND s.user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT COUNT(c.id) as active FROM campaigns c INNER JOIN sessions s ON c.session_id = s.session_id WHERE c.status = 'RUNNING' AND s.user_id = ?",
+        [targetUserId]
       );
       
       const totalFlows = await dbGet(
-        isAdmin
-          ? "SELECT COUNT(*) as total FROM chatbot_flows"
-          : "SELECT COUNT(*) as total FROM chatbot_flows WHERE user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT COUNT(*) as total FROM chatbot_flows WHERE user_id = ?",
+        [targetUserId]
       );
       
       const totalTemplates = await dbGet(
-        isAdmin
-          ? "SELECT COUNT(*) as total FROM message_templates"
-          : "SELECT COUNT(*) as total FROM message_templates WHERE user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT COUNT(*) as total FROM message_templates WHERE user_id = ?",
+        [targetUserId]
       );
       
       // Hitung total node chatbot
       let totalNodes = 0;
       const flows = await dbAll(
-        isAdmin
-          ? "SELECT nodes FROM chatbot_flows"
-          : "SELECT nodes FROM chatbot_flows WHERE user_id = ?",
-        isAdmin ? [] : [userId]
+        "SELECT nodes FROM chatbot_flows WHERE user_id = ?",
+        [targetUserId]
       );
       for (const f of flows) {
         try {
@@ -175,15 +158,11 @@ export function createApp(options = {}) {
       let chatbotAiErrors = [];
       try {
         chatbotAiErrors = await dbAll(
-          isAdmin
-            ? `SELECT session_id, last_error, last_error_at 
-               FROM chatbot_ai_settings 
-               WHERE last_error IS NOT NULL`
-            : `SELECT cs.session_id, cs.last_error, cs.last_error_at 
-               FROM chatbot_ai_settings cs 
-               INNER JOIN sessions s ON cs.session_id = s.session_id
-               WHERE cs.last_error IS NOT NULL AND s.user_id = ?`,
-          isAdmin ? [] : [userId]
+          `SELECT cs.session_id, cs.last_error, cs.last_error_at 
+             FROM chatbot_ai_settings cs 
+             INNER JOIN sessions s ON cs.session_id = s.session_id
+             WHERE cs.last_error IS NOT NULL AND s.user_id = ?`,
+          [targetUserId]
         );
       } catch (e) {
         chatbotAiErrors = [];

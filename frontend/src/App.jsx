@@ -108,7 +108,7 @@ function App() {
             </div>
           }>
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Dashboard authState={authState} />} />
             {authState.role === 'admin' && (
               <Route path="/monitoring" element={<Monitoring />} />
             )}

@@ -8,11 +8,9 @@ import { logError } from '../logger.js';
 export const getGroups = async (req, res) => {
   const { sessionId } = req.params;
   try {
-    if (req.auth.role !== 'admin') {
-      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
-      if (!sess || sess.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-      }
+    const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
+    if (!sess || sess.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
     const response = isSessionManagerClientEnabled()
@@ -30,11 +28,9 @@ export const sendMessage = async (req, res) => {
   const { sessionId, target, messageType, text, attachmentUrl, attachmentType, attachmentName, templateId, allowOptedOut } = req.body;
 
   try {
-    if (req.auth.role !== 'admin') {
-      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
-      if (!sess || sess.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
-      }
+    const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
+    if (!sess || sess.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
     if (!allowOptedOut && await isOptedOut(target, req.auth.userId)) {

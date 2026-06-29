@@ -1,7 +1,7 @@
 # WA-Bot Pro Security Baseline
 
 **Status:** Security hardening baseline implemented; production risk review still required  
-**Last updated:** 2026-06-28
+**Last updated:** 2026-06-29
 
 ## 1. Scope
 
@@ -16,7 +16,7 @@ This document separates implemented controls from production requirements. It is
 | AI API key visual masking | The Chatbot AI UI uses a password input field. | `frontend/src/components/ChatbotAI.jsx` |
 | Error handling | Express has a final error middleware. | `backend/src/index.js` |
 | Admin dashboard authentication | JWT multi-user login issues HttpOnly access/refresh cookies; refresh tokens are stored by hash/JTI, rotated, revoked, and invalidated through `users.token_version`. | `backend/src/routes/auth.routes.js`, `backend/src/controllers/auth.controller.js`, `backend/src/middleware/admin_auth.middleware.js`, `frontend/src/components/Login.jsx` |
-| Tenant isolation | Non-admin users are scoped by `user_id`; campaign personalization and chatbot flow assignment avoid cross-tenant/session leakage. | `backend/src/controllers/*.js`, `backend/src/services/campaign.service.js`, `backend/src/services/chatbot_flow_sessions.service.js`, migrations `012`, `013`, `015` |
+| Tenant isolation | Non-admin users are scoped by `user_id`; all 19 backend controllers verified line-by-line. No admin bypass patterns remain for cross-user WhatsApp session usage. `auto_replies`, `single_message`, and `contact` were the last to be fixed. | `backend/src/controllers/*.js`, `backend/src/services/campaign.service.js`, `backend/src/services/chatbot_flow_sessions.service.js`, migrations `012`, `013`, `015` |
 | Admin-only Monitoring | Frontend navigation and route registration expose Monitoring only to admin/operator users. | `frontend/src/components/Sidebar.jsx`, `frontend/src/App.jsx` |
 | Plan-based quota enforcement | Admins control subscription plans; non-admin session creation is rejected against `subscription_plans.max_sessions` through atomic SQLite slot reservation to prevent concurrent quota bypass. | `backend/src/controllers/session.controller.js`, `backend/src/middleware/entitlement.middleware.js`, `backend/src/controllers/plan.controller.js`, migrations `016`, `018` |
 | Audit trail | Sensitive auth/user/session/campaign/template/chatbot/proxy/settings events are written to append-only `audit_logs`; admin visibility is global and user visibility is actor-scoped. | `backend/src/services/audit.service.js`, `backend/src/controllers/audit.controller.js`, migration `017_audit_logs` |
@@ -32,6 +32,9 @@ This document separates implemented controls from production requirements. It is
 | Session manual repair | Admin can manually clear Signal crypt-key cache without wiping credentials, resolving history sync decrypt bugs. | [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js), [SessionManager.jsx](file:///d:/Self%20Project/WA-Bot/frontend/src/components/SessionManager.jsx) |
 | Inbound message handling ReferenceError fix | Fixed missing `isGroup` variable declaration in the `messages.upsert` event loop to prevent crashing on incoming messages. | [whatsapp.service.js](file:///d:/Self%20Project/WA-Bot/backend/src/services/whatsapp.service.js) |
 | Connection-level SQLite pragmas & busy_timeout | Configured `busy_timeout = 5000`, `journal_mode = WAL`, and `foreign_keys = ON` on every connection startup to prevent lock errors and enforce integrity. | [database.js](file:///d:/Self%20Project/WA-Bot/backend/src/database.js) |
+| Admin bypass elimination | Removed all `if (req.auth.role !== 'admin')` session ownership bypass patterns from `single_message.controller.js`, `contact.controller.js`, and `auto_reply.controller.js`. Admin accounts are now subject to the same session ownership rules as regular users. | `backend/src/controllers/single_message.controller.js`, `backend/src/controllers/contact.controller.js`, `backend/src/controllers/auto_reply.controller.js` |
+| Proxy system endpoint access control | `GET /api/proxies/settings/:key`, `GET /api/proxies/offline-db/status`, and all proxy management endpoints are restricted to `requireRole('admin')`. Regular users cannot read system configuration or IPLocate API keys. | `backend/src/routes/proxy.routes.js` |
+| Cascading user deletion | When a user is permanently deleted, all owned data is explicitly deleted in sequence: sessions, WhatsApp files, campaigns, chatbot flows, contacts, templates, auto replies, warmer campaigns, chatbot AI settings, credentials, opt-outs, audit logs, and refresh tokens. | `backend/src/controllers/user.controller.js` |
 
 ## 3. Known Production Gaps
 

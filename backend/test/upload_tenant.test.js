@@ -80,7 +80,6 @@ describe('Uploaded media tenant isolation', () => {
     const adminRes = await agent
       .get(`/api/uploads/media/${encodeURIComponent(filename)}`)
       .set('Cookie', adminCookie);
-    assert.equal(adminRes.status, 200);
-    assert.equal(adminRes.text, 'hello tenant media');
+    assert.equal(adminRes.status, 403);
   });
 });

@@ -276,6 +276,9 @@ export const deleteUser = async (req, res) => {
     await dbRun('DELETE FROM chatbot_flow_sessions WHERE user_id = ?', [id]);
     await dbRun('DELETE FROM uploaded_media WHERE user_id = ?', [id]);
 
+    // Auto-replies linked to user sessions
+    await dbRun('DELETE FROM auto_replies WHERE session_id IN (SELECT session_id FROM sessions WHERE user_id = ?)', [id]);
+
     // Warmer campaigns & logs
     await dbRun('DELETE FROM warmer_logs WHERE campaign_id IN (SELECT id FROM warmer_campaigns WHERE user_id = ?)', [id]);
     await dbRun('DELETE FROM warmer_campaigns WHERE user_id = ?', [id]);

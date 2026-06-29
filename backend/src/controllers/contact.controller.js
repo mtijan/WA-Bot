@@ -478,11 +478,9 @@ export const verifyGroupContacts = async (req, res) => {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke grup kontak ini.');
     }
 
-    if (req.auth.role !== 'admin') {
-      const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
-      if (!sess || sess.user_id !== req.auth.userId) {
-        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi WhatsApp ini.');
-      }
+    const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
+    if (!sess || sess.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi WhatsApp ini.');
     }
 
     if (isSessionManagerClientEnabled()) {

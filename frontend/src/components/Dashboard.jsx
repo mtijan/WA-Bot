@@ -11,7 +11,7 @@ const formatDateTime = (dateStr) => {
   return isNaN(parsed.getTime()) ? dateStr : parsed.toLocaleString();
 };
 
-const Dashboard = () => {
+const Dashboard = ({ authState }) => {
   const [stats, setStats] = useState({
     activeSessions: 0,
     totalSessions: 0,
@@ -27,6 +27,25 @@ const Dashboard = () => {
 
   const [repairLogs, setRepairLogs] = useState([]);
   const [failedReplies, setFailedReplies] = useState([]);
+  const [monitoringUser, setMonitoringUser] = useState(null);
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    if (authState?.role === 'admin') {
+      fetchUsers();
+    }
+  }, [authState]);
+
+  const fetchUsers = async () => {
+    try {
+      const json = await apiRequest('/users');
+      if (json.status === 'success') {
+        setUsers(json.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch users list:', err);
+    }
+  };
 
   useEffect(() => {
     fetchStats();
@@ -38,11 +57,14 @@ const Dashboard = () => {
       fetchFailedReplies();
     }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [monitoringUser]);
 
   const fetchStats = async () => {
     try {
-      const json = await apiRequest('/dashboard/stats');
+      const url = monitoringUser 
+        ? `/dashboard/stats?target_user_id=${monitoringUser.id}`
+        : '/dashboard/stats';
+      const json = await apiRequest(url);
       if (json.status === 'success') {
         setStats(json.data);
       }
@@ -53,7 +75,10 @@ const Dashboard = () => {
 
   const fetchRepairLogs = async () => {
     try {
-      const json = await apiRequest('/monitoring/repair-logs');
+      const url = monitoringUser 
+        ? `/monitoring/repair-logs?target_user_id=${monitoringUser.id}`
+        : '/monitoring/repair-logs';
+      const json = await apiRequest(url);
       if (json.status === 'success') {
         setRepairLogs(json.data);
       }
@@ -64,7 +89,10 @@ const Dashboard = () => {
 
   const fetchFailedReplies = async () => {
     try {
-      const json = await apiRequest('/monitoring/failed-replies');
+      const url = monitoringUser 
+        ? `/monitoring/failed-replies?target_user_id=${monitoringUser.id}`
+        : '/monitoring/failed-replies';
+      const json = await apiRequest(url);
       if (json.status === 'success') {
         setFailedReplies(json.data);
       }
@@ -260,22 +288,155 @@ const Dashboard = () => {
       )}
 
       {/* Welcome Banner */}
-      <div style={{
-        background: 'linear-gradient(135deg, var(--primary-color), var(--secondary-color))',
-        borderRadius: 'var(--border-radius-lg)',
-        padding: '32px',
-        color: 'white',
-        marginBottom: '24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        boxShadow: 'var(--shadow-md)'
-      }}>
-        <div>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: 'white', marginBottom: '8px' }}>Welcome back, Admin! 👋</h1>
-          <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem' }}>Here's what's happening with your WhatsApp automation today.</p>
+      {monitoringUser ? (
+        <div style={{
+          background: 'linear-gradient(135deg, var(--warning), var(--primary-color))',
+          borderRadius: 'var(--border-radius-lg)',
+          padding: '32px',
+          color: 'white',
+          marginBottom: '24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          boxShadow: 'var(--shadow-md)'
+        }}>
+          <div>
+            <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
+              Monitoring: {monitoringUser.display_name || monitoringUser.username} 👋
+            </h1>
+            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem' }}>
+              Menampilkan data statistik dashboard untuk user ini.
+            </p>
+          </div>
+          <button 
+            onClick={() => setMonitoringUser(null)}
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.2)',
+              color: 'white',
+              border: '1px solid rgba(255, 255, 255, 0.4)',
+              padding: '10px 20px',
+              borderRadius: '8px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              backdropFilter: 'blur(4px)',
+              transition: 'all 0.2s'
+            }}
+          >
+            Kembali ke Dashboard Saya
+          </button>
         </div>
-      </div>
+      ) : (
+        <div style={{
+          background: 'linear-gradient(135deg, var(--primary-color), var(--secondary-color))',
+          borderRadius: 'var(--border-radius-lg)',
+          padding: '32px',
+          color: 'white',
+          marginBottom: '24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          boxShadow: 'var(--shadow-md)'
+        }}>
+          <div>
+            <h1 style={{ fontSize: '1.875rem', fontWeight: 700, color: 'white', marginBottom: '8px' }}>
+              Welcome back, {authState?.username || 'User'}! 👋
+            </h1>
+            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1rem' }}>
+              Here's what's happening with your WhatsApp automation today.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* User Dashboard Monitor Section for Admins */}
+      {authState?.role === 'admin' && !monitoringUser && (
+        <div className="card" style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <h3 style={{ fontSize: '1.25rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Users size={20} color="var(--primary-color)" />
+            Pemantauan Dashboard User
+          </h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
+            Klik pada salah satu user di bawah ini untuk melihat data dashboard mereka secara terpisah.
+          </p>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', 
+            gap: '16px', 
+            marginTop: '8px' 
+          }}>
+            {users.map(u => {
+              const activeSess = u.active_sessions || 0;
+              const maxSess = u.max_sessions || 0;
+              const isMainAdmin = u.id === 1;
+
+              return (
+                <div 
+                  key={u.id}
+                  onClick={() => setMonitoringUser(u)}
+                  style={{
+                    padding: '16px',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--primary-color)';
+                    e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border-color)';
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>
+                        {u.display_name || u.username}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        @{u.username}
+                      </div>
+                    </div>
+                    <span style={{
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      backgroundColor: isMainAdmin ? 'rgba(99, 102, 241, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                      color: isMainAdmin ? 'var(--primary-color)' : 'var(--warning)'
+                    }}>
+                      {u.role === 'admin' ? 'Admin' : 'User'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Device Quota:</span>
+                      <span style={{ fontWeight: 600 }}>{activeSess} / {maxSess}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Status:</span>
+                      <span style={{ 
+                        fontWeight: 600,
+                        color: u.status === 'active' ? 'var(--success)' : 'var(--text-muted)'
+                      }}>
+                        {u.status === 'active' ? 'Aktif' : 'Nonaktif'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Primary Stats Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '24px' }}>

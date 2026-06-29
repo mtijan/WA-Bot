@@ -14,6 +14,7 @@ import {
   verifyGroupContacts
 } from '../controllers/contact.controller.js';
 import { validateBody } from '../utils/validator.js';
+import { requireRole } from '../middleware/admin_auth.middleware.js';
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ router.post('/bulk', validateBody({
   group_id: { required: true },
   contacts: { required: true, type: 'array', min: 1 }
 }), bulkCreateContacts);
-router.post('/cleanup', cleanupOrphanedContacts);
+router.post('/cleanup', requireRole('admin'), cleanupOrphanedContacts);
 router.delete('/groups/:groupId/invalid', deleteInvalidContacts);
 router.post('/groups/:groupId/verify', validateBody({
   session_id: { required: true, type: 'string', min: 1 }

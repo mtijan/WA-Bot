@@ -263,19 +263,25 @@ export const getRepairLogs = async (req, res) => {
     const isAdmin = req.auth.role === 'admin';
     const userId = req.auth.userId;
 
-    const logs = isAdmin
+    let targetUserId = userId;
+    const isFiltered = req.query.target_user_id && isAdmin;
+    if (isFiltered) {
+      targetUserId = Number(req.query.target_user_id);
+    }
+
+    const logs = (!isAdmin || isFiltered)
       ? await dbAll(
-          `SELECT * FROM session_repair_logs 
-           ORDER BY triggered_at DESC 
-           LIMIT 100`
-        )
-      : await dbAll(
           `SELECT l.* FROM session_repair_logs l
            INNER JOIN sessions s ON l.session_id = s.session_id
            WHERE s.user_id = ?
            ORDER BY l.triggered_at DESC 
            LIMIT 100`,
-          [userId]
+          [targetUserId]
+        )
+      : await dbAll(
+          `SELECT * FROM session_repair_logs 
+           ORDER BY triggered_at DESC 
+           LIMIT 100`
         );
 
     return sendSuccess(res, logs);
@@ -294,19 +300,25 @@ export const getFailedReplies = async (req, res) => {
     const isAdmin = req.auth.role === 'admin';
     const userId = req.auth.userId;
 
-    const logs = isAdmin
+    let targetUserId = userId;
+    const isFiltered = req.query.target_user_id && isAdmin;
+    if (isFiltered) {
+      targetUserId = Number(req.query.target_user_id);
+    }
+
+    const logs = (!isAdmin || isFiltered)
       ? await dbAll(
-          `SELECT * FROM chatbot_failed_replies 
-           ORDER BY created_at DESC 
-           LIMIT 100`
-        )
-      : await dbAll(
           `SELECT r.* FROM chatbot_failed_replies r
            INNER JOIN sessions s ON r.session_id = s.session_id
            WHERE s.user_id = ?
            ORDER BY r.created_at DESC 
            LIMIT 100`,
-          [userId]
+          [targetUserId]
+        )
+      : await dbAll(
+          `SELECT * FROM chatbot_failed_replies 
+           ORDER BY created_at DESC 
+           LIMIT 100`
         );
 
     return sendSuccess(res, logs);

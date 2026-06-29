@@ -67,7 +67,7 @@ export const downloadMedia = async (req, res) => {
       return sendError(res, 404, 'MEDIA_NOT_FOUND', 'Media tidak ditemukan.');
     }
 
-    if (req.auth.role !== 'admin' && media.user_id !== req.auth.userId) {
+    if (media.user_id !== req.auth.userId) {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke media ini.');
     }
 
