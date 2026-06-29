@@ -173,6 +173,37 @@ class WhatsAppService {
            WHERE session_id = ?`,
           ['CONNECTED', phone, sessionId]
         );
+
+        // Re-populate chatbot_flow_sessions dari chatbot_flows.session_ids
+        // agar assignment flow tidak perlu di-save ulang setelah scan QR ulang
+        // dengan session ID yang sama.
+        try {
+          const flows = await dbAll(
+            'SELECT id, session_ids, user_id FROM chatbot_flows WHERE session_ids IS NOT NULL',
+            []
+          );
+          for (const flow of flows) {
+            let sessionIds = [];
+            try {
+              const parsed = JSON.parse(flow.session_ids || '[]');
+              if (Array.isArray(parsed)) {
+                sessionIds = [...new Set(parsed.map((s) => String(s || '').trim()).filter(Boolean))];
+              }
+            } catch {
+              sessionIds = [];
+            }
+            if (sessionIds.includes(sessionId)) {
+              await dbRun(
+                `INSERT OR IGNORE INTO chatbot_flow_sessions (flow_id, session_id, user_id)
+                 VALUES (?, ?, ?)`,
+                [flow.id, sessionId, flow.user_id || 1]
+              );
+            }
+          }
+          logger.info(`[WA Socket] Sesi ${sessionId} – flow assignment dipulihkan dari chatbot_flows.session_ids.`);
+        } catch (err) {
+          logError('WhatsAppService.initSession.restoreFlowSessions', err, { sessionId });
+        }
       }
 
       if (connection === 'close') {
