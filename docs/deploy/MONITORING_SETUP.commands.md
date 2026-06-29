@@ -117,7 +117,7 @@ sudo systemctl restart netdata
 
 ```bash
 # Jalankan perintah ini dari terminal komputer lokal Anda
-ssh -L 19999:127.0.0.1:19999 user@43.157.224.57
+ssh -L 19999:127.0.0.1:19999 user@43.157.206.209
 ```
 
 Setelah terowongan SSH aktif, Anda dapat membuka dashboard pemantauan resource di browser lokal melalui alamat:

@@ -5,6 +5,21 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.6] - 2026-06-29
+
+### Infrastructure
+
+- **VPS migration completed**: Seluruh aplikasi, database SQLite, Baileys session credentials (`kartu-hallo`), dan file media uploads berhasil dipindahkan dari VPS lama (`43.157.224.57`) ke VPS baru (`43.157.206.209`) tanpa kehilangan data.
+- **DNS updated**: `stagingwabot.web.id` diperbarui dari IP lama ke IP VPS baru (`43.157.206.209`).
+- **UFW firewall configured on new VPS**: Firewall lokal diaktifkan dengan default deny incoming; hanya port `22/tcp`, `80/tcp`, dan `443/tcp` yang diizinkan.
+- **Old VPS decommissioned**: Semua service di VPS lama (`wa-bot-api`, `wa-bot-worker`, semua timer, dan Caddy) dinonaktifkan secara permanen menggunakan `systemctl disable --now` sebelum server dimatikan.
+
+### Fixed
+
+- **SQLite WAL corruption on cross-host transfer**: File `database.sqlite` yang dipindahkan langsung via `scp` menghasilkan error `database disk image is malformed (11)` karena WAL (Write-Ahead Log) tidak tergabung. Diperbaiki dengan menggunakan perintah `.backup` bawaan SQLite di VPS lama untuk menghasilkan satu file database tunggal yang bersih sebelum ditransfer.
+- **Session folder mismatch**: Folder Baileys credentials di VPS lama bernama `kartu-hallo` tidak ikut terkopikan ke VPS baru sehingga WhatsApp session tidak dapat dimuat. Diperbaiki dengan menyalin rekursif via `scp -r`.
+- **Mock test data cleanup**: Sesi-sesi mock data yang dibuat oleh test suite (`testing-device-1`, `testing-device-2`, `testing-device-xl`) dihapus dari disk dan database di VPS baru.
+
 ## [2.9.5] - 2026-06-29
 
 ### Security

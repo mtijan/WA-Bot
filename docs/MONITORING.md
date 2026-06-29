@@ -75,7 +75,7 @@ Netdata is installed natively on the host (without Docker) to monitor system res
 
 ```bash
 # From local machine terminal:
-ssh -L 18181:127.0.0.1:19999 ubuntu@43.157.224.57
+ssh -L 18181:127.0.0.1:19999 ubuntu@43.157.206.209
 ```
 
 Then accessed locally at `http://localhost:18181/`.
