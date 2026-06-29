@@ -29,9 +29,15 @@ export const listAuditLogs = async (req, res) => {
     const conditions = [];
     const params = [];
 
-    if (!isAdmin) {
+    let targetUserId = userId;
+    const isFiltered = req.query.target_user_id && isAdmin;
+    if (isFiltered) {
+      targetUserId = Number(req.query.target_user_id);
+    }
+
+    if (!isAdmin || isFiltered) {
       conditions.push('actor_user_id = ?');
-      params.push(userId);
+      params.push(targetUserId);
     }
 
     if (req.query.event_type) {
