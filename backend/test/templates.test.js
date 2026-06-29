@@ -68,6 +68,59 @@ describe('POST /api/templates - Sukses', () => {
     assert.equal(res.body.data.content, 'Halo {{nama}}, salam dari WA-Bot.');
   });
 
+  it('mengembalikan HTTP 201 saat membuat template tipe document', async () => {
+    const agent = await getTestAgent();
+    const res = await agent
+      .post('/api/templates')
+      .send({ 
+        name: 'Template Dokumen', 
+        content: 'Berikut dokumen Anda.', 
+        type: 'document',
+        attachment_url: '/api/uploads/media/test.pdf',
+        attachment_name: 'test.pdf'
+      });
+
+    assert.equal(res.status, 201);
+    assert.equal(res.body.status, 'success');
+    assert.equal(res.body.data.type, 'document');
+    assert.equal(res.body.data.attachment_url, '/api/uploads/media/test.pdf');
+  });
+
+  it('mengembalikan HTTP 201 saat membuat template tipe audio', async () => {
+    const agent = await getTestAgent();
+    const res = await agent
+      .post('/api/templates')
+      .send({ 
+        name: 'Template Audio', 
+        content: 'Dengarkan ini.', 
+        type: 'audio',
+        attachment_url: '/api/uploads/media/test.mp3'
+      });
+
+    assert.equal(res.status, 201);
+    assert.equal(res.body.status, 'success');
+    assert.equal(res.body.data.type, 'audio');
+    assert.equal(res.body.data.attachment_url, '/api/uploads/media/test.mp3');
+  });
+
+  it('mengembalikan HTTP 201 saat membuat template tipe poll dengan opsi baru baris', async () => {
+    const agent = await getTestAgent();
+    const res = await agent
+      .post('/api/templates')
+      .send({ 
+        name: 'Template Polling', 
+        content: 'Silakan pilih:', 
+        type: 'poll',
+        poll_question: 'Bagaimana pelayanan kami?',
+        poll_options: 'Sangat Baik\nCukup\nKurang'
+      });
+
+    assert.equal(res.status, 201);
+    assert.equal(res.body.status, 'success');
+    assert.equal(res.body.data.type, 'poll');
+    assert.equal(res.body.data.poll_options, 'Sangat Baik\nCukup\nKurang');
+  });
+
   it('template baru muncul di GET /api/templates', async () => {
     const agent = await getTestAgent();
     const res = await agent.get('/api/templates');

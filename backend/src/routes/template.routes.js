@@ -8,7 +8,7 @@ router.get('/', getTemplates);
 router.post('/', validateBody({
   name: { required: true, type: 'string', min: 1, max: 100 },
   content: { required: true, type: 'string', min: 1 },
-  type: { type: 'string', allowedValues: ['text', 'image', 'video', 'poll', 'contact'] }
+  type: { type: 'string', allowedValues: ['text', 'image', 'video', 'poll', 'contact', 'document', 'audio'] }
 }), createTemplate);
 router.delete('/:id', deleteTemplate);
 

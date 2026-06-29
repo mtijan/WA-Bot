@@ -82,4 +82,45 @@ describe('Uploaded media tenant isolation', () => {
       .set('Cookie', adminCookie);
     assert.equal(adminRes.status, 403);
   });
+
+  it('mengizinkan pemilik menghapus medianya dan melarang orang lain menghapusnya', async () => {
+    const { agent } = await getAuthenticatedAgent();
+    await seedUser('tenant_upload_c', 'tenant-upload-c-12345');
+    await seedUser('tenant_upload_d', 'tenant-upload-d-12345');
+
+    const tenantCCookie = await login(agent, 'tenant_upload_c', 'tenant-upload-c-12345');
+    const tenantDCookie = await login(agent, 'tenant_upload_d', 'tenant-upload-d-12345');
+
+    // Upload media by C
+    const uploadRes = await agent
+      .post('/api/uploads/media')
+      .set('Cookie', tenantCCookie)
+      .attach('media', Buffer.from('hello C media'), {
+        filename: 'c-note.txt',
+        contentType: 'text/plain'
+      });
+
+    assert.equal(uploadRes.status, 200);
+    const filename = uploadRes.body.data.stored_name;
+    uploadedFiles.push(filename);
+
+    // Other tenant D attempts to delete C's media (forbidden)
+    const deleteByDRes = await agent
+      .delete(`/api/uploads/media/${encodeURIComponent(filename)}`)
+      .set('Cookie', tenantDCookie);
+    assert.equal(deleteByDRes.status, 403);
+
+    // C deletes its own media (success)
+    const deleteByCRes = await agent
+      .delete(`/api/uploads/media/${encodeURIComponent(filename)}`)
+      .set('Cookie', tenantCCookie);
+    assert.equal(deleteByCRes.status, 200);
+    assert.equal(deleteByCRes.body.status, 'success');
+
+    // Verifikasi C sudah tidak bisa download medianya lagi (404)
+    const getAfterDeleteRes = await agent
+      .get(`/api/uploads/media/${encodeURIComponent(filename)}`)
+      .set('Cookie', tenantCCookie);
+    assert.equal(getAfterDeleteRes.status, 404);
+  });
 });

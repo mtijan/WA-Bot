@@ -83,6 +83,29 @@ const Templates = () => {
     }
   };
 
+  const handleCloseCreateModal = async () => {
+    if (attachmentUrl && attachmentUrl.includes('/api/uploads/media/')) {
+      try {
+        const parts = attachmentUrl.split('/');
+        const filename = parts[parts.length - 1];
+        await apiRequest(`/uploads/media/${filename}`, { method: 'DELETE' });
+      } catch (err) {
+        console.error('Gagal menghapus file saat batal:', err);
+      }
+    }
+    setTemplateName('');
+    setMessageContent('');
+    setSelectedType('text');
+    setCategory('General');
+    setAttachmentUrl('');
+    setAttachmentName('');
+    setContactName('');
+    setContactNumber('');
+    setPollQuestion('');
+    setPollOptions('');
+    setShowCreateModal(false);
+  };
+
   const handleCreateTemplate = async (e) => {
     e.preventDefault();
     if (!templateName.trim() || !messageContent.trim()) {
@@ -514,7 +537,7 @@ const Templates = () => {
             position: 'relative'
           }}>
             <button
-              onClick={() => setShowCreateModal(false)}
+              onClick={handleCloseCreateModal}
               className="btn-icon"
               style={{
                 position: 'absolute',
@@ -829,7 +852,7 @@ const Templates = () => {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={handleCloseCreateModal}
                   className="btn btn-outline"
                   style={{ borderRadius: '8px' }}
                 >

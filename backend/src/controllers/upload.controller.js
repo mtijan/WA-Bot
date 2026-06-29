@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { dbRun } from '../database.js';
 import {
   getMediaPublicPath,
   getMediaSpec,
@@ -79,5 +80,31 @@ export const downloadMedia = async (req, res) => {
   } catch (error) {
     logError('downloadMedia', error, { filename, userId: req.auth?.userId });
     return sendError(res, 500, 'MEDIA_DOWNLOAD_ERROR', 'Gagal mengambil media.');
+  }
+};
+
+export const deleteMedia = async (req, res) => {
+  const { filename } = req.params;
+
+  try {
+    const media = await getUploadedMediaByFilename(filename);
+    if (!media) {
+      return sendError(res, 404, 'MEDIA_NOT_FOUND', 'Media tidak ditemukan.');
+    }
+
+    if (media.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke media ini.');
+    }
+
+    const filePath = resolveMediaFilePath(filename);
+    if (filePath) {
+      deleteFileIfExists(filePath);
+    }
+
+    await dbRun('DELETE FROM uploaded_media WHERE filename = ?', [filename]);
+    return sendSuccess(res, null, 200, { message: 'Media berhasil dihapus.' });
+  } catch (error) {
+    logError('deleteMedia', error, { filename, userId: req.auth?.userId });
+    return sendError(res, 500, 'MEDIA_DELETE_ERROR', 'Gagal menghapus media.');
   }
 };

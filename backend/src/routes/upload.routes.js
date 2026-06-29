@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { downloadMedia, uploadMedia } from '../controllers/upload.controller.js';
+import { downloadMedia, uploadMedia, deleteMedia } from '../controllers/upload.controller.js';
 import { createMediaFilename, ensureMediaUploadDir, getMediaSpec, MEDIA_UPLOAD_DIR } from '../services/upload.service.js';
 import { sendError } from '../utils/http_response.js';
 import { requireActiveSubscription } from '../middleware/entitlement.middleware.js';
@@ -49,5 +49,6 @@ router.post('/media', requireActiveSubscription, (req, res, next) => {
 }, uploadMedia);
 
 router.get('/media/:filename', downloadMedia);
+router.delete('/media/:filename', deleteMedia);
 
 export default router;

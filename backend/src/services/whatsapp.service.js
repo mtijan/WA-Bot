@@ -974,7 +974,7 @@ class WhatsAppService {
 
       if (type === 'text') {
         await sock.sendMessage(jid, { text: content });
-      } else if (type === 'media' || type === 'image' || type === 'video' || type === 'document') {
+      } else if (type === 'media' || type === 'image' || type === 'video' || type === 'document' || type === 'audio') {
         const url = resolveUploadedMediaPath(template.attachment_url);
         const caption = content;
         let mediaPayload = {};
@@ -1007,7 +1007,7 @@ class WhatsAppService {
         try {
           options = JSON.parse(template.poll_options || '[]');
         } catch (e) {
-          options = (template.poll_options || '').split(',').map(o => o.trim()).filter(Boolean);
+          options = (template.poll_options || '').split(/[\r\n,]+/).map(o => o.trim()).filter(Boolean);
         }
         options = options.map(o => formatMessageText(o));
         await sock.sendMessage(jid, {
