@@ -36,7 +36,7 @@ Komponen yang sudah ada:
   - `backend/src/routes/upload.routes.js`
 - Route upload dimount di `backend/src/app.js` pada `/api/uploads`.
 - Metadata upload disimpan di tabel `uploaded_media` melalui migration `019_uploaded_media_metadata` untuk mengikat file ke `user_id`.
-- Download `GET /api/uploads/media/:filename` berada di balik auth; admin dapat membaca semua upload, user biasa hanya upload miliknya sendiri. File lama tanpa metadata ditolak fail-closed.
+- Download `GET /api/uploads/media/:filename` dan delete `DELETE /api/uploads/media/:filename` berada di balik auth; implementasi saat ini hanya mengizinkan pemilik file. File lama tanpa metadata ditolak fail-closed.
 - `backend/src/services/whatsapp.service.js` mulai resolve `/api/uploads/media/<file>` menjadi path lokal sebelum media dikirim via Baileys.
 
 Endpoint yang dituju:
@@ -68,7 +68,7 @@ Response sukses yang diharapkan:
 
 Semua gap yang ada pada fitur upload media telah diselesaikan dan diverifikasi:
 - Controller `backend/src/controllers/upload.controller.js` telah diperbaiki agar signature `sendSuccess` dipanggil dengan benar.
-- Controller download tidak lagi memakai `express.static`; akses file diperiksa lewat metadata `uploaded_media`.
+- Controller download/delete tidak lagi memakai `express.static`; akses file diperiksa lewat metadata `uploaded_media`.
 - Komponen frontend reusable `frontend/src/components/MediaUploadField.jsx` telah dibuat untuk menangani upload, status indikator, serta validasi ukuran file client-side (image <= 5MB, video <= 10MB).
 - Integrasi ke `Templates.jsx`, `SingleMessage.jsx`, dan `ChatbotFlowModal.jsx` telah selesai. Kolom URL diubah tipenya ke text untuk mendukung path relatif `/api/uploads/media/...`.
 - Seluruh syntax check backend, backend test suite, uploaded-media tenant test, dan build frontend telah dijalankan dan lulus tanpa kesalahan.

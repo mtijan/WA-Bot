@@ -66,7 +66,7 @@
         </p>
         <div class="callout callout--info" style="margin-top:1.25rem;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          <div>Standar aktif: ISO/IEC/IEEE 12207, ISO/IEC/IEEE 29148 (requirements), IEEE 1016 (design), dan ISO/IEC/IEEE 29119 (testing). IEEE 830 dan IEEE 829 dipertahankan sebagai referensi historis. Versi dokumen: <strong>2.9.0</strong>. Pembaruan terakhir: <strong>28 Juni 2026</strong>.</div>
+          <div>Standar aktif: ISO/IEC/IEEE 12207, ISO/IEC/IEEE 29148 (requirements), IEEE 1016 (design), dan ISO/IEC/IEEE 29119 (testing). IEEE 830 dan IEEE 829 dipertahankan sebagai referensi historis. Versi dokumen: <strong>2.9.7</strong>. Pembaruan terakhir: <strong>30 Juni 2026</strong>.</div>
         </div>
       </div>
 
@@ -181,7 +181,7 @@
                 <td><code>P2</code></td>
                 <td>Test coverage</td>
                 <td><strong>DONE</strong></td>
-                <td>QA browser, build frontend, OpenAPI parity 112/112, smoke test internal delegation, 92 test cases backend integration &amp; unit test suite (validator, auth token rotation/revocation, tenant isolation, race-safe plan device quota, entitlement routes, plan validation/audit logging, uploaded-media tenant isolation, templates, opt-outs, chatbot flow session mapping/isolation, campaign tenant personalization, single-message delegation, spintax engine, dan log/file pruner), serta automated deploy smoke test 100% lulus.</td>
+                <td>QA browser, build frontend, OpenAPI parity 113/113, smoke test internal delegation, 99 test cases backend integration &amp; unit test suite (validator, auth token rotation/revocation, tenant isolation, race-safe plan device quota, entitlement routes, plan validation/audit logging, uploaded-media tenant isolation/delete, templates, opt-outs, chatbot flow session mapping/isolation, campaign tenant personalization, single-message delegation, spintax engine, dan log/file pruner), serta automated deploy smoke test 100% lulus.</td>
                 <td>-</td>
                 <td>CI/manual release dapat menjalankan test cepat tanpa Puppeteer dan test end-to-end saat kandidat rilis.</td>
               </tr>
@@ -244,7 +244,7 @@
         </div>
         <div class="callout callout--warning" style="margin-top:1.25rem;">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-          <div>Tahap saat ini: item 1 Admin authentication, item 2 Process architecture, item 3 Database migration, item 4 Backup and restore, item 5 lightweight VPS monitoring baseline, item 6 Database reliability, item 7 Codebase quality, item 8 Security hardening, item 9 Deploy automation, item 10 Test coverage, item 11 Platform governance, item 12 Media upload attachments, item 13 Chatbot Flow large-data UX/metrics/runtime scaling, item 14 Session Auto-Repair &amp; Chatbot AI Alerting, item 15 Session Reconnect &amp; Heartbeat Stability, dan item 16 Fully Transparent QR Code Cutting sudah DONE. Auth multi-user, revocable refresh token, tenant isolation, campaign tenant personalization, race-safe plan device quota, entitlement middleware, audit log, uploaded-media tenant isolation, Monitoring admin-only, dan Chatbot Flow indexed session mapping sudah diverifikasi melalui backend integration test 92/92.</div>
+          <div>Tahap saat ini: item 1 Admin authentication, item 2 Process architecture, item 3 Database migration, item 4 Backup and restore, item 5 lightweight VPS monitoring baseline, item 6 Database reliability, item 7 Codebase quality, item 8 Security hardening, item 9 Deploy automation, item 10 Test coverage, item 11 Platform governance, item 12 Media upload attachments, item 13 Chatbot Flow large-data UX/metrics/runtime scaling, item 14 Session Auto-Repair &amp; Chatbot AI Alerting, item 15 Session Reconnect &amp; Heartbeat Stability, dan item 16 Fully Transparent QR Code Cutting sudah DONE. Auth multi-user, revocable refresh token, tenant isolation, campaign tenant personalization, race-safe plan device quota, entitlement middleware, audit log, uploaded-media tenant isolation, Monitoring admin-only, Chatbot Flow indexed session mapping, audit isolasi tenant (v2.9.5), migrasi VPS baru (v2.9.6), dan auto-restore chatbot flow session (v2.9.7) sudah diverifikasi melalui backend integration test 99/99.</div>
         </div>
 
         <h4 style="color:var(--color-title); font-size:1rem; margin:1.75rem 0 0.75rem; font-weight:600;">SaaS Production Gap Cross-Check</h4>
@@ -693,7 +693,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.9.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
   </footer>
   <script>
     const toggleBtn = document.querySelector('.theme-toggle');

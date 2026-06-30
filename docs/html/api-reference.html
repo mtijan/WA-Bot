@@ -221,7 +221,7 @@
           <br><code style="background:rgba(255,255,255,0.05); padding:0.2rem 0.5rem; border-radius:4px; display:inline-block; margin-top:0.5rem; color:var(--color-text-accent);">X-API-Key: &lt;YOUR_API_KEY&gt;</code>
         </p>
         <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
-          Dashboard browser memakai JWT access/refresh cookie HttpOnly. Role <code>admin</code> dapat mengelola user, melihat Monitoring, audit log, dan paket langganan; role <code>user</code> hanya mengakses resource miliknya sendiri. OpenAPI utama berada di <code>docs/openapi.yaml</code> dan saat ini parity dengan 112 handler Express.
+          Dashboard browser memakai JWT access/refresh cookie HttpOnly. Role <code>admin</code> dapat mengelola user, melihat Monitoring, audit log, dan paket langganan; role <code>user</code> hanya mengakses resource miliknya sendiri. OpenAPI utama berada di <code>docs/openapi.yaml</code> dan saat ini parity dengan 113 handler Express.
         </p>
 
         <h4 style="color:var(--color-title); font-size:0.95rem; margin:1.5rem 0 0.5rem; font-weight:600;">Kebijakan Jeda Kecepatan (Rate Limiting):</h4>
@@ -1348,7 +1348,7 @@
           <span class="endpoint-card__title">Upload Media</span>
         </div>
         <div class="endpoint-card__body">
-          <p class="endpoint-card__desc">Mengunggah gambar maksimal 5 MB atau video maksimal 10 MB. Upload membutuhkan subscription aktif dan metadata file disimpan di tabel <code>uploaded_media</code> dengan pemilik <code>user_id</code>.</p>
+          <p class="endpoint-card__desc">Mengunggah gambar maksimal 5 MB, video maksimal 10 MB, audio maksimal 2 MB, atau dokumen maksimal 5 MB. Upload membutuhkan subscription aktif dan metadata file disimpan di tabel <code>uploaded_media</code> dengan pemilik <code>user_id</code>.</p>
         </div>
       </div>
 
@@ -1359,7 +1359,18 @@
           <span class="endpoint-card__title">Download Uploaded Media</span>
         </div>
         <div class="endpoint-card__body">
-          <p class="endpoint-card__desc">Mengunduh media runtime melalui auth. Admin dapat membaca semua upload; user biasa hanya dapat membaca upload miliknya sendiri. File lama tanpa metadata ditolak fail-closed.</p>
+          <p class="endpoint-card__desc">Mengunduh media runtime melalui auth. Implementasi saat ini hanya mengizinkan pemilik file yang tercatat di <code>uploaded_media</code>. File lama tanpa metadata ditolak fail-closed.</p>
+        </div>
+      </div>
+
+      <div class="endpoint-card">
+        <div class="endpoint-card__header">
+          <span class="endpoint-card__method method--delete">DELETE</span>
+          <span class="endpoint-card__path">/api/uploads/media/:filename</span>
+          <span class="endpoint-card__title">Delete Uploaded Media</span>
+        </div>
+        <div class="endpoint-card__body">
+          <p class="endpoint-card__desc">Menghapus file media runtime dan metadata <code>uploaded_media</code>. Implementasi saat ini hanya mengizinkan pemilik file menghapus media tersebut.</p>
         </div>
       </div>
 
@@ -1504,7 +1515,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.9.4 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
     <p style="margin-top:0.5rem;">IP address data powered by <a href="https://iplocate.io" target="_blank" rel="noopener">IPLocate.io</a></p>
   </footer>
   <script>

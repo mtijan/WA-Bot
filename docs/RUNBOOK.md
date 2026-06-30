@@ -186,7 +186,7 @@ Latest schema notes:
 - Migration `016_user_device_limit` adds the legacy per-user device field; current active device enforcement is plan-based through `subscription_plans.max_sessions`.
 - Migration `017_audit_logs` adds append-only audit records for sensitive auth/user/session/campaign/template/chatbot/proxy/settings actions.
 - Migration `018_billing_and_entitlements` adds `subscription_plans` and user subscription fields for plan-based quotas and subscription status.
-- Migration `019_uploaded_media_metadata` adds tenant-owned media metadata so uploaded file downloads can be authorized by owner/admin.
+- Migration `019_uploaded_media_metadata` adds tenant-owned media metadata so uploaded file download/delete actions can be authorized by file owner.
 - Migration `006_chatbot_flow_delivery_metrics` adds accurate Chatbot Flow counters. Historical `sent_count` values are copied into `trigger_count`, then `sent_count` starts from `0` so future counts represent successfully sent node messages only. `failed_count` records node send failures.
 
 Chatbot Flow large-data behavior:

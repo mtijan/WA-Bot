@@ -5,6 +5,20 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.8] - 2026-06-30
+
+### Documentation
+- Synchronized Markdown and HTML documentation with the current codebase after upload media delete support and latest test additions.
+- Updated current OpenAPI route parity to 113/113 operations.
+- Updated current backend integration/unit test evidence to 99/99 passing.
+- Clarified uploaded media access semantics: the current implementation allows authenticated file owner download/delete, not global admin access.
+
+## [2.9.7] - 2026-06-30
+
+### Fixed
+
+- **Chatbot Flow session assignment auto-restore on QR re-scan**: Sebelumnya, ketika sebuah sesi WhatsApp dihapus dan dibuat ulang dengan ID yang sama (misalnya untuk scan QR baru), semua mapping di tabel `chatbot_flow_sessions` ikut terhapus. Akibatnya, seluruh Chatbot Flow yang telah di-assign ke sesi tersebut berhenti merespons dan pengguna harus menyimpan ulang atau assign ulang setiap flow satu per satu. Kini, pada setiap event `connection === 'open'` di `whatsapp.service.js`, sistem otomatis membaca kolom `chatbot_flows.session_ids` (JSON array, source of truth yang tidak ikut terhapus) dan me-restore semua baris `chatbot_flow_sessions` via `INSERT OR IGNORE`. Fix ini berjalan juga saat auto-reconnect dan heartbeat reconnect, sehingga flow assignment tetap aktif tanpa intervensi manual. Diverifikasi di staging: 20/20 flow terdaftar kembali untuk sesi `kartu-xl` setelah QR re-scan, dengan log konfirmasi `flow assignment dipulihkan dari chatbot_flows.session_ids`.
+
 ## [2.9.6] - 2026-06-29
 
 ### Infrastructure
@@ -42,12 +56,12 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
 ### Added
-- Uploaded media tenant ownership: added `uploaded_media` metadata and authenticated owner/admin download checks for `/api/uploads/media/{filename}`.
+- Uploaded media tenant ownership: added `uploaded_media` metadata and authenticated owner-only download/delete checks for `/api/uploads/media/{filename}`.
 - SaaS hardening tests covering plan validation, audit logging, entitlement enforcement, uploaded-media tenant isolation, and race-safe session quota reservation.
 
 ### Changed
 - Device quota enforcement now uses `subscription_plans.max_sessions` as the active source of truth instead of the legacy `users.device_limit` fallback.
-- OpenAPI route parity updated to 112/112 operations and backend integration/unit suite verified at 92/92 passing.
+- OpenAPI route parity was updated for that release and has since been superseded by the current 2.9.8 evidence: 113/113 operations and 99/99 backend integration/unit tests passing.
 
 ### Fixed
 - Prevented concurrent session creation from bypassing device quota by reserving session slots through an atomic SQLite insert.

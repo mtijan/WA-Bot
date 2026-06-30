@@ -46,7 +46,7 @@ after(() => {
 });
 
 describe('Uploaded media tenant isolation', () => {
-  it('membatasi akses download media ke pemilik atau admin', async () => {
+  it('membatasi akses download media hanya ke pemilik', async () => {
     const { agent, cookie: adminCookie } = await getAuthenticatedAgent();
     await seedUser('tenant_upload_a', 'tenant-upload-a-12345');
     await seedUser('tenant_upload_b', 'tenant-upload-b-12345');

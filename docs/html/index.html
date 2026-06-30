@@ -339,7 +339,7 @@
 
   <!-- Hero -->
   <section class="hero">
-    <div class="hero__badge">Dokumentasi Resmi v2.9.4</div>
+    <div class="hero__badge">Dokumentasi Resmi v2.9.8</div>
     <h1>WA-Bot Pro Documentation</h1>
     <p class="hero__subtitle">
       Pusat dokumentasi teknis lengkap untuk WhatsApp Multi-Account & Bulk Messaging System.
@@ -349,7 +349,7 @@
     <div class="hero__meta">
       <div class="hero__meta-item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        Terakhir diperbarui: 14 Juni 2026
+        Terakhir diperbarui: 30 Juni 2026
       </div>
       <div class="hero__meta-item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -368,7 +368,7 @@
     <!-- Stats -->
     <div class="stats-bar">
       <div class="stat-item">
-        <div class="stat-item__value">22</div>
+        <div class="stat-item__value">28</div>
         <div class="stat-item__label">Functional Requirements</div>
       </div>
       <div class="stat-item">
@@ -376,11 +376,11 @@
         <div class="stat-item__label">Diagram UML / Mermaid</div>
       </div>
       <div class="stat-item">
-        <div class="stat-item__value">16</div>
+        <div class="stat-item__value">17</div>
         <div class="stat-item__label">Tabel Data Dictionary</div>
       </div>
       <div class="stat-item">
-        <div class="stat-item__value">75</div>
+        <div class="stat-item__value">99</div>
         <div class="stat-item__label">Test Cases Passed</div>
       </div>
     </div>
@@ -401,106 +401,34 @@
           </thead>
           <tbody>
             <tr>
-              <td><code>v1.0.0</code></td>
-              <td>20 Mei 2026</td>
-              <td>Tim Pengembang WA-Bot</td>
-              <td>Rilis inisiasi: dokumentasi modul dasar (Session Management, REST API, & DFD dasar).</td>
+              <td><code>v2.9.8</code></td>
+              <td>30 Juni 2026</td>
+              <td>Tim QA &amp; Lead Architect</td>
+              <td>Sinkronisasi dokumentasi Markdown/HTML dengan codebase saat ini: OpenAPI parity 113/113, backend test suite 99/99 PASS, endpoint delete upload terdokumentasi, dan akses uploaded media ditegaskan owner-only.</td>
             </tr>
             <tr>
-              <td><code>v2.0.0</code></td>
-              <td>28 Mei 2026</td>
-              <td>Tim QA & Technical Writer</td>
-              <td>Pembaruan besar: Integrasi Chatbot Flows, Auto-Reply, Manajemen Kontak, dan skema data dictionary SQLite.</td>
-            </tr>
-            <tr>
-              <td><code>v2.1.0</code></td>
-              <td>1 Juni 2026</td>
+              <td><code>v2.9.7</code></td>
+              <td>30 Juni 2026</td>
               <td>Tim QA & Lead Architect</td>
-              <td>Rilis pemolesan: Penyelarasan RTM, API Reference, visualisasi 16 tabel database, 23 catatan test case, hardening backend, suppression list opt-out, a11y, dan print styles.</td>
+              <td>Pemulihan Sesi Otomatis &amp; Auto-Restore Chatbot Flow: Menyelesaikan bug hilangnya mapping flow saat QR re-scan atau reconnect dengan otomatis me-restore <code>chatbot_flow_sessions</code> dari <code>chatbot_flows.session_ids</code> via <code>INSERT OR IGNORE</code>.</td>
             </tr>
             <tr>
-              <td><code>v2.2.0</code></td>
-              <td>4 Juni 2026</td>
+              <td><code>v2.9.6</code></td>
+              <td>29 Juni 2026</td>
               <td>Tim QA & Lead Architect</td>
-              <td>Roadmap production-hardening menuju VPS: admin authentication, pemisahan worker, migrasi DB versi, backup terenkripsi, monitoring VPS dengan Telegram alert evidence, dan deploy readiness checklist.</td>
+              <td>Migrasi Staging VPS &amp; Infrastruktur: Migrasi host staging ke VPS baru IP <code>43.157.206.209</code> (stagingwabot.web.id) dengan default deny UFW firewall, penanganan korupsi WAL SQLite via <code>.backup</code> terpadu, dan pembersihan mock test data.</td>
             </tr>
             <tr>
-              <td><code>v2.3.0</code></td>
-              <td>4 Juni 2026</td>
+              <td><code>v2.9.5</code></td>
+              <td>29 Juni 2026</td>
               <td>Tim QA & Lead Architect</td>
-              <td>Pembaruan SDLC dan source diagram: admin auth cookie, logout menu sidebar, opt-out suppression flow, dan deployment topology VPS.</td>
+              <td>Audit Isolasi Cross-Tenant: Melakukan audit baris-per-baris dan memperbaiki 10 celah isolasi data tenant pada 19 controller, menghapus bypass admin pada WhatsApp session milik user lain, membatasi rute sensitif (proxy/offline-db), serta mengaktifkan cascading delete menyeluruh saat user dihapus (99/99 test suite PASS).</td>
             </tr>
             <tr>
-              <td><code>v2.4.0</code></td>
-              <td>4 Juni 2026</td>
+              <td><code>v2.9.4</code></td>
+              <td>28 Juni 2026</td>
               <td>Tim QA & Lead Architect</td>
-              <td>Deploy automation template dan security hardening baseline: reverse proxy <code>/api</code>, PM2/systemd, Nginx/Caddy, security headers, request-size policy, ACL template, dan dependency audit evidence.</td>
-            </tr>
-            <tr>
-              <td><code>v2.5.0</code></td>
-              <td>4 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Codebase quality baseline: central config, structured logger, response helper, frontend API client, dan dokumen migrasi per modul.</td>
-            </tr>
-            <tr>
-              <td><code>v2.6.0</code></td>
-              <td>5 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Staging VPS baseline verified: Caddy HTTP/IP, systemd API/worker, frontend build, API/worker readiness evidence, dan status production hardening pending.</td>
-            </tr>
-            <tr>
-              <td><code>v2.6.1</code></td>
-              <td>5 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Evidence terbaru: UFW aktif, backup/restore timers, local healthcheck timer, logrotate, HTTP smoke, auth-controller response helper migration, dan dashboard API-client migration.</td>
-            </tr>
-            <tr>
-              <td><code>v2.7.0</code></td>
-              <td>6 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Pembaruan stabilitas: penonaktifan loop auto-repair WhatsApp session yang merusak kredensial, penyaringan global verbose log noise libsignal, dan penyelesaian media upload.</td>
-            </tr>
-            <tr>
-              <td><code>v2.7.1</code></td>
-              <td>6 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Anti-regresi staging deploy: frontend production build guard menolak bundle yang memanggil direct private backend <code>:3001/api</code>; staging/production wajib memakai <code>VITE_API_URL=/api</code> atau unset.</td>
-            </tr>
-            <tr>
-              <td><code>v2.8.0</code></td>
-              <td>6 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Peningkatan Keandalan & Keamanan: Pemangkas log/file otomatis (pruner) untuk database, warmer_logs, file ekspor, dan backup folder beserta 54 test cases asinkron. CSP tuned dan rate limiter evaluated.</td>
-            </tr>
-            <tr>
-              <td><code>v2.8.1</code></td>
-              <td>6 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Smoke test otomatis: Penambahan skrip <code>deploy_smoke_test.js</code> untuk memvalidasi frontend, public API, dan internal API pasca-deploy.</td>
-            </tr>
-            <tr>
-              <td><code>v2.8.2</code></td>
-              <td>6 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Chatbot Flow large-data update: import limit 60 MB, import/export progress UI, lightweight list/detail/settings endpoints, dan metrik Triggered/Sent/Failed berbasis migrasi <code>006_chatbot_flow_delivery_metrics</code>.</td>
-            </tr>
-            <tr>
-              <td><code>v2.8.4</code></td>
-              <td>7 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Browser feature smoke staging PASS untuk process architecture, Chatbot Flow export validation/progress, layout metrik Chatbot Flow, dan evidence full export besar sekitar 49 MB.</td>
-            </tr>
-            <tr>
-              <td><code>v2.8.5</code></td>
-              <td>8 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Dashboard System Monitoring diubah ke light theme (tema putih) dengan manual refresh saja. Menghapus persentase visual pada stats & progress bar, menghapus chart aktivitas 12 jam, serta menambahkan metrik kapasitas RAM sistem VPS (total/used/free).</td>
-            </tr>
-            <tr>
-              <td><code>v2.8.6</code></td>
-              <td>8 Juni 2026</td>
-              <td>Tim QA & Lead Architect</td>
-              <td>Fitur auto-repair otomatis dengan rate-limiter, systemd timer/service setiap 1 jam, penambahan kolom database <code>last_error</code>/<code>last_error_at</code>, dan integrasi Alert Box merah di dashboard UI.</td>
+              <td>Codebase Audit &amp; Scalability Fixes: Penyelesaian temuan audit berupa session credential encryption, race-safe device quota, entitlement enforcement, audit log, tenant-owned upload metadata, OpenAPI parity 113/113, serta verifikasi build dan test suite backend (99/99 PASS).</td>
             </tr>
             <tr>
               <td><code>v2.9.3</code></td>
@@ -509,16 +437,16 @@
               <td>Penyimpanan Sesi WhatsApp at-rest Hardening: Implementasi <code>useEncryptedMultiFileAuthState</code> berbasis enkripsi AES-256-GCM terintegrasi penuh untuk melindungi file-file kredensial sesi Baileys di folder <code>sessions</code>, lengkap dengan penanganan fallback migrasi yang aman.</td>
             </tr>
             <tr>
-              <td><code>v2.9.4</code></td>
+              <td><code>v2.9.2</code></td>
               <td>28 Juni 2026</td>
               <td>Tim QA & Lead Architect</td>
-              <td>Codebase Audit & Scalability Fixes: Penyelesaian temuan audit berupa session credential encryption, race-safe device quota, entitlement enforcement, audit log, tenant-owned upload metadata, OpenAPI parity 112/112, serta verifikasi build dan test suite backend (92/92 PASS).</td>
+              <td>Opsi B (Modal Popup Internal) untuk Kebijakan Platform: Menambahkan komponen <code>PolicyModal.jsx</code> yang menyajikan Ketentuan Layanan (ToS), Kebijakan Privasi, AUP, serta Kebijakan Retensi Data langsung di dalam aplikasi, terintegrasi pada halaman login dan sidebar.</td>
             </tr>
             <tr>
               <td><code>v2.9.1</code></td>
               <td>28 Juni 2026</td>
               <td>Tim QA & Lead Architect</td>
-              <td>Penyusunan dokumen legal (Terms of Service, Privacy Policy, Acceptable Use Policy, Data Deletion Policy) secara komprehensif, implementasi SaaS Billing UI dengan subscription plans, serta penambahan dashboard monitoring per-user.</td>
+              <td>SaaS Billing &amp; Entitlements: Integrasi tabel <code>subscription_plans</code>, pembatasan kuota dinamis (<code>QUOTA_EXCEEDED</code> untuk sesi, bulk campaigns, dan chatbot flows), halaman Plans Management, pengeditan kuota user, serta monitoring resource per-user bagi admin.</td>
             </tr>
             <tr>
               <td><code>v2.9.0</code></td>
@@ -543,6 +471,108 @@
               <td>14 Juni 2026</td>
               <td>Tim QA & Lead Architect</td>
               <td>Fungsionalitas tombol manual Reconnect pada UI Devices, socket keep-alive ping 30 detik pada konfigurasi Baileys, normalisasi visualisasi memori RSS dashboard terhadap memori sistem host VPS, parse cap waktu log UTC ke zona waktu lokal peramban, dan dokumen tata kelola platform baru.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.6</code></td>
+              <td>8 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Fitur auto-repair otomatis dengan rate-limiter, systemd timer/service setiap 1 jam, penambahan kolom database <code>last_error</code>/<code>last_error_at</code>, dan integrasi Alert Box merah di dashboard UI.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.5</code></td>
+              <td>8 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Dashboard System Monitoring diubah ke light theme (tema putih) dengan manual refresh saja. Menghapus persentase visual pada stats & progress bar, menghapus chart aktivitas 12 jam, serta menambahkan metrik kapasitas RAM sistem VPS (total/used/free).</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.4</code></td>
+              <td>7 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Browser feature smoke staging PASS untuk process architecture, Chatbot Flow export validation/progress, layout metrik Chatbot Flow, dan evidence full export besar sekitar 49 MB.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.2</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Chatbot Flow large-data update: import limit 60 MB, import/export progress UI, lightweight list/detail/settings endpoints, dan metrik Triggered/Sent/Failed berbasis migrasi <code>006_chatbot_flow_delivery_metrics</code>.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.1</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Smoke test otomatis: Penambahan skrip <code>deploy_smoke_test.js</code> untuk memvalidasi frontend, public API, dan internal API pasca-deploy.</td>
+            </tr>
+            <tr>
+              <td><code>v2.8.0</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Peningkatan Keandalan & Keamanan: Pemangkas log/file otomatis (pruner) untuk database, warmer_logs, file ekspor, dan backup folder beserta 54 test cases asinkron. CSP tuned dan rate limiter evaluated.</td>
+            </tr>
+            <tr>
+              <td><code>v2.7.1</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Anti-regresi staging deploy: frontend production build guard menolak bundle yang memanggil direct private backend <code>:3001/api</code>; staging/production wajib memakai <code>VITE_API_URL=/api</code> atau unset.</td>
+            </tr>
+            <tr>
+              <td><code>v2.7.0</code></td>
+              <td>6 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Pembaruan stabilitas: penonaktifan loop auto-repair WhatsApp session yang merusak kredensial, penyaringan global verbose log noise libsignal, dan penyelesaian media upload.</td>
+            </tr>
+            <tr>
+              <td><code>v2.6.1</code></td>
+              <td>5 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Evidence terbaru: UFW aktif, backup/restore timers, local healthcheck timer, logrotate, HTTP smoke, auth-controller response helper migration, dan dashboard API-client migration.</td>
+            </tr>
+            <tr>
+              <td><code>v2.6.0</code></td>
+              <td>5 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Staging VPS baseline verified: Caddy HTTP/IP, systemd API/worker, frontend build, API/worker readiness evidence, dan status production hardening pending.</td>
+            </tr>
+            <tr>
+              <td><code>v2.5.0</code></td>
+              <td>4 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Codebase quality baseline: central config, structured logger, response helper, frontend API client, dan dokumen migrasi per modul.</td>
+            </tr>
+            <tr>
+              <td><code>v2.4.0</code></td>
+              <td>4 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Deploy automation template dan security hardening baseline: reverse proxy <code>/api</code>, PM2/systemd, Nginx/Caddy, security headers, request-size policy, ACL template, dan dependency audit evidence.</td>
+            </tr>
+            <tr>
+              <td><code>v2.3.0</code></td>
+              <td>4 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Pembaruan SDLC dan source diagram: admin auth cookie, logout menu sidebar, opt-out suppression flow, dan deployment topology VPS.</td>
+            </tr>
+            <tr>
+              <td><code>v2.2.0</code></td>
+              <td>4 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Roadmap production-hardening menuju VPS: admin authentication, pemisahan worker, migrasi DB versi, backup terenkripsi, monitoring VPS dengan Telegram alert evidence, dan deploy readiness checklist.</td>
+            </tr>
+            <tr>
+              <td><code>v2.1.0</code></td>
+              <td>1 Juni 2026</td>
+              <td>Tim QA & Lead Architect</td>
+              <td>Rilis pemolesan: Penyelarasan RTM, API Reference, visualisasi 16 tabel database, 23 catatan test case, hardening backend, suppression list opt-out, a11y, dan print styles.</td>
+            </tr>
+            <tr>
+              <td><code>v2.0.0</code></td>
+              <td>28 Mei 2026</td>
+              <td>Tim QA & Technical Writer</td>
+              <td>Pembaruan besar: Integrasi Chatbot Flows, Auto-Reply, Manajemen Kontak, dan skema data dictionary SQLite.</td>
+            </tr>
+            <tr>
+              <td><code>v1.0.0</code></td>
+              <td>20 Mei 2026</td>
+              <td>Tim Pengembang WA-Bot</td>
+              <td>Rilis inisiasi: dokumentasi modul dasar (Session Management, REST API, & DFD dasar).</td>
             </tr>
           </tbody>
         </table>
@@ -814,7 +844,7 @@
 
   <!-- Footer -->
   <footer>
-    <p>WA-Bot Pro Documentation &mdash; Generated from <code>sdlc_documentation.md</code> v2.9.4</p>
+    <p>WA-Bot Pro Documentation &mdash; Generated from <code>sdlc_documentation.md</code> v2.9.8</p>
     <p style="margin-top: 0.5rem;">IP address data powered by <a href="https://iplocate.io" target="_blank" rel="noopener">IPLocate.io</a></p>
   </footer>
 

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: WA-Bot Pro Local API
-  version: 2.9.4
+  version: 2.9.7
   description: |
     Machine-readable baseline for the routes mounted by the local Express backend.
     Rate limiting and restricted CORS origins are enforced by the local backend.
@@ -663,8 +663,8 @@ paths:
   /uploads/media:
     post:
       tags: [Uploads]
-      summary: Upload an admin image or video attachment
-      description: Accepts image files up to 5 MB and video files up to 10 MB. Uploaded files are runtime data and should remain behind authenticated /api access.
+      summary: Upload an authenticated media attachment
+      description: Accepts images up to 5 MB, videos up to 10 MB, audio up to 2 MB, and documents up to 5 MB. Uploaded files are runtime data and remain behind authenticated /api access.
       requestBody:
         required: true
         content:
@@ -684,7 +684,7 @@ paths:
     get:
       tags: [Uploads]
       summary: Download an uploaded media file
-      description: Requires authentication. Admins can access all uploaded media; regular users can only access media they uploaded.
+      description: Requires authentication. The current implementation only allows the authenticated owner of the uploaded media to download the file.
       parameters:
         - name: filename
           in: path
@@ -698,6 +698,19 @@ paths:
               schema:
                 type: string
                 format: binary
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Uploads]
+      summary: Delete an uploaded media file
+      description: Requires authentication. The current implementation only allows the authenticated owner of the uploaded media to delete the file and remove its metadata.
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
   /monitoring/status:
