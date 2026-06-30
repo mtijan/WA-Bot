@@ -28,7 +28,10 @@ export const listUsers = async (req, res) => {
     const users = await dbAll(
       `SELECT u.id, u.username, u.display_name, u.role, u.is_active, u.device_limit, u.created_at, u.updated_at,
               u.plan_id, u.subscription_status, u.subscription_expires_at, u.billing_reference,
-              p.name as plan_name 
+              p.name as plan_name,
+              COALESCE(p.max_sessions, u.device_limit, 0) as max_sessions,
+              (SELECT COUNT(*) FROM sessions WHERE user_id = u.id AND status = 'CONNECTED') as active_sessions,
+              u.subscription_status as status
        FROM users u
        LEFT JOIN subscription_plans p ON u.plan_id = p.id
        ORDER BY u.created_at DESC`

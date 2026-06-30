@@ -270,6 +270,21 @@ const UserManagement = ({ authState }) => {
     });
   };
 
+  const getExpirationWarning = (expiresAt) => {
+    if (!expiresAt) return null;
+    const expiryDate = new Date(expiresAt);
+    const now = new Date();
+    const diffTime = expiryDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays <= 0) {
+      return { text: 'Langganan Telah Kedaluwarsa', type: 'expired' };
+    } else if (diffDays === 1) {
+      return { text: 'Masa aktif habis besok!', type: 'warning' };
+    }
+    return null;
+  };
+
   return (
     <div style={{ position: 'relative', width: '100%', fontFamily: '"Outfit", "Inter", sans-serif' }}>
       {/* Header Halaman */}
@@ -526,9 +541,36 @@ const UserManagement = ({ authState }) => {
                 fontSize: '0.75rem',
                 color: 'var(--text-light)',
                 display: 'flex',
-                justifyContent: 'space-between'
+                flexDirection: 'column',
+                gap: '4px'
               }}>
-                <span>Terdaftar: {formatDate(u.created_at)}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Terdaftar: {formatDate(u.created_at)}</span>
+                  <span>Masa Aktif: {u.subscription_expires_at ? formatDate(u.subscription_expires_at) : 'Unlimited'}</span>
+                </div>
+                {(() => {
+                  const warning = getExpirationWarning(u.subscription_expires_at);
+                  if (warning) {
+                    return (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: warning.type === 'expired' ? '#fef2f2' : '#fffbeb',
+                        color: warning.type === 'expired' ? '#dc2626' : '#d97706',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        <AlertTriangle size={12} />
+                        {warning.text}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
           ))
@@ -643,7 +685,29 @@ const UserManagement = ({ authState }) => {
                   value={subscriptionExpiresAt}
                   onChange={(e) => setSubscriptionExpiresAt(e.target.value)}
                   className="form-control"
+                  disabled={!subscriptionExpiresAt && subscriptionExpiresAt !== undefined}
+                  style={(!subscriptionExpiresAt && subscriptionExpiresAt !== undefined) ? { backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                 />
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '-6px', marginBottom: '8px' }}>
+                <input
+                  type="checkbox"
+                  id="create-unlimited-expires"
+                  checked={!subscriptionExpiresAt}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSubscriptionExpiresAt('');
+                    } else {
+                      const oneYearFromNow = new Date();
+                      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+                      setSubscriptionExpiresAt(oneYearFromNow.toISOString().split('T')[0]);
+                    }
+                  }}
+                />
+                <label htmlFor="create-unlimited-expires" className="form-label" style={{ margin: 0, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>
+                  Masa Aktif Selamanya (Unlimited)
+                </label>
               </div>
 
               </div>
@@ -778,9 +842,30 @@ const UserManagement = ({ authState }) => {
                   value={subscriptionExpiresAt}
                   onChange={(e) => setSubscriptionExpiresAt(e.target.value)}
                   className="form-control"
-                  disabled={selectedUser?.id === 1}
-                  style={selectedUser?.id === 1 ? { backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
+                  disabled={selectedUser?.id === 1 || (!subscriptionExpiresAt && subscriptionExpiresAt !== undefined)}
+                  style={(selectedUser?.id === 1 || (!subscriptionExpiresAt && subscriptionExpiresAt !== undefined)) ? { backgroundColor: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' } : {}}
                 />
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '-6px', marginBottom: '8px' }}>
+                <input
+                  type="checkbox"
+                  id="edit-unlimited-expires"
+                  checked={!subscriptionExpiresAt}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSubscriptionExpiresAt('');
+                    } else {
+                      const oneYearFromNow = new Date();
+                      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+                      setSubscriptionExpiresAt(oneYearFromNow.toISOString().split('T')[0]);
+                    }
+                  }}
+                  disabled={selectedUser?.id === 1}
+                />
+                <label htmlFor="edit-unlimited-expires" className="form-label" style={{ margin: 0, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>
+                  Masa Aktif Selamanya (Unlimited)
+                </label>
               </div>
 
               </div>

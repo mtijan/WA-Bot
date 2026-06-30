@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Smartphone, Send, Users, FileText, Bot, Network, Phone, BarChart2 } from 'lucide-react';
+import { Smartphone, Send, Users, FileText, Bot, Network, Phone, BarChart2, AlertTriangle } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
 const formatDateTime = (dateStr) => {
@@ -12,6 +12,15 @@ const formatDateTime = (dateStr) => {
 };
 
 const Dashboard = ({ authState }) => {
+  const getRemainingDays = (expiresAt) => {
+    if (!expiresAt) return null;
+    const expiryDate = new Date(expiresAt);
+    const now = new Date();
+    const diffTime = expiryDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
   const [stats, setStats] = useState({
     activeSessions: 0,
     totalSessions: 0,
@@ -199,6 +208,39 @@ const Dashboard = ({ authState }) => {
 
   return (
     <div>
+      {/* Expiration warning banner */}
+      {(() => {
+        const remainingDays = getRemainingDays(authState?.subscriptionExpiresAt);
+        if (remainingDays !== null && remainingDays <= 3) {
+          const isExpired = remainingDays <= 0;
+          return (
+            <div style={{
+              backgroundColor: isExpired ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+              borderLeft: isExpired ? '4px solid #ef4444' : '4px solid #f59e0b',
+              borderRadius: '12px',
+              padding: '16px 20px',
+              marginBottom: '24px',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              color: isExpired ? '#b91c1c' : '#d97706'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <AlertTriangle size={20} />
+                <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                  {isExpired 
+                    ? 'Masa aktif akun Anda telah kedaluwarsa. Silakan hubungi Administrator untuk memperpanjang paket Anda.'
+                    : `Masa aktif akun Anda tinggal ${remainingDays} hari lagi. Silakan hubungi Administrator untuk memperpanjang paket Anda.`
+                  }
+                </span>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       {/* Chatbot AI Alerts */}
       {stats.chatbotAiErrors && stats.chatbotAiErrors.length > 0 && (
         <div style={{

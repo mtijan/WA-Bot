@@ -662,6 +662,13 @@ const migrations = [
       await run(db, `CREATE INDEX IF NOT EXISTS idx_uploaded_media_user ON uploaded_media (user_id)`);
       await run(db, `CREATE INDEX IF NOT EXISTS idx_uploaded_media_created ON uploaded_media (created_at)`);
     }
+  },
+  {
+    id: '020_admin_unlimited_subscription',
+    description: 'Set subscription_expires_at to NULL for main admin (id 1) to make it unlimited.',
+    up: async (db) => {
+      await run(db, 'UPDATE users SET subscription_expires_at = NULL WHERE id = 1');
+    }
   }
 ];
 

@@ -35,7 +35,7 @@ export const getAuthStatus = async (req, res) => {
     }
 
     const user = await dbGet(
-      'SELECT id, username, role, is_active, token_version FROM users WHERE id = ?',
+      'SELECT id, username, role, is_active, token_version, subscription_expires_at FROM users WHERE id = ?',
       [session.sub]
     );
     const authenticated = Boolean(
@@ -49,7 +49,8 @@ export const getAuthStatus = async (req, res) => {
         authenticated,
         userId: authenticated ? user.id : null,
         username: authenticated ? user.username : null,
-        role: authenticated ? user.role : null
+        role: authenticated ? user.role : null,
+        subscriptionExpiresAt: authenticated ? user.subscription_expires_at : null
     });
   } catch (error) {
     logError('getAuthStatus', error);
@@ -105,7 +106,8 @@ export const login = async (req, res) => {
       authenticated: true,
       userId: user.id,
       username: user.username,
-      role: user.role
+      role: user.role,
+      subscriptionExpiresAt: user.subscription_expires_at
     });
   } catch (error) {
     logError('login', error);
@@ -206,7 +208,8 @@ export const refreshToken = async (req, res) => {
       refreshed: true,
       userId: user.id,
       username: user.username,
-      role: user.role
+      role: user.role,
+      subscriptionExpiresAt: user.subscription_expires_at
     });
   } catch (error) {
     logError('refreshToken', error);
