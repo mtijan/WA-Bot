@@ -15,12 +15,24 @@ const Dashboard = ({ authState }) => {
   const getRemainingDays = (expiresAt) => {
     if (!expiresAt) return null;
     const expiryDate = new Date(expiresAt);
+    const expiryStr = expiryDate.toISOString().split('T')[0];
+    
     const now = new Date();
-    const diffTime = expiryDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const localToday = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    const todayStr = localToday.toISOString().split('T')[0];
+    
+    if (todayStr === expiryStr) {
+      return 0; // last day of usage
+    }
+    
+    const d1 = new Date(todayStr);
+    const d2 = new Date(expiryStr);
+    const diffTime = d2.getTime() - d1.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
   };
 
+  const [warningClosed, setWarningClosed] = useState(false);
   const [stats, setStats] = useState({
     activeSessions: 0,
     totalSessions: 0,
@@ -212,31 +224,135 @@ const Dashboard = ({ authState }) => {
       {(() => {
         const remainingDays = getRemainingDays(authState?.subscriptionExpiresAt);
         if (remainingDays !== null && remainingDays <= 3) {
-          const isExpired = remainingDays <= 0;
-          return (
-            <div style={{
-              backgroundColor: isExpired ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)',
-              borderLeft: isExpired ? '4px solid #ef4444' : '4px solid #f59e0b',
-              borderRadius: '12px',
-              padding: '16px 20px',
-              marginBottom: '24px',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              color: isExpired ? '#b91c1c' : '#d97706'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <AlertTriangle size={20} />
-                <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>
-                  {isExpired 
-                    ? 'Masa aktif akun Anda telah kedaluwarsa. Silakan hubungi Administrator untuk memperpanjang paket Anda.'
-                    : `Masa aktif akun Anda tinggal ${remainingDays} hari lagi. Silakan hubungi Administrator untuk memperpanjang paket Anda.`
-                  }
-                </span>
+          const isExpired = remainingDays < 0;
+          if (isExpired) {
+            return (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100vh',
+                backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                backdropFilter: 'blur(8px)',
+                zIndex: 99999,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px'
+              }}>
+                <div className="card" style={{
+                  maxWidth: '480px',
+                  width: '100%',
+                  padding: '32px',
+                  textAlign: 'center',
+                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  borderRadius: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '16px'
+                }}>
+                  <div style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    color: '#dc2626',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '8px'
+                  }}>
+                    <AlertTriangle size={32} />
+                  </div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: '#991b1b' }}>
+                    Masa Aktif Akun Kedaluwarsa
+                  </h3>
+                  <p style={{ fontSize: '0.9rem', color: '#4b5563', lineHeight: '1.6', margin: 0 }}>
+                    Masa aktif akun Anda telah berakhir. Silakan hubungi Administrator untuk memperpanjang paket langganan Anda agar dapat kembali menggunakan layanan.
+                  </p>
+                </div>
               </div>
-            </div>
-          );
+            );
+          } else if (!warningClosed) {
+            return (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100vh',
+                backgroundColor: 'rgba(15, 23, 42, 0.4)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 99999,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px'
+              }}>
+                <div className="card" style={{
+                  maxWidth: '440px',
+                  width: '100%',
+                  padding: '24px 28px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                  border: '1px solid rgba(245, 158, 11, 0.2)',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px'
+                }}>
+                  <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                    <div style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                      color: '#d97706',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <AlertTriangle size={22} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <h4 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, color: '#92400e' }}>
+                        Peringatan Masa Aktif
+                      </h4>
+                      <p style={{ fontSize: '0.85rem', color: '#4b5563', lineHeight: '1.5', margin: 0 }}>
+                        {remainingDays === 0 
+                          ? 'Masa aktif akun Anda berakhir hari ini! Silakan hubungi Administrator untuk melakukan perpanjangan.'
+                          : `Masa aktif akun Anda tinggal ${remainingDays} hari lagi. Silakan hubungi Administrator untuk melakukan perpanjangan.`
+                        }
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                    <button
+                      onClick={() => setWarningClosed(true)}
+                      className="btn btn-secondary"
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        backgroundColor: '#f3f4f6',
+                        color: '#374151',
+                        border: '1px solid #e5e7eb',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Saya Mengerti
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          }
         }
         return null;
       })()}

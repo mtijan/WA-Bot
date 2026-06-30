@@ -21,8 +21,12 @@ export async function requireActiveSubscription(req, res, next) {
       return sendError(res, 403, 'PAYMENT_REQUIRED', 'Status langganan Anda tidak aktif. Silakan hubungi Administrator.');
     }
 
-    if (user.subscription_expires_at && new Date(user.subscription_expires_at) < new Date()) {
-      return sendError(res, 403, 'PAYMENT_REQUIRED', 'Masa berlangganan Anda telah kedaluwarsa. Silakan perpanjang langganan Anda.');
+    if (user.subscription_expires_at) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const expiryStr = new Date(user.subscription_expires_at).toISOString().split('T')[0];
+      if (todayStr > expiryStr) {
+        return sendError(res, 403, 'PAYMENT_REQUIRED', 'Masa berlangganan Anda telah kedaluwarsa. Silakan perpanjang langganan Anda.');
+      }
     }
 
     return next();

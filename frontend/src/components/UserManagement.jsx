@@ -273,12 +273,21 @@ const UserManagement = ({ authState }) => {
   const getExpirationWarning = (expiresAt) => {
     if (!expiresAt) return null;
     const expiryDate = new Date(expiresAt);
-    const now = new Date();
-    const diffTime = expiryDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const expiryStr = expiryDate.toISOString().split('T')[0];
     
-    if (diffDays <= 0) {
+    const now = new Date();
+    const localToday = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    const todayStr = localToday.toISOString().split('T')[0];
+    
+    const d1 = new Date(todayStr);
+    const d2 = new Date(expiryStr);
+    const diffTime = d2.getTime() - d1.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) {
       return { text: 'Langganan Telah Kedaluwarsa', type: 'expired' };
+    } else if (diffDays === 0) {
+      return { text: 'Masa aktif habis hari ini!', type: 'warning' };
     } else if (diffDays === 1) {
       return { text: 'Masa aktif habis besok!', type: 'warning' };
     }
