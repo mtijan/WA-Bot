@@ -104,25 +104,25 @@ function Login({ onLogin }) {
           }}>
             <Bot size={32} color="white" />
           </div>
-          <div style={{ 
-            color: '#818cf8', 
-            fontSize: '0.75rem', 
-            fontWeight: 700, 
-            letterSpacing: '0.15em', 
-            textTransform: 'uppercase',
-            marginBottom: '4px'
+          <h1 style={{ 
+            margin: '4px 0 2px', 
+            fontSize: '2.25rem', 
+            fontWeight: 900, 
+            color: '#ffffff', 
+            letterSpacing: '-0.03em' 
           }}>
             S-BRO
-          </div>
-          <h1 style={{ 
-            margin: '4px 0 8px', 
-            fontSize: '1.75rem', 
-            fontWeight: 800, 
-            color: '#ffffff', 
-            letterSpacing: '-0.02em' 
+          </h1>
+          <div style={{ 
+            color: '#818cf8', 
+            fontSize: '0.875rem', 
+            fontWeight: 700, 
+            letterSpacing: '0.1em', 
+            textTransform: 'uppercase',
+            marginBottom: '1rem'
           }}>
             Salut Broadcast Online
-          </h1>
+          </div>
           <p style={{ 
             margin: 0, 
             color: '#94a3b8', 
