@@ -1,6 +1,13 @@
 import { dbAll, dbGet, dbRun } from '../database.js';
 
-const OPT_OUT_KEYWORDS = new Set(['stop', 'unsubscribe', 'berhenti']);
+const OPT_OUT_KEYWORDS = new Set([
+  'stop', 
+  'unsubscribe', 
+  'berhenti', 
+  'saya ingin konsultasi', 
+  'admin', 
+  'saya ingin berbicara dengan admin'
+]);
 
 export function normalizePhoneNumber(value = '') {
   return String(value).replace(/\D/g, '');

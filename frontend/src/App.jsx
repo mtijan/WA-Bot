@@ -21,6 +21,7 @@ const Monitoring = lazy(() => import('./components/Monitoring'));
 const QRCodeGenerator = lazy(() => import('./components/QRCodeGenerator'));
 const UserManagement = lazy(() => import('./components/UserManagement'));
 const PlansManagement = lazy(() => import('./components/PlansManagement'));
+const OptOutManagement = lazy(() => import('./components/OptOutManagement'));
 
 function App() {
   const [toasts, setToasts] = useState([]);
@@ -124,7 +125,7 @@ function App() {
             {/* <Route path="/proxies" element={<ProxyManager API_URL={API_URL} />} /> */}
 
             <Route path="/warmer" element={<Warmer />} />
-            <Route path="/opt-out" element={<div className="card"><h2>Opt-Out Management</h2><p>Feature under construction.</p></div>} />
+            <Route path="/opt-out" element={<OptOutManagement />} />
             <Route path="/chatbot-ai" element={<ChatbotAI />} />
             <Route path="/auto-reply" element={<Navigate to="/chatbot-ai" replace />} />
             <Route path="/qrcode-generator" element={<QRCodeGenerator />} />
