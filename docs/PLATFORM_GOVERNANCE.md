@@ -22,6 +22,19 @@ Sistem WA-Bot saat ini menggunakan **Baileys**, yang merupakan integrasi tidak r
 1. **Fase Uji Coba & Internal:** Pustaka Baileys aman digunakan untuk operasional internal, pengetesan fitur, ekstraksi grup internal, dan pengiriman transaksional skala kecil.
 2. **Fase Produksi Kritis (Business-Critical):** Untuk pengiriman pesan skala besar yang krusial bagi bisnis (seperti notifikasi OTP, pengingat tagihan, atau dukungan pelanggan skala besar), sangat disarankan untuk bermigrasi ke WhatsApp Business Platform resmi guna menghindari risiko pemadaman layanan akibat pemblokiran nomor.
 
+### 1.1 Status Pustaka Baileys & Kebijakan Pembaruan (Baileys Version Governance)
+
+Sistem WA-Bot saat ini dipatok menggunakan versi legacy stabil demi menjaga keandalan operasional tanpa merusak kompatibilitas modul yang ada.
+
+* **Versi Aktif Terpasang:** `@whiskeysockets/baileys@6.7.23` (versi *legacy* stabil terakhir pada lini 6.x).
+* **Kebijakan Pembaruan ke Versi 7.0.0 (Release Candidate):**
+  * **Status Versi 7.0.0:** Saat ini tim pengembang Baileys di GitHub sedang aktif mengembangkan versi `7.0.0-rc` (terakhir `7.0.0-rc13`).
+  * **Risiko Pembaruan (Breaking Changes):** Versi 7.x memperkenalkan transisi penuh ke *ECMAScript Modules* (ESM) serta perubahan mekanisme otentikasi sesi (membutuhkan kunci *LID-mapping*, *device-list*, dan *tctoken*). Pembaruan langsung akan memicu kegagalan kompatibilitas dengan struktur kode backend saat ini yang masih menggunakan CommonJS.
+  * **Potensi Isu pada Versi 7.x:** Dilaporkan adanya kendala konektivitas (seperti *pairing* QR Code hang dengan pesan *"Continue on WhatsApp Web"* atau error 405/401 pada versi 7.0.0-rc.6 hingga rc.9).
+* **Rekomendasi Pemeliharaan:**
+  1. **Pertahankan Versi Legacy (`6.7.23`):** Hindari memperbarui pustaka ke versi `7.x` kecuali jika Meta melakukan pembaruan protokol WhatsApp Web secara drastis yang melumpuhkan fungsionalitas versi `6.7.x`.
+  2. **Mitigasi Masalah Konektivitas:** Jika terjadi kegagalan koneksi di masa mendatang akibat versi WhatsApp Web yang kedaluwarsa (*stale version helper*), atur versi web secara manual pada inisialisasi socket `makeWASocket` dengan mengambil versi terbaru yang terkonfirmasi stabil oleh komunitas.
+
 ---
 
 ## 2. Protokol Batas Operasional & Pemanasan Akun (Warmup Protocol)

@@ -112,7 +112,7 @@ function Login({ onLogin }) {
             textTransform: 'uppercase',
             marginBottom: '4px'
           }}>
-            WA-Bot Pro
+            S-BRO
           </div>
           <h1 style={{ 
             margin: '4px 0 8px', 
@@ -121,7 +121,7 @@ function Login({ onLogin }) {
             color: '#ffffff', 
             letterSpacing: '-0.02em' 
           }}>
-            Masuk Dashboard
+            Salut Broadcast Online
           </h1>
           <p style={{ 
             margin: 0, 

@@ -69,7 +69,7 @@ async function uploadToTelegram() {
       
       formData.append('document', blob, `${backupId}.tar.gz`);
       formData.append('chat_id', telegramChatId);
-      formData.append('caption', `Backup WA-Bot terenkripsi (Offsite Storage)\nTanggal: ${startedAt.toLocaleString()}\nBerkas: ${backupId}.tar.gz`);
+      formData.append('caption', `Backup S-BRO terenkripsi (Offsite Storage)\nTanggal: ${startedAt.toLocaleString()}\nBerkas: ${backupId}.tar.gz`);
 
       const response = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendDocument`, {
         method: 'POST',

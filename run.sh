@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "==================================================="
-echo "      MENYALAKAN SISTEM WA-BOT MULTI-ACCOUNT       "
+echo "      MENYALAKAN SISTEM S-BRO MULTI-ACCOUNT        "
 echo "==================================================="
 echo ""
 

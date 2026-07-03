@@ -106,7 +106,7 @@ class WhatsAppService {
       auth: state,
       printQRInTerminal: false,
       logger: this.silentLogger,
-      browser: ['WA-Bot System', 'Chrome', '1.0.0'],
+      browser: ['S-BRO System', 'Chrome', '1.0.0'],
       syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
       keepAliveIntervalMs: 30000

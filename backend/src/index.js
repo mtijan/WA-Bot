@@ -10,7 +10,7 @@ const app = createApp({ runtimeRole });
 const boot = async () => {
   if (shouldStartHttpServer(runtimeRole)) {
     app.listen(PORT, async () => {
-      logger.info({ port: PORT, role: runtimeRole }, 'WA-Bot server started');
+      logger.info({ port: PORT, role: runtimeRole }, 'S-BRO server started');
       await startRuntimeServices(runtimeRole);
     });
     return;

@@ -176,7 +176,7 @@ async function sendWebhookAlert(failures, checks) {
   if (!webhookUrl) return;
 
   const payload = {
-    service: 'wa-bot',
+    service: 's-bro',
     status: 'alert',
     timestamp: nowIso(),
     failures,
@@ -202,7 +202,7 @@ function formatTelegramMessage(failures, checks) {
   const okCount = checks.length - failures.length;
 
   return [
-    'WA-Bot alert',
+    'S-BRO alert',
     `Time: ${nowIso()}`,
     `Failed checks: ${failures.length}`,
     `OK checks: ${okCount}`,

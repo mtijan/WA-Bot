@@ -73,9 +73,9 @@ const Sidebar = ({ authState, onLogout }) => {
           color: 'white',
           fontWeight: 'bold'
         }}>
-          T
+          S
         </div>
-        <h2 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 700, color: 'var(--text-main)' }}>T-Wave</h2>
+        <h2 style={{ fontSize: '1.25rem', margin: 0, fontWeight: 700, color: 'var(--text-main)' }}>S-BRO</h2>
       </div>
 
       <nav style={{ flex: 1, padding: '0 16px', overflowY: 'auto' }}>

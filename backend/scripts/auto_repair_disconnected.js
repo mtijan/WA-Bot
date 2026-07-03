@@ -157,7 +157,7 @@ async function main() {
         // Kirim alert ke Telegram hanya SEKALI ketika batas terlampaui
         if (!sessionInfo.alertedLimitReached) {
           const phoneDisplay = session.phone_number ? `(+${session.phone_number})` : '(belum tertaut)';
-          const limitMsg = `WA-Bot Auto Repair Warning\nSesi ${sessionId} ${phoneDisplay} telah mencapai batas maksimum perbaikan otomatis (${MAX_REPAIRS_PER_24H} kali dalam 24 jam).\nPerbaikan otomatis untuk sesi ini akan dinonaktifkan sementara hingga batas waktu reset 24 jam terlewati. Silakan periksa nomor Anda secara manual (kemungkinan terputus permanen atau diblokir).`;
+          const limitMsg = `S-BRO Auto Repair Warning\nSesi ${sessionId} ${phoneDisplay} telah mencapai batas maksimum perbaikan otomatis (${MAX_REPAIRS_PER_24H} kali dalam 24 jam).\nPerbaikan otomatis untuk sesi ini akan dinonaktifkan sementara hingga batas waktu reset 24 jam terlewati. Silakan periksa nomor Anda secara manual (kemungkinan terputus permanen atau diblokir).`;
           
           await sendTelegramNotification(limitMsg);
           
@@ -189,7 +189,7 @@ async function main() {
         hasChanges = true;
 
         const phoneDisplay = session.phone_number ? `(+${session.phone_number})` : '(belum tertaut)';
-        const successMsg = `WA-Bot Auto Repair\nSesi ${sessionId} ${phoneDisplay} terdeteksi terputus dan telah berhasil dipicu perbaikan otomatis.\nUpaya ke-${sessionInfo.attempts.length} dalam 24 jam terakhir.`;
+        const successMsg = `S-BRO Auto Repair\nSesi ${sessionId} ${phoneDisplay} terdeteksi terputus dan telah berhasil dipicu perbaikan otomatis.\nUpaya ke-${sessionInfo.attempts.length} dalam 24 jam terakhir.`;
         
         console.log(`[Auto Repair] Berhasil memicu perbaikan untuk sesi ${sessionId}`);
         await sendTelegramNotification(successMsg);
@@ -219,7 +219,7 @@ async function main() {
         hasChanges = true;
 
         const phoneDisplay = session.phone_number ? `(+${session.phone_number})` : '(belum tertaut)';
-        const failMsg = `WA-Bot Auto Repair Gagal\nGagal memicu perbaikan otomatis untuk sesi ${sessionId} ${phoneDisplay}.\nError: ${repairErr.message}\nUpaya ke-${sessionInfo.attempts.length} dalam 24 jam terakhir.`;
+        const failMsg = `S-BRO Auto Repair Gagal\nGagal memicu perbaikan otomatis untuk sesi ${sessionId} ${phoneDisplay}.\nError: ${repairErr.message}\nUpaya ke-${sessionInfo.attempts.length} dalam 24 jam terakhir.`;
         await sendTelegramNotification(failMsg);
       }
     }

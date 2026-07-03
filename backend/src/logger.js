@@ -4,7 +4,7 @@ import { config } from './config.js';
 export const logger = pino({
   level: process.env.WA_BOT_LOG_LEVEL || 'info',
   base: {
-    service: 'wa-bot-backend',
+    service: 's-bro-backend',
     role: config.runtime.role
   },
   timestamp: pino.stdTimeFunctions.isoTime
