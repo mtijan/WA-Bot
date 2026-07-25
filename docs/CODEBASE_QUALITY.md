@@ -1,7 +1,7 @@
 # WA-Bot Codebase Quality Baseline
 
 **Status:** Completed  
-**Last updated:** 2026-06-28
+**Last updated:** 2026-07-19
 
 ## Implemented Baseline
 
@@ -9,6 +9,7 @@
 |------|---------------|----------|
 | Central config | Core runtime/security/admin/internal values are read through `backend/src/config.js`. | `backend/src/config.js` |
 | Structured logger | Pino logger exists for bootstrap/runtime/internal error paths. | `backend/src/logger.js` |
+| Safe error logging | Request body values are omitted from error context and sensitive keys are redacted recursively. | `backend/src/logger.js`, `backend/test/security_high.test.js` |
 | Error response helper | Shared helpers exist for consistent success/error JSON envelopes. | `backend/src/utils/http_response.js` |
 | Secret masking helper | Shared masking helper exists for proxy URLs and partial secret display. | `backend/src/utils/secret_masking.js` |
 | Media upload attachments | Backend upload modules and frontend upload UI for Templates, Single Message, and Chatbot Flow are implemented and verified. | `backend/src/services/upload.service.js`, `backend/src/controllers/upload.controller.js`, `backend/src/routes/upload.routes.js`, `frontend/src/components/MediaUploadField.jsx`, `docs/MEDIA_UPLOAD_WORKLOG.md` |
@@ -18,6 +19,7 @@
 | SaaS entitlement enforcement | Subscription plans define runtime quotas for sessions, campaigns, and chatbot flows; route middleware rejects inactive subscriptions and quota overflow. Device session creation uses atomic SQLite reservation to prevent concurrent quota bypass. | `backend/src/middleware/entitlement.middleware.js`, `backend/src/controllers/session.controller.js`, `backend/src/controllers/plan.controller.js`, `backend/test/entitlement_routes.test.js`, `backend/test/session_device_limit.test.js` |
 | Audit trail | Sensitive auth/user/session/campaign/template/chatbot/proxy/settings actions are recorded in append-only `audit_logs`, with admin-global and user-scoped retrieval. | `backend/src/services/audit.service.js`, `backend/src/controllers/audit.controller.js`, `backend/src/routes/audit.routes.js`, `backend/test/saas_admin_hardening.test.js` |
 | Uploaded media tenant ownership | Uploaded media records are stored in `uploaded_media`; downloads and deletes are authenticated and limited to the file owner. Legacy files without metadata fail closed. | `backend/src/services/upload.service.js`, `backend/src/controllers/upload.controller.js`, `backend/test/upload_tenant.test.js` |
+| Filesystem and egress boundaries | Session paths are root-confined, message media is limited to managed uploads, and AI provider URLs are public-HTTPS-only with DNS/private-range and redirect checks. | `backend/src/utils/session_id.js`, `backend/src/utils/outbound_url.js`, `backend/src/services/whatsapp.helpers.js` |
 | Frontend API client | Central API request helper exists; all React components use it. | `frontend/src/apiClient.js`, `frontend/src/components/Dashboard.jsx`, `frontend/src/components/SessionManager.jsx`, `frontend/src/components/ContactGroups.jsx`, `frontend/src/components/ProxyManager.jsx`, `frontend/src/components/Templates.jsx`, `frontend/src/components/ChatbotFlows.jsx`, `frontend/src/components/SingleMessage.jsx`, `frontend/src/components/BulkCampaign.jsx`, `frontend/src/components/Warmer.jsx`, `frontend/src/components/GroupDetail.jsx`, `frontend/src/components/ChatbotAI.jsx` |
 | Controller Response & Validation Migration | All 15 backend controllers are fully migrated to use Pino logger, centralized config, consistent response helper, and declarative validation middleware. | `backend/src/controllers/*.js`, `backend/src/routes/*.js`, `backend/src/utils/validator.js` |
 
@@ -57,6 +59,7 @@
 | 2026-06-16 | Chatbot Flow runtime scaling | Added `chatbot_flow_sessions` migration/service, synced assignments on create/update/import/delete, updated inbound matching and Chatbot AI knowledge lookup to use indexed session lookup, and added tests for mapping/session isolation. Backend test suite passed 78/78 at the time. |
 | 2026-06-28 | SaaS user controls | Added admin-controlled `users.device_limit`, backend session quota enforcement, Monitoring visibility restricted to admin, OpenAPI parity 106/106, and documentation parity for Markdown/HTML SaaS operations. Backend test suite passed 81/81 at the time. |
 | 2026-06-30 | Documentation and upload route parity | Added `DELETE /api/uploads/media/:filename` documentation, clarified owner-only media access, and updated current route/test evidence. OpenAPI parity 113/113; backend test suite passes 99/99. |
+| 2026-07-19 | Critical/High security remediation | Added managed-media and session-root filesystem boundaries, AI SSRF controls, atomic refresh rotation, mandatory secrets, tenant-owned synced contacts/templates, and log redaction. Migration 021, dependency audit, frontend build guard, and backend tests 114/114 passed. |
 | 2026-06-06 | Frontend SingleMessage API calls | `frontend/src/components/SingleMessage.jsx` now uses `apiRequest` for sessions, templates, contact groups, groups list, and sending messages; `npm run build` passed. |
 | 2026-06-06 | All remaining frontend components | `BulkCampaign.jsx`, `Warmer.jsx`, `GroupDetail.jsx`, `GroupGrabber.jsx`, and `ChatbotAI.jsx` successfully migrated to `apiRequest` for all network calls; `npm run build` passed and Production API URL guard verified. |
 | 2026-06-06 | Backend controllers & validation migration | All 15 controllers refactored to use `sendSuccess`/`sendError` response helpers, logging converted from `console.*` to `logger`/`logError`, and route payload validation middleware `validator.js` created and integrated across all routes. Syntax loop and frontend build verified. |

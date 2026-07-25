@@ -137,7 +137,7 @@ class CampaignService {
             'UPDATE delivery_logs SET status = ?, error_message = ? WHERE id = ?',
             ['SKIPPED_OPT_OUT', 'Penerima berada dalam suppression list.', log.id]
           );
-          console.log(`[Campaign Worker] Melewati ${log.target_number}: penerima telah opt-out.`);
+          console.log(`[Campaign Worker] Kampanye #${campaignId} melewati satu penerima yang telah opt-out.`);
           continue;
         }
 
@@ -208,10 +208,10 @@ class CampaignService {
           
           // Sukses kirim
           await dbRun('UPDATE delivery_logs SET status = ? WHERE id = ?', ['SENT', log.id]);
-          console.log(`[Campaign Worker] Kampanye #${campaignId} terkirim ke ${log.target_number}`);
+          console.log(`[Campaign Worker] Kampanye #${campaignId} berhasil mengirim satu pesan.`);
         } catch (err) {
           // Gagal kirim
-          console.error(`[Campaign Worker] Gagal mengirim pesan ke ${log.target_number}:`, err.message);
+          console.error(`[Campaign Worker] Kampanye #${campaignId} gagal mengirim satu pesan:`, err.message);
           await dbRun(
             'UPDATE delivery_logs SET status = ?, error_message = ? WHERE id = ?',
             ['FAILED', err.message, log.id]

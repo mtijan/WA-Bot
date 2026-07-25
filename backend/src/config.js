@@ -41,11 +41,7 @@ export const config = {
   admin: {
     username: process.env.WA_BOT_ADMIN_USERNAME || 'admin',
     password: process.env.WA_BOT_ADMIN_PASSWORD || '',
-    sessionSecret: process.env.WA_BOT_ADMIN_SESSION_SECRET
-      || process.env.WA_BOT_SECRET_ENCRYPTION_KEY
-      || process.env.WA_BOT_ADMIN_PASSWORD
-      || process.env.WA_BOT_API_KEY
-      || 'local-development-session-secret',
+    sessionSecret: process.env.WA_BOT_ADMIN_SESSION_SECRET || '',
     sessionTtlMs: parsePositiveInteger(process.env.WA_BOT_ADMIN_SESSION_TTL_MS, 12 * 60 * 60 * 1000),
     cookieSecure: process.env.WA_BOT_COOKIE_SECURE === 'true'
   },

@@ -1,7 +1,7 @@
 # WA-Bot Pro Operations Runbook
 
 **Status:** Internal baseline  
-**Last updated:** 2026-06-28
+**Last updated:** 2026-07-19
 
 ## 1. Local Start
 
@@ -13,13 +13,14 @@ Run:
 .\run.bat
 ```
 
-The Windows launcher opens the backend in a separate window and prompts for admin credentials. Enter a password to enable the HttpOnly-cookie admin login for that local session, or leave the password blank to run in local mode without dashboard login.
+The Windows launcher opens the backend in a separate window. If `WA_BOT_SECRET_ENCRYPTION_KEY` is not already set, it first prompts for a stable value of at least 32 characters; use the same value on every restart. It then prompts for admin credentials. Enter a password to enable the HttpOnly-cookie login, or leave the password blank for local mode without dashboard login.
 
 ### Linux, macOS, WSL, or Git Bash
 
 Run:
 
 ```bash
+export WA_BOT_SECRET_ENCRYPTION_KEY='replace-with-a-stable-secret-of-at-least-32-characters'
 ./run.sh
 ```
 
@@ -56,7 +57,7 @@ Copy `backend/.env.example` into your deployment secret-management workflow. The
 |----------|---------|
 | `WA_BOT_ADMIN_USERNAME` | Admin username for dashboard login. Defaults to `admin`. |
 | `WA_BOT_ADMIN_PASSWORD` | Enables admin dashboard login and protects `/api/*` browser access. Required before public exposure. |
-| `WA_BOT_ADMIN_SESSION_SECRET` | Signs the HttpOnly admin session cookie. Use a long random secret. |
+| `WA_BOT_ADMIN_SESSION_SECRET` | Signs JWT access/refresh cookies. Required, minimum 32 characters, and must not reuse another application secret. |
 | `WA_BOT_ADMIN_SESSION_TTL_MS` | Admin session lifetime in milliseconds. Defaults to 12 hours. |
 | `WA_BOT_COOKIE_SECURE` | Set to `true` only when the dashboard is served over HTTPS. |
 | `WA_BOT_API_KEY` | Enables `X-API-Key` access for trusted server-to-server callers. Do not put this in frontend JavaScript. |
@@ -65,7 +66,7 @@ Copy `backend/.env.example` into your deployment secret-management workflow. The
 | `WA_BOT_RATE_LIMIT_MAX` | Maximum API requests per client IP per window. |
 | `WA_BOT_JSON_BODY_LIMIT` | Default JSON/urlencoded request body limit for normal API calls. Defaults to `2mb`. |
 | `WA_BOT_IMPORT_BODY_LIMIT` | Larger request body limit for import endpoints such as Chatbot Flow import. Defaults to `60mb`. |
-| `WA_BOT_SECRET_ENCRYPTION_KEY` | Encrypts newly saved Chatbot AI provider keys using AES-256-GCM. |
+| `WA_BOT_SECRET_ENCRYPTION_KEY` | Required minimum 32-character key for Baileys session files and newly saved Chatbot AI provider keys. Missing/short values fail closed. |
 | `WA_BOT_LOG_RETENTION_DAYS` | Delivery-log retention used by the cleanup script. |
 | `WA_BOT_BACKUP_DIR` | Optional protected destination for timestamped runtime-data backups. |
 | `WA_BOT_TRUST_PROXY_HOPS` | Optional trusted proxy hop count. Set only behind a known proxy. |
@@ -90,6 +91,12 @@ Copy `backend/.env.example` into your deployment secret-management workflow. The
 Do not ship the backend API key inside frontend JavaScript. Public browser deployments should use an authenticated reverse proxy or server-side session layer.
 
 After configuring `WA_BOT_SECRET_ENCRYPTION_KEY`, open and save each existing Chatbot AI configuration once to migrate older plaintext provider keys into ciphertext.
+
+Session IDs must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`. Do not use dots, spaces, slashes, or backslashes. AI provider Base URLs must use public HTTPS; localhost, private/reserved networks, URL credentials, internal hostnames, and redirects are rejected.
+
+If a local WhatsApp session was created before v2.9.9 without an explicitly configured stable `WA_BOT_SECRET_ENCRYPTION_KEY`, treat the former fallback-encrypted credentials as compromised. Preserve the directory for recovery evidence, configure a new stable key, and re-pair the WhatsApp device; do not delete the old session directory until the exact target and recovery decision are confirmed.
+
+After deploying migration `021_whatsapp_contacts_tenant_isolation`, legacy global `whatsapp_contacts` rows belong to admin ID 1. Run Force Sync Contacts once for each non-admin tenant that needs its cache rebuilt.
 
 ## 4. Backend Runtime Roles
 

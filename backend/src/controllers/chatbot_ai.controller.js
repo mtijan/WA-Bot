@@ -4,6 +4,7 @@ import { protectSecret, revealSecret } from '../services/secret.service.js';
 import { getFlowsKnowledgeBase } from '../services/chatbot_ai.service.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
+import { assertSafeOutboundUrl, createSafeOutboundFetch } from '../utils/outbound_url.js';
 
 export const maskAISettings = (settings) => ({
   ...settings,
@@ -42,6 +43,9 @@ export const createCredential = async (req, res) => {
   const { name, base_url, api_key, model_name, is_active } = req.body;
 
   try {
+    if (base_url !== undefined && base_url !== null && base_url !== '') {
+      await assertSafeOutboundUrl(base_url);
+    }
     const encryptedKey = api_key ? protectSecret(api_key) : null;
     const isActive = is_active !== undefined ? (is_active ? 1 : 0) : 1;
     const baseUrl = base_url || 'https://ai.sumopod.com/v1';
@@ -55,6 +59,9 @@ export const createCredential = async (req, res) => {
 
     return sendSuccess(res, { id: result.id, name, base_url: baseUrl, model_name: modelName, is_active: isActive }, 200, { message: 'Kredensial berhasil ditambahkan.' });
   } catch (error) {
+    if (error.code === 'UNSAFE_OUTBOUND_URL') {
+      return sendError(res, 400, error.code, error.message);
+    }
     logError('createCredential', error, { body: req.body });
     return sendError(res, 500, 'CREATE_CREDENTIAL_ERROR', 'Gagal menambahkan kredensial.');
   }
@@ -72,6 +79,10 @@ export const updateCredential = async (req, res) => {
 
     if (existing.user_id !== req.auth.userId) {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke kredensial ini.');
+    }
+
+    if (base_url !== undefined) {
+      await assertSafeOutboundUrl(base_url);
     }
 
     const updates = [];
@@ -109,6 +120,9 @@ export const updateCredential = async (req, res) => {
 
     return sendSuccess(res, null, 200, { message: 'Kredensial berhasil diperbarui.' });
   } catch (error) {
+    if (error.code === 'UNSAFE_OUTBOUND_URL') {
+      return sendError(res, 400, error.code, error.message);
+    }
     logError('updateCredential', error, { params: req.params, body: req.body });
     return sendError(res, 500, 'UPDATE_CREDENTIAL_ERROR', 'Gagal memperbarui kredensial.');
   }
@@ -211,6 +225,9 @@ export const saveAISettings = async (req, res) => {
   const { session_id, credential_id } = req.body;
 
   try {
+    if (req.body.base_url !== undefined) {
+      await assertSafeOutboundUrl(req.body.base_url);
+    }
     const sess = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [session_id]);
     if (!sess) {
       return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
@@ -303,6 +320,9 @@ export const saveAISettings = async (req, res) => {
     }
     return sendSuccess(res, null, 200, { message: 'Pengaturan Chatbot AI berhasil disimpan.' });
   } catch (error) {
+    if (error.code === 'UNSAFE_OUTBOUND_URL') {
+      return sendError(res, 400, error.code, error.message);
+    }
     if (error.code === 'SQLITE_CONSTRAINT' || (error.message && error.message.includes('constraint')) || (error.message && error.message.includes('FOREIGN KEY'))) {
       return sendError(res, 400, 'INVALID_SESSION_ID', 'ID Sesi tidak valid atau tidak terdaftar.');
     }
@@ -340,12 +360,18 @@ export const testAISettings = async (req, res) => {
     try {
       let cred = null;
       if (credential_id) {
-        cred = await dbGet('SELECT * FROM chatbot_ai_credentials WHERE id = ?', [credential_id]);
+        cred = await dbGet(
+          'SELECT * FROM chatbot_ai_credentials WHERE id = ? AND user_id = ?',
+          [credential_id, req.auth.userId]
+        );
       } else if (session_id) {
         const settings = await dbGet('SELECT * FROM chatbot_ai_settings WHERE session_id = ?', [session_id]);
         if (settings) {
           if (settings.credential_id) {
-            cred = await dbGet('SELECT * FROM chatbot_ai_credentials WHERE id = ?', [settings.credential_id]);
+            cred = await dbGet(
+              'SELECT * FROM chatbot_ai_credentials WHERE id = ? AND user_id = ?',
+              [settings.credential_id, req.auth.userId]
+            );
           } else if (settings.api_key) {
             resolvedKey = revealSecret(settings.api_key);
             resolvedBaseUrl = settings.base_url;
@@ -369,10 +395,12 @@ export const testAISettings = async (req, res) => {
   }
 
   try {
+    const safeBaseUrl = await assertSafeOutboundUrl(resolvedBaseUrl || 'https://ai.sumopod.com/v1');
     const openai = new OpenAI({
       apiKey: resolvedKey,
-      baseURL: resolvedBaseUrl || 'https://ai.sumopod.com/v1',
-      timeout: 15000
+      baseURL: safeBaseUrl,
+      timeout: 15000,
+      fetch: createSafeOutboundFetch()
     });
 
     const messages = [];
@@ -395,6 +423,9 @@ export const testAISettings = async (req, res) => {
     }
     return sendSuccess(res, { reply }, 200, { message: 'Koneksi API SumoPod berhasil terjalin!' });
   } catch (error) {
+    if (error.code === 'UNSAFE_OUTBOUND_URL') {
+      return sendError(res, 400, error.code, error.message);
+    }
     logError('testAISettings', error, { body: req.body });
     return sendError(res, 500, 'TEST_AI_SETTINGS_ERROR', 'Uji coba koneksi gagal: ' + error.message);
   }

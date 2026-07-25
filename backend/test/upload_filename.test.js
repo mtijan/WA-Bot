@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { createMediaFilename } from '../src/services/upload.service.js';
-import { getFileNameFromUrl } from '../src/services/whatsapp.helpers.js';
+import { getFileNameFromUrl, getMediaSource } from '../src/services/whatsapp.helpers.js';
 
 describe('Preservasi Nama Berkas Media', () => {
   describe('createMediaFilename', () => {
@@ -65,6 +68,51 @@ describe('Preservasi Nama Berkas Media', () => {
     it('seharusnya mengembalikan nama default jika URL kosong/null', () => {
       assert.equal(getFileNameFromUrl('', 'Fallback.pdf'), 'Fallback.pdf');
       assert.equal(getFileNameFromUrl(null, 'Fallback.pdf'), 'Fallback.pdf');
+    });
+  });
+
+  describe('getMediaSource security boundary', () => {
+    it('hanya membaca file reguler di dalam root upload terkelola', () => {
+      const testRoot = mkdtempSync(join(tmpdir(), 'wa-bot-media-root-'));
+      const managedFile = join(testRoot, 'managed.txt');
+      writeFileSync(managedFile, 'managed-media-test', 'utf8');
+
+      try {
+        const source = getMediaSource(managedFile, { mediaRoot: testRoot });
+        assert.ok(Buffer.isBuffer(source));
+        assert.equal(source.toString('utf8'), 'managed-media-test');
+      } finally {
+        rmSync(testRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('menolak pembacaan file lokal di luar root upload', () => {
+      const testRoot = mkdtempSync(join(tmpdir(), 'wa-bot-media-root-'));
+      const outsideRoot = mkdtempSync(join(tmpdir(), 'wa-bot-media-outside-'));
+      const outsideFile = join(outsideRoot, 'secret.txt');
+      writeFileSync(outsideFile, 'must-not-be-readable', 'utf8');
+
+      try {
+        assert.throws(
+          () => getMediaSource(outsideFile, { mediaRoot: testRoot }),
+          (error) => error?.code === 'UNSAFE_MEDIA_SOURCE'
+        );
+      } finally {
+        rmSync(testRoot, { recursive: true, force: true });
+        rmSync(outsideRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('menolak URL remote agar tidak menjadi SSRF', () => {
+      const testRoot = mkdtempSync(join(tmpdir(), 'wa-bot-media-root-'));
+      try {
+        assert.throws(
+          () => getMediaSource('http://127.0.0.1:3002/internal/health/ready', { mediaRoot: testRoot }),
+          (error) => error?.code === 'UNSAFE_MEDIA_SOURCE'
+        );
+      } finally {
+        rmSync(testRoot, { recursive: true, force: true });
+      }
     });
   });
 });

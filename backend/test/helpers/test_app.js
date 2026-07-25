@@ -21,6 +21,8 @@ const testDbPath = join(testTmpDir, 'test.sqlite');
 process.env.NODE_ENV = 'test';
 process.env.WA_BOT_DB_PATH = testDbPath;
 process.env.WA_BOT_INTERNAL_TOKEN = 'testing-internal-token-secret-placeholder';
+process.env.WA_BOT_ADMIN_SESSION_SECRET = 'testing-admin-session-secret-at-least-32-characters';
+process.env.WA_BOT_SECRET_ENCRYPTION_KEY = 'testing-encryption-secret-at-least-32-characters';
 
 // Nonaktifkan admin auth, API key, dan session manager url agar test bisa mengakses endpoint tanpa kredensial
 // dan berjalan dalam mode terisolasi tanpa mem-proxy ke session manager secara nyata.

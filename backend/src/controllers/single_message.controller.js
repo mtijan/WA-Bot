@@ -33,6 +33,16 @@ export const sendMessage = async (req, res) => {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
+    if (messageType === 'template' && templateId) {
+      const template = await dbGet(
+        'SELECT id FROM message_templates WHERE id = ? AND user_id = ?',
+        [templateId, req.auth.userId]
+      );
+      if (!template) {
+        return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Template tidak valid untuk tenant ini.');
+      }
+    }
+
     if (!allowOptedOut && await isOptedOut(target, req.auth.userId)) {
       return sendError(res, 409, 'RECIPIENT_OPTED_OUT', 'Penerima berada dalam suppression list. Gunakan override eksplisit hanya untuk pesan yang sah dan diperlukan.');
     }

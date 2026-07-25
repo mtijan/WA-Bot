@@ -1,7 +1,7 @@
 # WA-Bot Pro Security Baseline
 
 **Status:** Security hardening baseline implemented; production risk review still required  
-**Last updated:** 2026-06-29
+**Last updated:** 2026-07-19
 
 ## 1. Scope
 
@@ -12,17 +12,20 @@ This document separates implemented controls from production requirements. It is
 | Area | Current State | Evidence |
 |------|---------------|----------|
 | SQL query handling | Parameterized SQLite statements are used in application data access. | `backend/src/database.js` and controllers |
-| Session credential encryption | Baileys auth files are encrypted at-rest using AES-256-GCM and stored under the backend directory. | `backend/sessions/` via `useEncryptedMultiFileAuthState` |
+| Session credential encryption | Baileys auth files are encrypted at-rest using AES-256-GCM. `WA_BOT_SECRET_ENCRYPTION_KEY` is required (minimum 32 characters); no static fallback remains. | `backend/src/utils/encrypted_auth_state.js`, `backend/sessions/` |
 | AI API key visual masking | The Chatbot AI UI uses a password input field. | `frontend/src/components/ChatbotAI.jsx` |
 | Error handling | Express has a final error middleware. | `backend/src/index.js` |
-| Admin dashboard authentication | JWT multi-user login issues HttpOnly access/refresh cookies; refresh tokens are stored by hash/JTI, rotated, revoked, and invalidated through `users.token_version`. | `backend/src/routes/auth.routes.js`, `backend/src/controllers/auth.controller.js`, `backend/src/middleware/admin_auth.middleware.js`, `frontend/src/components/Login.jsx` |
-| Tenant isolation | Non-admin users are scoped by `user_id`; all 19 backend controllers verified line-by-line. No admin bypass patterns remain for cross-user WhatsApp session usage. `auto_replies`, `single_message`, and `contact` were the last to be fixed. | `backend/src/controllers/*.js`, `backend/src/services/campaign.service.js`, `backend/src/services/chatbot_flow_sessions.service.js`, migrations `012`, `013`, `015` |
+| Admin dashboard authentication | JWT multi-user login issues HttpOnly access/refresh cookies; refresh tokens are stored by hash/JTI and consumed atomically during rotation. `WA_BOT_ADMIN_SESSION_SECRET` is required with at least 32 characters. | `backend/src/controllers/auth.controller.js`, `backend/src/middleware/admin_auth.middleware.js` |
+| Tenant isolation | Core records, message-template resolution, manual-contact personalization, and synced WhatsApp contacts are scoped by `user_id`. Synced contacts use composite key `(user_id, jid)`. | `backend/src/controllers/*.js`, `backend/src/services/whatsapp.service.js`, migration `021_whatsapp_contacts_tenant_isolation` |
 | Admin-only Monitoring | Frontend navigation and route registration expose Monitoring only to admin/operator users. | `frontend/src/components/Sidebar.jsx`, `frontend/src/App.jsx` |
 | Plan-based quota enforcement | Admins control subscription plans; non-admin session creation is rejected against `subscription_plans.max_sessions` through atomic SQLite slot reservation to prevent concurrent quota bypass. | `backend/src/controllers/session.controller.js`, `backend/src/middleware/entitlement.middleware.js`, `backend/src/controllers/plan.controller.js`, migrations `016`, `018` |
 | Audit trail | Sensitive auth/user/session/campaign/template/chatbot/proxy/settings events are written to append-only `audit_logs`; admin visibility is global and user visibility is actor-scoped. | `backend/src/services/audit.service.js`, `backend/src/controllers/audit.controller.js`, migration `017_audit_logs` |
 | Security response headers | Native Express middleware sets baseline headers such as tuned CSP (allowing Google Fonts and staging/production websocket), frame denial, referrer policy, permissions policy, and optional HSTS. | `backend/src/middleware/security.middleware.js` |
 | Request-size policy | Default JSON/urlencoded body limit is configurable and lower than import endpoints. | `WA_BOT_JSON_BODY_LIMIT`, `WA_BOT_IMPORT_BODY_LIMIT` |
-| Media upload limits and ownership | Image/video/audio/document upload is implemented with explicit size limits, runtime storage outside git, `uploaded_media` metadata, and owner-only download/delete authorization. | `WA_BOT_MEDIA_UPLOAD_DIR`, `WA_BOT_IMAGE_UPLOAD_MAX_BYTES`, `WA_BOT_VIDEO_UPLOAD_MAX_BYTES`, `backend/uploads/`, migration `019_uploaded_media_metadata` |
+| Media upload limits and ownership | Uploads have explicit limits and owner-only download/delete. Runtime sending accepts only regular files inside the managed media root after lexical and realpath checks; arbitrary local paths, symlink escapes, and remote attachment URLs are rejected. | `backend/src/services/upload.service.js`, `backend/src/services/whatsapp.helpers.js`, migration `019_uploaded_media_metadata` |
+| Session filesystem boundary | Session IDs are restricted to 1-64 alphanumeric/underscore/hyphen characters and every session directory is resolved beneath the configured root. | `backend/src/utils/session_id.js`, public/internal session routes, `backend/src/services/whatsapp.service.js` |
+| AI outbound request policy | Provider Base URLs must be public HTTPS. Local/private/reserved destinations are rejected after DNS resolution; requests pin the validated public address and reject redirects to close DNS-rebinding/redirect SSRF paths. | `backend/src/utils/outbound_url.js`, `backend/src/controllers/chatbot_ai.controller.js`, `backend/src/services/whatsapp.service.js` |
+| Sensitive log minimization | Error context records request field names rather than body values and redacts password, secret, token, cookie, API key, authorization, and proxy URL fields. Message bodies and recipient identifiers were removed from Chatbot runtime logs. | `backend/src/logger.js`, `backend/src/services/whatsapp.service.js` |
 | Proxy/IPLocate secret masking | Proxy URLs and IPLocate settings responses no longer return credential plaintext; IPLocate env key is preferred for production. | `backend/src/utils/secret_masking.js`, `backend/src/controllers/proxy.controller.js`, `backend/src/controllers/session.controller.js`, `WA_BOT_IPLOCATE_API_KEY` |
 | Dependency audit baseline | `sqlite3@6.x` remediation and dependency overrides are active; latest backend audit was clean (`npm run security:audit`, 2026-06-28). | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
 | Staging deploy baseline | Domain HTTPS, secure cookie/CORS, provider firewall, Telegram alert timer, backup/restore timers, ACL baseline, and API/worker readiness are verified. | `docs/STAGING.md` |
@@ -59,9 +62,11 @@ Implemented backend hardening:
 - Request-size policy controlled by `WA_BOT_JSON_BODY_LIMIT` and `WA_BOT_IMPORT_BODY_LIMIT`; normal API calls default to `2mb`, while import endpoints default to `60mb` for large chatbot flow/contact imports.
 - Password validation for user management requires at least 12 characters. Changing a password revokes existing refresh tokens and invalidates older access tokens through `token_version`.
 - Chatbot Flow hot-path matching uses `chatbot_flow_sessions` indexed lookup. Do not reintroduce broad `LIKE` matching or global active-flow scans that can cause data leakage or degraded performance.
-- Media upload is implemented. Limits are image <= 5 MB, video <= 10 MB, audio <= 2 MB, and document <= 5 MB, stored under `backend/uploads/` or `WA_BOT_MEDIA_UPLOAD_DIR`; file download/delete must go through authenticated `/api/uploads/media/:filename` owner checks.
+- Media upload is implemented. Limits are image <= 5 MB, video <= 10 MB, audio <= 2 MB, and document <= 5 MB. File download/delete goes through owner checks and message attachments must resolve to a regular file below the managed upload root.
 - Masked Chatbot AI key responses with `has_api_key` metadata.
-- Optional AES-256-GCM encryption for newly saved Chatbot AI keys controlled by `WA_BOT_SECRET_ENCRYPTION_KEY`.
+- Mandatory AES-256-GCM encryption for newly saved Chatbot AI keys controlled by `WA_BOT_SECRET_ENCRYPTION_KEY`; plaintext fallback writes are rejected.
+- Atomic refresh-token consumption rejects concurrent replay of the same refresh token.
+- AI Base URL validation blocks private/reserved networks, pins the validated DNS address, and rejects redirects; this protects the application path but does not replace host-level egress firewalling.
 - `sqlite3@6.x` upgrade path has been tested and backend dependency audit is currently clean.
 - Staging placeholder secrets were rotated and auth HTTPS smoke passed without exposing secret values.
 - Proxy URLs and IPLocate API key responses are masked; the previous hardcoded IPLocate fallback key was removed in favor of `WA_BOT_IPLOCATE_API_KEY` or protected settings.
@@ -81,7 +86,9 @@ The browser must not embed `WA_BOT_API_KEY` in frontend JavaScript. For public d
 - Run `npm run security:audit` from `backend/` and record the output in `docs/SECURITY_AUDIT.md`.
 - Encrypt disks and restrict access to `backend/sessions/` and `backend/database.sqlite`.
 - Apply or adapt `docs/deploy/security_acl.commands.txt` on the VPS.
-- Configure `WA_BOT_SECRET_ENCRYPTION_KEY`; move environment keys and IPLocate keys into managed secrets or protected configuration. Prefer `WA_BOT_IPLOCATE_API_KEY` over saving the IPLocate key in SQLite settings for production.
+- Configure `WA_BOT_ADMIN_SESSION_SECRET` and `WA_BOT_SECRET_ENCRYPTION_KEY` with separate values of at least 32 characters; move keys into managed secrets or protected configuration. Prefer `WA_BOT_IPLOCATE_API_KEY` over saving the IPLocate key in SQLite settings for production.
+- Re-pair any pre-v2.9.9 local session that relied on the former static fallback key. Preserve its directory until the exact recovery/cleanup target is approved.
+- After migration 021, trigger contact resync for each non-admin tenant whose legacy global contact cache is needed.
 - Remove stale sessions promptly after staff changes or suspected compromise.
 - Back up the SQLite database and test restore procedures.
 - Record security test evidence for each release candidate.

@@ -15,11 +15,13 @@ function base64UrlDecode(value) {
 }
 
 function getSessionSecret() {
-  return process.env.WA_BOT_ADMIN_SESSION_SECRET
-    || process.env.WA_BOT_SECRET_ENCRYPTION_KEY
-    || process.env.WA_BOT_ADMIN_PASSWORD
-    || process.env.WA_BOT_API_KEY
-    || config.admin.sessionSecret;
+  const secret = process.env.WA_BOT_ADMIN_SESSION_SECRET || config.admin.sessionSecret;
+  if (!secret || secret.length < 32) {
+    const error = new Error('WA_BOT_ADMIN_SESSION_SECRET wajib diisi minimal 32 karakter.');
+    error.code = 'AUTH_SECRET_NOT_CONFIGURED';
+    throw error;
+  }
+  return secret;
 }
 
 function getCookie(req, name) {

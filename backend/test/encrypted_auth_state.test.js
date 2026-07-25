@@ -8,6 +8,7 @@ import { useEncryptedMultiFileAuthState, encryptSessionFile, decryptSessionFile 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const TEMP_TEST_DIR = path.join(__dirname, 'temp_auth_test');
+process.env.WA_BOT_SECRET_ENCRYPTION_KEY = 'testing-encryption-secret-at-least-32-characters';
 
 describe('Encrypted Auth State Provider', () => {
   after(() => {

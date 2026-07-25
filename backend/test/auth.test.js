@@ -90,6 +90,18 @@ describe('Refresh token hardening', () => {
     assert.equal(oldRefreshRes.status, 401);
   });
 
+  it('hanya mengizinkan satu rotasi ketika refresh token dipakai bersamaan', async () => {
+    const { agent, cookie } = await getAuthenticatedAgent();
+
+    const [first, second] = await Promise.all([
+      agent.post('/api/auth/refresh').set('Cookie', cookie),
+      agent.post('/api/auth/refresh').set('Cookie', cookie)
+    ]);
+
+    const statuses = [first.status, second.status].sort((a, b) => a - b);
+    assert.deepEqual(statuses, [200, 401]);
+  });
+
   it('mencabut sesi aktif setelah password akun sendiri diubah', async () => {
     const { agent, cookie } = await getAuthenticatedAgent();
 

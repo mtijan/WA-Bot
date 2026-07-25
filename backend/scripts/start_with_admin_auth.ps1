@@ -2,6 +2,23 @@ $ErrorActionPreference = "Stop"
 
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot ".."))
 
+if ([string]::IsNullOrWhiteSpace($env:WA_BOT_SECRET_ENCRYPTION_KEY)) {
+  $secureEncryptionKey = Read-Host "Session/provider encryption key (minimal 32 karakter; gunakan nilai yang sama setiap restart)" -AsSecureString
+  $encryptionKeyPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureEncryptionKey)
+  try {
+    $encryptionKey = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($encryptionKeyPtr)
+  } finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($encryptionKeyPtr)
+  }
+
+  if ([string]::IsNullOrWhiteSpace($encryptionKey) -or $encryptionKey.Length -lt 32) {
+    throw "WA_BOT_SECRET_ENCRYPTION_KEY wajib minimal 32 karakter. Launcher dihentikan agar sesi tidak ditulis dengan kunci yang tidak aman."
+  }
+  $env:WA_BOT_SECRET_ENCRYPTION_KEY = $encryptionKey
+} elseif ($env:WA_BOT_SECRET_ENCRYPTION_KEY.Length -lt 32) {
+  throw "WA_BOT_SECRET_ENCRYPTION_KEY wajib minimal 32 karakter."
+}
+
 $username = Read-Host "Admin username (default: admin)"
 if ([string]::IsNullOrWhiteSpace($username)) {
   $username = "admin"

@@ -3,21 +3,55 @@
  * Extracted from whatsapp.service.js to reduce file size and improve maintainability.
  */
 import fs from 'fs';
+import path from 'path';
 
 // -------------------------------------------------------------------
 // Media helpers
 // -------------------------------------------------------------------
 
-export function getMediaSource(urlOrPath) {
-  if (!urlOrPath) return null;
-  try {
-    if (fs.existsSync(urlOrPath)) {
-      return fs.readFileSync(urlOrPath);
-    }
-  } catch (err) {
-    console.error('[WhatsApp Service] Gagal membaca berkas media lokal:', err);
+function isPathInside(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+export function getMediaSource(urlOrPath, options = {}) {
+  if (Buffer.isBuffer(urlOrPath)) return urlOrPath;
+
+  if (!options.mediaRoot || typeof options.mediaRoot !== 'string') {
+    const error = new Error('Root penyimpanan media terkelola belum dikonfigurasi.');
+    error.code = 'UNSAFE_MEDIA_SOURCE';
+    throw error;
   }
-  return { url: urlOrPath };
+
+  const mediaRoot = path.resolve(options.mediaRoot);
+  if (!urlOrPath || typeof urlOrPath !== 'string') {
+    const error = new Error('Sumber media tidak valid. Gunakan file dari endpoint upload terkelola.');
+    error.code = 'UNSAFE_MEDIA_SOURCE';
+    throw error;
+  }
+
+  const candidate = path.resolve(urlOrPath);
+  if (!isPathInside(mediaRoot, candidate) || !fs.existsSync(candidate)) {
+    const error = new Error('Sumber media tidak diizinkan. Gunakan file dari endpoint upload terkelola.');
+    error.code = 'UNSAFE_MEDIA_SOURCE';
+    throw error;
+  }
+
+  try {
+    const realRoot = fs.realpathSync(mediaRoot);
+    const realCandidate = fs.realpathSync(candidate);
+    if (!isPathInside(realRoot, realCandidate) || !fs.statSync(realCandidate).isFile()) {
+      const error = new Error('Sumber media tidak diizinkan. Gunakan file dari endpoint upload terkelola.');
+      error.code = 'UNSAFE_MEDIA_SOURCE';
+      throw error;
+    }
+    return fs.readFileSync(realCandidate);
+  } catch (err) {
+    if (err?.code === 'UNSAFE_MEDIA_SOURCE') throw err;
+    const error = new Error('Sumber media tidak dapat dibaca dari penyimpanan upload terkelola.');
+    error.code = 'UNSAFE_MEDIA_SOURCE';
+    throw error;
+  }
 }
 
 const MIME_TYPE_MAP = {

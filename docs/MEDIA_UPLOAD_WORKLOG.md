@@ -1,7 +1,7 @@
 # Media Upload Worklog
 
 **Status:** Completed  
-**Last updated:** 2026-06-28
+**Last updated:** 2026-07-19
 
 Dokumen ini dibuat agar agent berikutnya memahami riwayat penyelesaian fitur upload media tanpa mengulang investigasi dari awal.
 
@@ -38,6 +38,7 @@ Komponen yang sudah ada:
 - Metadata upload disimpan di tabel `uploaded_media` melalui migration `019_uploaded_media_metadata` untuk mengikat file ke `user_id`.
 - Download `GET /api/uploads/media/:filename` dan delete `DELETE /api/uploads/media/:filename` berada di balik auth; implementasi saat ini hanya mengizinkan pemilik file. File lama tanpa metadata ditolak fail-closed.
 - `backend/src/services/whatsapp.service.js` mulai resolve `/api/uploads/media/<file>` menjadi path lokal sebelum media dikirim via Baileys.
+- Runtime media reader hanya menerima regular file di bawah root upload terkelola. Boundary diperiksa secara lexical dan `realpath` untuk mencegah path traversal/symlink escape; URL remote ditolak untuk menutup SSRF.
 
 Endpoint yang dituju:
 
@@ -78,5 +79,7 @@ Semua gap yang ada pada fitur upload media telah diselesaikan dan diverifikasi:
 - `backend/uploads/` adalah runtime data dan tidak boleh masuk git.
 - Uploaded media bisa berisi data bisnis atau personal.
 - Lindungi upload directory seperti `backend/database.sqlite` dan `backend/sessions/`.
+- Template, Single Message, campaign, dan Chatbot Flow harus menyimpan URL upload relatif `/api/uploads/media/<stored-file>`. Path filesystem arbitrer dan URL eksternal tidak lagi didukung sebagai sumber lampiran runtime.
+- Regression test keamanan ada di `backend/test/upload_filename.test.js`; hasil suite penuh 2026-07-19 adalah 114/114 pass.
 - Untuk public deploy, media upload/serve harus tetap berada di balik auth `/api` dan reverse proxy.
 - Jangan melakukan fallback akses file tanpa metadata tenant; itu akan membuka peluang data tenant lain terbaca.

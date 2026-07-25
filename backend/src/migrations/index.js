@@ -669,6 +669,45 @@ const migrations = [
     up: async (db) => {
       await run(db, 'UPDATE users SET subscription_expires_at = NULL WHERE id = 1');
     }
+  },
+  {
+    id: '021_whatsapp_contacts_tenant_isolation',
+    description: 'Scope synced WhatsApp contacts per tenant and allow the same JID for different users.',
+    up: async (db) => {
+      const legacyContactCount = await get(db, 'SELECT COUNT(*) AS count FROM whatsapp_contacts');
+      if (Number(legacyContactCount?.count || 0) > 0) {
+        const legacyOwner = await get(db, 'SELECT id FROM users WHERE id = 1');
+        if (!legacyOwner) {
+          await run(
+            db,
+            `INSERT INTO users (id, username, password_hash, display_name, role, is_active)
+             VALUES (1, ?, 'legacy-placeholder', 'Legacy Contact Owner', 'admin', 0)`,
+            [`legacy-contact-owner-${Date.now()}`]
+          );
+        }
+      }
+
+      await exec(db, [
+        `CREATE TABLE whatsapp_contacts_tenant (
+          user_id INTEGER NOT NULL DEFAULT 1,
+          jid TEXT NOT NULL,
+          name TEXT,
+          notify TEXT,
+          verified_name TEXT,
+          lid TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (user_id, jid),
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )`,
+        `INSERT INTO whatsapp_contacts_tenant
+          (user_id, jid, name, notify, verified_name, lid, created_at)
+         SELECT 1, jid, name, notify, verified_name, lid, COALESCE(created_at, CURRENT_TIMESTAMP)
+         FROM whatsapp_contacts`,
+        'DROP TABLE whatsapp_contacts',
+        'ALTER TABLE whatsapp_contacts_tenant RENAME TO whatsapp_contacts',
+        'CREATE INDEX idx_whatsapp_contacts_user_lid ON whatsapp_contacts (user_id, lid)'
+      ]);
+    }
   }
 ];
 

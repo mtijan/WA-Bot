@@ -234,8 +234,8 @@
               </svg>
             </div>
             <div class="security-card__title">Encryption</div>
-            <div class="security-card__desc">AES-256-GCM opsional untuk Chatbot AI keys. Backup terenkripsi AES-256-GCM
-              via <code>WA_BOT_BACKUP_ENCRYPTION_KEY</code>.</div>
+            <div class="security-card__desc">AES-256-GCM wajib untuk session/provider secrets; tidak ada fallback statis.
+              Backup terenkripsi memakai <code>WA_BOT_BACKUP_ENCRYPTION_KEY</code>.</div>
           </div>
           <div class="security-card">
             <div class="security-card__icon security-card__icon--violet">
@@ -299,8 +299,8 @@
               </tr>
               <tr>
                 <td>Session credential encryption</td>
-                <td>File autentikasi Baileys dienkripsi secara at-rest menggunakan AES-256-GCM dan disimpan di bawah direktori backend.</td>
-                <td><code>backend/sessions/</code> via <code>useEncryptedMultiFileAuthState</code></td>
+                <td>File autentikasi Baileys dienkripsi AES-256-GCM; <code>WA_BOT_SECRET_ENCRYPTION_KEY</code> minimal 32 karakter wajib tersedia dan tidak memiliki fallback statis.</td>
+                <td><code>backend/src/utils/encrypted_auth_state.js</code></td>
               </tr>
               <tr>
                 <td>AI API key visual masking</td>
@@ -314,8 +314,7 @@
               </tr>
               <tr>
                 <td>Admin dashboard authentication</td>
-                <td>Login admin opsional menggunakan cookie HttpOnly jika <code>WA_BOT_ADMIN_PASSWORD</code>
-                  dikonfigurasi.</td>
+                <td>JWT multi-user menggunakan cookie HttpOnly, refresh token dikonsumsi atomik, dan <code>WA_BOT_ADMIN_SESSION_SECRET</code> minimal 32 karakter wajib.</td>
                 <td><code>backend/src/routes/auth.routes.js</code>, <code>frontend/src/components/Login.jsx</code></td>
               </tr>
               <tr>
@@ -331,10 +330,29 @@
               </tr>
               <tr>
                 <td>Media upload limits</td>
-                <td>Upload gambar/video admin diimplementasikan dengan batas ukuran eksplisit dan penyimpanan runtime di
-                  luar git.</td>
+                <td>Upload memiliki batas eksplisit; runtime hanya membaca regular file di bawah managed upload root setelah lexical/realpath check. Path arbitrer, symlink escape, dan URL remote ditolak.</td>
                 <td><code>WA_BOT_MEDIA_UPLOAD_DIR</code>, <code>WA_BOT_IMAGE_UPLOAD_MAX_BYTES</code>,
                   <code>WA_BOT_VIDEO_UPLOAD_MAX_BYTES</code>, <code>backend/uploads/</code></td>
+              </tr>
+              <tr>
+                <td>Session filesystem boundary</td>
+                <td>ID sesi dibatasi 1-64 karakter aman dan semua path harus tetap berada di bawah root sessions.</td>
+                <td><code>backend/src/utils/session_id.js</code></td>
+              </tr>
+              <tr>
+                <td>AI outbound SSRF policy</td>
+                <td>Base URL wajib public HTTPS; private/reserved IP, internal hostname, URL credential, dan redirect ditolak. Koneksi dipin ke alamat publik yang sudah lolos validasi DNS.</td>
+                <td><code>backend/src/utils/outbound_url.js</code></td>
+              </tr>
+              <tr>
+                <td>Tenant contact/template isolation</td>
+                <td>Synced contacts memakai composite key <code>(user_id, jid)</code>; template dan contact lookup pada jalur pengiriman wajib sama dengan pemilik sesi.</td>
+                <td>Migration <code>021</code>, <code>whatsapp.service.js</code></td>
+              </tr>
+              <tr>
+                <td>Sensitive log minimization</td>
+                <td>Error log hanya merekam nama field body dan meredaksi password, API key, token, cookie, authorization, secret, serta proxy URL.</td>
+                <td><code>backend/src/logger.js</code></td>
               </tr>
               <tr>
                 <td>Proxy/IPLocate secret masking</td>
@@ -410,8 +428,7 @@
         </p>
         <ul
           style="color:var(--text-secondary); padding-left:1.5rem; line-height:1.6; margin-top:0.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
-          <li><strong>Login Dashboard Admin Opsional:</strong> Dikendalikan oleh <code>WA_BOT_ADMIN_USERNAME</code>,
-            <code>WA_BOT_ADMIN_PASSWORD</code>, dan <code>WA_BOT_ADMIN_SESSION_SECRET</code>.</li>
+          <li><strong>JWT Dashboard:</strong> <code>WA_BOT_ADMIN_SESSION_SECRET</code> wajib minimal 32 karakter dan refresh token dikonsumsi atomik untuk menolak concurrent replay.</li>
           <li><strong>Akses X-API-Key Opsional:</strong> Dikendalikan oleh <code>WA_BOT_API_KEY</code> untuk pemanggil
             server-to-server yang tepercaya.</li>
           <li><strong>Rate Limiting API In-Memory:</strong> Dikendalikan oleh <code>WA_BOT_RATE_LIMIT_MAX</code> and
@@ -428,8 +445,10 @@
             <code>backend/uploads/</code> atau <code>WA_BOT_MEDIA_UPLOAD_DIR</code>.</li>
           <li><strong>Masking Kunci API Chatbot AI:</strong> Menyamarkan respons kunci dengan metadata
             <code>has_api_key</code>.</li>
-          <li><strong>Enkripsi Kunci Chatbot AI Opsional:</strong> Menggunakan enkripsi AES-256-GCM yang dikendalikan
-            oleh <code>WA_BOT_SECRET_ENCRYPTION_KEY</code>.</li>
+          <li><strong>Enkripsi Secret Wajib:</strong> <code>WA_BOT_SECRET_ENCRYPTION_KEY</code> minimal 32 karakter melindungi sesi dan provider key; penyimpanan gagal tertutup jika tidak tersedia.</li>
+          <li><strong>Boundary Media/Session:</strong> Media dibatasi ke managed upload root dan session path dibatasi ke ID aman.</li>
+          <li><strong>Anti-SSRF AI:</strong> Provider hanya public HTTPS dengan DNS/private-range validation dan redirect rejection.</li>
+          <li><strong>Tenant &amp; Log Hardening:</strong> Synced contacts/templates diperiksa pemiliknya dan body/secret tidak dicatat mentah.</li>
           <li><strong>Upgrade sqlite3@6.x:</strong> Mengatasi kerentanan audit dependensi dengan keselarasan versi
             terbaru.</li>
           <li><strong>Rotasi Placeholder Kredensial Staging:</strong> Kunci dan token placeholder dirotasi secara aman,
@@ -675,7 +694,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.9.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.9 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
     <p style="margin-top:0.5rem;">IP address data powered by <a href="https://iplocate.io" target="_blank"
         rel="noopener">IPLocate.io</a></p>
   </footer>

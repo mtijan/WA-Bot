@@ -5,6 +5,28 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.9] - 2026-07-19
+
+### Security
+
+- Closed arbitrary local-file read and attachment SSRF by restricting Baileys media sources to regular files inside the managed upload root, including realpath/symlink boundary checks.
+- Blocked session filesystem traversal with a shared session ID policy (`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`) and root-confined path resolution on public/internal routes and service operations.
+- Added public-HTTPS-only AI provider URL validation with private/reserved range checks, validated-address DNS pinning, and redirect rejection at request time.
+- Added migration `021_whatsapp_contacts_tenant_isolation`; synced contacts now use `(user_id, jid)` and all export/personalization lookups are tenant-scoped. Legacy global rows are assigned to admin ID 1, so other tenants should resync contacts after deployment.
+- Enforced tenant ownership for message templates at controller and WhatsApp service boundaries.
+- Made refresh-token consumption atomic so concurrent reuse yields one success and one rejection.
+- Removed static/fallback signing and session-encryption secrets. `WA_BOT_ADMIN_SESSION_SECRET` and `WA_BOT_SECRET_ENCRYPTION_KEY` are now required with at least 32 characters for their protected operations.
+- Updated Windows/Unix launchers to require a stable minimum-32-character encryption key before starting session processes; the Windows launcher prompts securely when the environment value is absent.
+- Sanitized error-log context so raw request bodies, passwords, API keys, tokens, cookies, and proxy URLs are not emitted.
+
+### Verified
+
+- Backend tests: **114/114 passed**.
+- Dependency audit: `found 0 vulnerabilities`.
+- Frontend production build and `:3001/api` bundle guard: passed.
+- Local database migration applied 21/21 after an automatic sensitive runtime backup.
+- OpenAPI route parity remains 113/113; the session create schema now documents the enforced ID pattern and length.
+
 ## [2.9.8] - 2026-06-30
 
 ### Documentation

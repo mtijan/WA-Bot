@@ -4,14 +4,16 @@ const PREFIX = 'enc:v1';
 
 function getEncryptionKey() {
   const secret = process.env.WA_BOT_SECRET_ENCRYPTION_KEY;
-  return secret ? createHash('sha256').update(secret).digest() : null;
+  return secret && secret.length >= 32 ? createHash('sha256').update(secret).digest() : null;
 }
 
 export function protectSecret(value) {
   if (!value || value.startsWith(`${PREFIX}:`)) return value;
 
   const key = getEncryptionKey();
-  if (!key) return value;
+  if (!key) {
+    throw new Error('WA_BOT_SECRET_ENCRYPTION_KEY wajib diisi minimal 32 karakter untuk menyimpan secret.');
+  }
 
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
@@ -38,4 +40,3 @@ export function revealSecret(value) {
     decipher.final()
   ]).toString('utf8');
 }
-

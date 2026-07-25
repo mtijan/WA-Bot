@@ -24,8 +24,22 @@ import {
 } from '../controllers/internal.controller.js';
 import { requireInternalToken } from '../middleware/internal_auth.middleware.js';
 import { validateBody } from '../utils/validator.js';
+import { isValidSessionId } from '../utils/session_id.js';
+import { sendError } from '../utils/http_response.js';
 
 const router = express.Router();
+
+const validateSessionIdParam = (req, res, next) => {
+  if (!isValidSessionId(req.params.id)) {
+    return sendError(
+      res,
+      400,
+      'INVALID_SESSION_ID',
+      'ID sesi hanya boleh berisi huruf, angka, underscore, dan hyphen (maksimal 64 karakter).'
+    );
+  }
+  return next();
+};
 
 router.get('/health/live', live);
 router.get('/health/ready', ready);
@@ -35,12 +49,12 @@ router.use(requireInternalToken);
 router.get('/health/failed-replies', getFailedRepliesHealthInternal);
 
 router.get('/sessions', listSessions);
-router.get('/sessions/:id', getSession);
-router.post('/sessions/:id/init', initSession);
-router.delete('/sessions/:id', deleteSession);
-router.patch('/sessions/:id/proxy', updateSessionProxy);
-router.post('/sessions/:id/repair', repairSessionInternal);
-router.post('/sessions/:id/reconnect', reconnectSessionInternal);
+router.get('/sessions/:id', validateSessionIdParam, getSession);
+router.post('/sessions/:id/init', validateSessionIdParam, initSession);
+router.delete('/sessions/:id', validateSessionIdParam, deleteSession);
+router.patch('/sessions/:id/proxy', validateSessionIdParam, updateSessionProxy);
+router.post('/sessions/:id/repair', validateSessionIdParam, repairSessionInternal);
+router.post('/sessions/:id/reconnect', validateSessionIdParam, reconnectSessionInternal);
 
 // Group Grabber
 router.get('/groups/:id', getDetailedGroupsInternal);

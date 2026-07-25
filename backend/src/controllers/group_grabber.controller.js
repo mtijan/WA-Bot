@@ -163,7 +163,10 @@ export const exportParticipants = async (req, res) => {
     // Gabungkan kontak dari database whatsapp_contacts ke sock.contacts agar cache selalu lengkap terisi
     if (sock) {
       try {
-        const dbWaContacts = await dbAll("SELECT * FROM whatsapp_contacts");
+        const dbWaContacts = await dbAll(
+          'SELECT * FROM whatsapp_contacts WHERE user_id = ?',
+          [req.auth.userId]
+        );
         if (!sock.contacts) sock.contacts = {};
         for (const c of dbWaContacts) {
           if (!sock.contacts[c.jid]) {
@@ -247,7 +250,10 @@ export const exportParticipants = async (req, res) => {
     }
 
     // 1b. Kontak dari database whatsapp_contacts (hasil sync otomatis)
-    const waContactsDb = await dbAll("SELECT * FROM whatsapp_contacts");
+    const waContactsDb = await dbAll(
+      'SELECT * FROM whatsapp_contacts WHERE user_id = ?',
+      [req.auth.userId]
+    );
     const waContactsMap = new Map();
     for (const c of waContactsDb) {
       waContactsMap.set(c.jid, c);

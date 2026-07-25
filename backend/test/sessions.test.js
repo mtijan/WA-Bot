@@ -6,6 +6,22 @@ import whatsappService from '../src/services/whatsapp.service.js';
 after(() => cleanupTestDb());
 
 describe('Session Reconnect Endpoints', () => {
+  it('menolak session_id traversal sebelum menyentuh filesystem atau database', async () => {
+    const { agent, cookie } = await getAuthenticatedAgent();
+    const { dbGet } = await import('../src/database.js');
+
+    const res = await agent
+      .post('/api/sessions')
+      .set('Cookie', cookie)
+      .send({ session_id: '../uploads' });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error_code, 'VALIDATION_ERROR');
+
+    const row = await dbGet('SELECT session_id FROM sessions WHERE session_id = ?', ['../uploads']);
+    assert.equal(row, undefined);
+  });
+
   it('POST /api/sessions/:id/reconnect memanggil whatsappService.reconnectSession dan mengembalikan status sukses', async () => {
     const { agent, cookie } = await getAuthenticatedAgent();
     const { dbRun } = await import('../src/database.js');
@@ -137,4 +153,3 @@ describe('Session Deletion Cascade', () => {
     await dbRun("DELETE FROM chatbot_flows WHERE id = 9999");
   });
 });
-

@@ -5,6 +5,12 @@ echo "      MENYALAKAN SISTEM S-BRO MULTI-ACCOUNT        "
 echo "==================================================="
 echo ""
 
+if [ ${#WA_BOT_SECRET_ENCRYPTION_KEY} -lt 32 ]; then
+  echo "[ERROR] WA_BOT_SECRET_ENCRYPTION_KEY wajib diisi minimal 32 karakter."
+  echo "Gunakan nilai yang sama pada setiap restart agar sesi WhatsApp dapat didekripsi."
+  exit 1
+fi
+
 # Menjalankan Backend di background
 echo "[+] Menjalankan server Backend..."
 cd backend && npm start > /dev/null 2>&1 &

@@ -5,6 +5,7 @@ import { maskProxyUrl } from '../utils/secret_masking.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError, logger } from '../logger.js';
 import { auditLog } from '../services/audit.service.js';
+import { isValidSessionId } from '../utils/session_id.js';
 
 const maskSessionProxy = (session) => ({
   ...session,
@@ -23,6 +24,15 @@ async function getPlanSessionLimit(userId) {
 }
 
 export async function reserveSessionSlot(sessionId, auth) {
+  if (!isValidSessionId(sessionId)) {
+    return {
+      ok: false,
+      status: 400,
+      code: 'INVALID_SESSION_ID',
+      message: 'ID sesi hanya boleh berisi huruf, angka, underscore, dan hyphen (maksimal 64 karakter).'
+    };
+  }
+
   const existing = await dbGet('SELECT * FROM sessions WHERE session_id = ?', [sessionId]);
   if (existing) {
     if (existing.user_id !== auth.userId) {

@@ -10,7 +10,9 @@ import QRCode from 'qrcode';
 import { logger, logError } from '../logger.js';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { dbRun, dbGet, dbAll } from '../database.js';
-import { resolveUploadedMediaPath } from './upload.service.js';
+import { MEDIA_UPLOAD_DIR, resolveUploadedMediaPath } from './upload.service.js';
+import { resolveSessionDirectory } from '../utils/session_id.js';
+import { assertSafeOutboundUrl, createSafeOutboundFetch } from '../utils/outbound_url.js';
 import { resolveKnowledgeBase } from './chatbot_ai.service.js';
 import { getActiveFlowSummariesForSession } from './chatbot_flow_sessions.service.js';
 import {
@@ -54,7 +56,7 @@ class WhatsAppService {
     try {
       const allSessions = await dbAll("SELECT session_id FROM sessions");
       for (const row of allSessions) {
-        const sessionFolder = join(SESSIONS_DIR, row.session_id);
+        const sessionFolder = resolveSessionDirectory(SESSIONS_DIR, row.session_id);
         if (fs.existsSync(sessionFolder)) {
           logger.info(`[WA Server] Memulihkan sesi: ${row.session_id}`);
           this.initSession(row.session_id).catch(err => {
@@ -72,7 +74,7 @@ class WhatsAppService {
       return this.sockets[sessionId];
     }
 
-    const sessionFolder = join(SESSIONS_DIR, sessionId);
+    const sessionFolder = resolveSessionDirectory(SESSIONS_DIR, sessionId);
     const { state, saveCreds } = await useEncryptedMultiFileAuthState(sessionFolder);
 
     let version = [2, 3000, 1017531287];
@@ -98,6 +100,7 @@ class WhatsAppService {
        WHERE s.session_id = ?`, 
       [sessionId]
     );
+    const tenantUserId = Number(sessionWithProxy?.user_id || existing?.user_id || 1);
 
     const proxyUrl = sessionWithProxy ? (sessionWithProxy.resolved_proxy_url || sessionWithProxy.proxy_url) : null;
 
@@ -115,7 +118,7 @@ class WhatsAppService {
     // Menonaktifkan proxy sementara (dinonaktifkan oleh pengguna)
     if (false && proxyUrl) {
       socketConfig.agent = new HttpsProxyAgent(proxyUrl);
-      logger.info(`[WA Socket] Sesi ${sessionId} terhubung melewati proxy: ${proxyUrl}`);
+      logger.info(`[WA Socket] Sesi ${sessionId} terhubung melewati proxy terkonfigurasi.`);
     }
 
 
@@ -141,7 +144,7 @@ class WhatsAppService {
       if (connection === 'open') {
         const rawJid = sock.user.id;
         const phone = rawJid.split(':')[0];
-        logger.info(`[WA Socket] Sesi ${sessionId} terhubung ke nomor: ${phone}`);
+        logger.info(`[WA Socket] Sesi ${sessionId} terhubung.`);
         
         delete this.qrCodes[sessionId];
 
@@ -244,14 +247,14 @@ class WhatsAppService {
           const lid = contact.lid || null;
 
           await dbRun(
-            `INSERT INTO whatsapp_contacts (jid, name, notify, verified_name, lid)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(jid) DO UPDATE SET
+            `INSERT INTO whatsapp_contacts (user_id, jid, name, notify, verified_name, lid)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(user_id, jid) DO UPDATE SET
                name = COALESCE(excluded.name, name),
                notify = COALESCE(excluded.notify, notify),
                verified_name = COALESCE(excluded.verified_name, verified_name),
                lid = COALESCE(excluded.lid, lid)`,
-            [jid, name, notify, verifiedName, lid]
+            [tenantUserId, jid, name, notify, verifiedName, lid]
           );
         } catch (err) {
           // Silent catch
@@ -269,14 +272,14 @@ class WhatsAppService {
           const lid = update.lid || null;
 
           await dbRun(
-            `INSERT INTO whatsapp_contacts (jid, name, notify, verified_name, lid)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(jid) DO UPDATE SET
+            `INSERT INTO whatsapp_contacts (user_id, jid, name, notify, verified_name, lid)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(user_id, jid) DO UPDATE SET
                name = COALESCE(excluded.name, name),
                notify = COALESCE(excluded.notify, notify),
                verified_name = COALESCE(excluded.verified_name, verified_name),
                lid = COALESCE(excluded.lid, lid)`,
-            [jid, name, notify, verifiedName, lid]
+            [tenantUserId, jid, name, notify, verifiedName, lid]
           );
         } catch (err) {
           // Silent catch
@@ -298,14 +301,14 @@ class WhatsAppService {
           const lid = contact.lid || null;
 
           await dbRun(
-            `INSERT INTO whatsapp_contacts (jid, name, notify, verified_name, lid)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(jid) DO UPDATE SET
+            `INSERT INTO whatsapp_contacts (user_id, jid, name, notify, verified_name, lid)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(user_id, jid) DO UPDATE SET
                name = COALESCE(excluded.name, name),
                notify = COALESCE(excluded.notify, notify),
                verified_name = COALESCE(excluded.verified_name, verified_name),
                lid = COALESCE(excluded.lid, lid)`,
-            [jid, name, notify, verifiedName, lid]
+            [tenantUserId, jid, name, notify, verifiedName, lid]
           );
         } catch (err) {
           // Silent catch
@@ -323,7 +326,7 @@ class WhatsAppService {
       try {
         for (const msg of m.messages || []) {
         if (!msg) continue;
-        logger.debug(`[Chatbot Debug] msg.key=${JSON.stringify(msg.key)}, hasMessage=${!!msg.message}, fromMe=${msg.key?.fromMe}`);
+        logger.debug(`[Chatbot Debug] message envelope diterima, hasMessage=${!!msg.message}, fromMe=${msg.key?.fromMe}`);
         if (!msg.message || msg.key.fromMe) continue;
 
         const senderId = msg.key.remoteJid;
@@ -337,11 +340,11 @@ class WhatsAppService {
         if (pushName && senderParticipant && !senderParticipant.endsWith('@g.us')) {
           try {
             await dbRun(
-              `INSERT INTO whatsapp_contacts (jid, notify)
-               VALUES (?, ?)
-               ON CONFLICT(jid) DO UPDATE SET
+              `INSERT INTO whatsapp_contacts (user_id, jid, notify)
+               VALUES (?, ?, ?)
+               ON CONFLICT(user_id, jid) DO UPDATE SET
                  notify = COALESCE(excluded.notify, notify)`,
-              [senderParticipant, pushName]
+              [tenantUserId, senderParticipant, pushName]
             );
           } catch (err) {
             // Silent catch
@@ -365,7 +368,7 @@ class WhatsAppService {
         const allKeys = Object.keys(innerMessage);
         const messageType = allKeys.find(k => !skipKeys.includes(k)) || allKeys[0];
 
-        logger.debug(`[Chatbot Debug] Pesan masuk dari ${senderId}, type=${m.type}, messageType=${messageType}, allKeys=${allKeys.join(',')}`);
+        logger.debug(`[Chatbot Debug] Pesan masuk untuk sesi ${sessionId}, type=${m.type}, messageType=${messageType}, allKeys=${allKeys.join(',')}`);
 
         // Extract text message
         const text = extractIncomingMessageText(messageType, innerMessage);
@@ -377,7 +380,7 @@ class WhatsAppService {
         if (!isGroup && isOptOutKeyword(text)) {
           const sessionRow = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
           if (!sessionRow) {
-            logger.warn(`[Opt-Out] Sesi ${sessionId} tidak ditemukan. Opt-out inbound dari ${senderId} tidak dicatat agar tidak salah tenant.`);
+            logger.warn(`[Opt-Out] Sesi ${sessionId} tidak ditemukan. Opt-out inbound tidak dicatat agar tidak salah tenant.`);
             continue;
           }
           const userId = sessionRow.user_id;
@@ -386,7 +389,7 @@ class WhatsAppService {
           await sock.sendMessage(senderId, {
             text: 'Permintaan berhenti menerima pesan telah dicatat. Anda tidak akan menerima pesan kampanye berikutnya.'
           });
-          logger.info(`[Opt-Out] Suppression list diperbarui untuk ${senderId} (User ID: ${userId})`);
+          logger.info(`[Opt-Out] Suppression list diperbarui untuk sesi ${sessionId} (User ID: ${userId})`);
           continue;
         }
         
@@ -412,7 +415,7 @@ class WhatsAppService {
         }
 
         if (matchedFlow) {
-          logger.info(`[Chatbot] Sesi ${sessionId} membalas ke ${senderId} untuk flow: ${matchedFlow.flow_name}`);
+          logger.info(`[Chatbot] Sesi ${sessionId} menjalankan flow: ${matchedFlow.flow_name}`);
 
           if (matchedFlow.delay > 0) {
              await new Promise(r => setTimeout(r, matchedFlow.delay * 1000));
@@ -426,7 +429,7 @@ class WhatsAppService {
           });
         } else {
           if (chatbotMode === 'flow' || chatbotMode === 'both') {
-            logger.debug(`[Chatbot Debug] Tidak ada flow match untuk sesi ${sessionId}. activeFlows=${activeFlowCount}, assignedFlows=${candidateFlowCount}, isGroup=${isGroup}, text="${cleanText}"`);
+            logger.debug(`[Chatbot Debug] Tidak ada flow match untuk sesi ${sessionId}. activeFlows=${activeFlowCount}, assignedFlows=${candidateFlowCount}, isGroup=${isGroup}, textLength=${cleanText.length}`);
           }
 
           if ((chatbotMode === 'ai' || chatbotMode === 'both') && !isGroup && aiSettings && aiSettings.is_active === 1) {
@@ -436,7 +439,10 @@ class WhatsAppService {
             let modelNameToUse = aiSettings.model_name || 'gpt-4o-mini';
 
             if (aiSettings.credential_id) {
-              const cred = await dbGet('SELECT * FROM chatbot_ai_credentials WHERE id = ? AND is_active = 1', [aiSettings.credential_id]);
+              const cred = await dbGet(
+                'SELECT * FROM chatbot_ai_credentials WHERE id = ? AND user_id = ? AND is_active = 1',
+                [aiSettings.credential_id, tenantUserId]
+              );
               if (cred && cred.api_key) {
                 apiKeyToUse = revealSecret(cred.api_key);
                 baseUrlToUse = cred.base_url || baseUrlToUse;
@@ -449,7 +455,7 @@ class WhatsAppService {
             }
 
             if (apiKeyToUse) {
-              logger.info(`[Chatbot AI] Sesi ${sessionId} memproses pesan masuk dari ${senderId} via SumoPod AI`);
+              logger.info(`[Chatbot AI] Sesi ${sessionId} memproses pesan masuk via provider AI.`);
               
               if (aiSettings.show_typing) {
                 try {
@@ -482,10 +488,12 @@ class WhatsAppService {
                 const finalSystemPrompt = systemPrompt.join("\n\n");
 
                 const { OpenAI } = await import('openai');
+                const safeBaseUrl = await assertSafeOutboundUrl(baseUrlToUse);
                 const openai = new OpenAI({
                   apiKey: apiKeyToUse,
-                  baseURL: baseUrlToUse,
-                  timeout: 15000
+                  baseURL: safeBaseUrl,
+                  timeout: 15000,
+                  fetch: createSafeOutboundFetch()
                 });
 
                 const response = await openai.chat.completions.create({
@@ -516,14 +524,14 @@ class WhatsAppService {
 
                 if (aiReply && aiReply.trim() !== '') {
                   await sock.sendMessage(senderId, { text: aiReply.trim() });
-                  logger.info(`[Chatbot AI] Sukses membalas ke ${senderId}`);
+                  logger.info(`[Chatbot AI] Sesi ${sessionId} berhasil mengirim balasan.`);
                   try {
                     await dbRun('UPDATE chatbot_ai_settings SET last_error = NULL, last_error_at = NULL WHERE session_id = ?', [sessionId]);
                   } catch (dbErr) {
                     // Abaikan
                   }
                 } else {
-                  logger.warn(`[Chatbot AI Warning] Model '${modelNameToUse}' mengembalikan respon kosong untuk pesan '${cleanText}'`);
+                  logger.warn(`[Chatbot AI Warning] Model '${modelNameToUse}' mengembalikan respons kosong untuk sesi ${sessionId}.`);
                   try {
                     const cleanPhone = senderId.split('@')[0];
                     await dbRun(
@@ -621,7 +629,7 @@ class WhatsAppService {
       }
     }
 
-    const sessionFolder = join(SESSIONS_DIR, sessionId);
+    const sessionFolder = resolveSessionDirectory(SESSIONS_DIR, sessionId);
     if (fs.existsSync(sessionFolder)) {
       fs.rmSync(sessionFolder, { recursive: true, force: true });
     }
@@ -717,7 +725,7 @@ class WhatsAppService {
         // Kirim lampiran terlebih dahulu
         if (currentNode.attachment && currentNode.attachment.url) {
           const url = resolveUploadedMediaPath(currentNode.attachment.url);
-          const mediaSource = getMediaSource(url);
+          const mediaSource = getMediaSource(url, { mediaRoot: MEDIA_UPLOAD_DIR });
           let attachmentPayload = {};
           
           if (mediaSource) {
@@ -932,6 +940,11 @@ class WhatsAppService {
     }
 
     const { messageType, text, attachmentUrl, attachmentType, attachmentName, templateId } = payload;
+    const sessionOwner = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
+    if (!sessionOwner) {
+      throw new Error(`Sesi ${sessionId} tidak ditemukan.`);
+    }
+    const tenantUserId = Number(sessionOwner.user_id);
 
     // Cari nama kontak jika ada untuk personalisasi {{name}}, [name], {{nama}}, [nama]
     let targetName = '';
@@ -947,8 +960,13 @@ class WhatsAppService {
 
         // 1. Cari di tabel contacts (database manual)
         const contactRow = await dbGet(
-          'SELECT name FROM contacts WHERE phone_number = ? OR phone_number = ? OR phone_number = ? LIMIT 1',
-          [target, cleanNum, altNum]
+          `SELECT c.name
+           FROM contacts c
+           INNER JOIN contact_groups cg ON cg.id = c.group_id
+           WHERE cg.user_id = ?
+             AND (c.phone_number = ? OR c.phone_number = ? OR c.phone_number = ?)
+           LIMIT 1`,
+          [tenantUserId, target, cleanNum, altNum]
         );
         if (contactRow && contactRow.name) {
           targetName = contactRow.name;
@@ -957,8 +975,11 @@ class WhatsAppService {
         // 2. Jika tidak ada, cari di tabel whatsapp_contacts (synced contacts)
         if (!targetName) {
           const waContactRow = await dbGet(
-            'SELECT name, notify, verified_name FROM whatsapp_contacts WHERE jid = ? OR jid = ? LIMIT 1',
-            [jid, `${cleanNum}@s.whatsapp.net`]
+            `SELECT name, notify, verified_name
+             FROM whatsapp_contacts
+             WHERE user_id = ? AND (jid = ? OR jid = ?)
+             LIMIT 1`,
+            [tenantUserId, jid, `${cleanNum}@s.whatsapp.net`]
           );
           if (waContactRow) {
             targetName = waContactRow.name || waContactRow.verified_name || waContactRow.notify || '';
@@ -995,7 +1016,10 @@ class WhatsAppService {
     const parsedText = formatMessageText(text || '');
 
     if (messageType === 'template' && templateId) {
-      const template = await dbGet("SELECT * FROM message_templates WHERE id = ?", [templateId]);
+      const template = await dbGet(
+        'SELECT * FROM message_templates WHERE id = ? AND user_id = ?',
+        [templateId, tenantUserId]
+      );
       if (!template) {
         throw new Error(`Template dengan ID ${templateId} tidak ditemukan.`);
       }
@@ -1019,7 +1043,7 @@ class WhatsAppService {
           else detectType = 'document';
         }
 
-        const mediaSource = getMediaSource(url);
+        const mediaSource = getMediaSource(url, { mediaRoot: MEDIA_UPLOAD_DIR });
         if (mediaSource) {
           if (detectType === 'image') {
             mediaPayload = { image: mediaSource, caption };
@@ -1065,7 +1089,7 @@ class WhatsAppService {
       let mediaPayload = {};
       const url = resolveUploadedMediaPath(attachmentUrl);
       const caption = parsedText;
-      const mediaSource = getMediaSource(url);
+      const mediaSource = getMediaSource(url, { mediaRoot: MEDIA_UPLOAD_DIR });
 
       if (mediaSource) {
         switch (attachmentType) {
@@ -1224,7 +1248,7 @@ class WhatsAppService {
       throw new Error(`Sesi ${sessionId} tidak aktif.`);
     }
 
-    const sessionFolder = join(SESSIONS_DIR, sessionId);
+    const sessionFolder = resolveSessionDirectory(SESSIONS_DIR, sessionId);
     const appStateFile = join(sessionFolder, 'app-state-sync-version-regular.json');
 
     // Hapus file app-state agar Baileys minta ulang dari server
@@ -1275,7 +1299,7 @@ class WhatsAppService {
     // Beri jeda agar penutupan selesai
     await new Promise(resolve => setTimeout(resolve, 3000));
 
-    const sessionFolder = join(SESSIONS_DIR, sessionId);
+    const sessionFolder = resolveSessionDirectory(SESSIONS_DIR, sessionId);
     if (fs.existsSync(sessionFolder)) {
       try {
         const files = fs.readdirSync(sessionFolder);

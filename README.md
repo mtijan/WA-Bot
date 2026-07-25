@@ -3,8 +3,8 @@
 WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
-**Versi Dokumen/Sistem:** 2.9.8
-**Terakhir Diperbarui:** 2026-06-30
+**Versi Dokumen/Sistem:** 2.9.9
+**Terakhir Diperbarui:** 2026-07-19
 
 ---
 
@@ -36,7 +36,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Session Auto-Repair & Crypt-Key Reset:** Pemantauan dan pemulihan otomatis sesi terputus berdurasi setiap 10 menit ([auto_repair_disconnected.js](file:///d:/Self%20Project/WA-Bot/backend/scripts/auto_repair_disconnected.js)) di staging VPS dengan pembatasan laju 5x/24j dan alert Telegram. Fitur manual Repair pada UI Session Manager juga tersedia untuk membersihkan cache kunci Signal tanpa menghapus kredensial utama.
 - **Chatbot AI Error logs & Dashboard Alerts:** Deteksi dan pencatatan error API/saldo chatbot AI secara persisten ke database serta visualisasi Alert Box glassmorphic merah self-healing di dashboard admin.
 - **Database & File Pruner Otomatis:** Script pruner berkala (`npm run logs:prune:apply`) untuk menghapus log pengiriman lama, log warmer, file ekspor lawas, dan berkas cadangan (backup) kedaluwarsa secara otomatis serta melakukan SQLite VACUUM untuk merampingkan ukuran database.
-- **Security Hardening Baseline:** Login dashboard admin berbasis secure cookie HttpOnly, proteksi kunci API server-to-server (X-API-Key), Content Security Policy (CSP) ketat yang mendukung Google Fonts & Websocket staging, serta in-memory API rate limiter.
+- **Security Hardening Baseline:** Login dashboard berbasis cookie HttpOnly, secret penandatanganan dan enkripsi wajib, CSP, rate limiter, validasi URL keluar anti-SSRF, media hanya dari upload terkelola, ID sesi aman untuk filesystem, refresh-token rotation atomik, dan redaksi log sensitif.
 - **Multi-User RBAC & Tenant Isolation:** Login JWT dual-cookie dengan access/refresh token, refresh token rotation/revocation, User Management admin-only, role `admin`/`user`, serta isolasi data per `user_id`.
 - **SaaS Plans & Entitlements:** Admin mengatur paket langganan di Plans Management; runtime menolak sesi, campaign bulanan, chatbot flow, upload, single-message, dan warmer action saat subscription tidak aktif atau kuota habis.
 - **Race-Safe Device Quota:** Kuota device WhatsApp menggunakan `subscription_plans.max_sessions` sebagai sumber limit utama dan reservasi slot sesi atomik di SQLite untuk mencegah race condition saat banyak request masuk bersamaan.
@@ -64,9 +64,12 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 .\run.bat
 ```
 
+Launcher akan meminta `WA_BOT_SECRET_ENCRYPTION_KEY` secara aman bila belum tersedia di environment. Masukkan nilai tetap minimal 32 karakter dan gunakan nilai yang sama pada setiap restart; mengganti nilai tanpa prosedur rotasi membuat file sesi lama tidak dapat didekripsi.
+
 #### Linux / macOS:
 ```bash
 chmod +x run.sh
+export WA_BOT_SECRET_ENCRYPTION_KEY='replace-with-a-stable-secret-of-at-least-32-characters'
 ./run.sh
 ```
 
@@ -125,7 +128,7 @@ Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan
 ## Panduan Pengujian (Testing)
 
 ### Pengujian Unit & Integrasi Backend
-Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation, campaign tenant personalization, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media tenant isolation/delete, dan isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite terakhir: 99 test pass.
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, serta isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite terakhir: 114 test pass.
 ```bash
 cd backend
 npm test
@@ -179,7 +182,9 @@ npm run logs:prune:apply
 - **Jangan Ekspos Port 3001:** Port API backend `3001` tidak boleh dibuka ke internet publik. Gunakan reverse proxy (seperti Caddy atau Nginx) untuk mengamankan lalu lintas data.
 - **Frontend Build Guard:** Frontend memiliki mekanisme proteksi build (`assert-production-api-url.mjs`) yang akan menghentikan build jika aset produksi kedapatan memanggil URL private backend `:3001/api`. Selalu set `VITE_API_URL=/api` saat membangun aset produksi.
 - **Isolasi Database & Kredensial:** Batasi hak akses direktori `backend/sessions/`, `backend/database.sqlite`, dan `.env` menggunakan izin sistem operasi ketat (rekomendasi chmod `640` / `600`).
-- **AES-GCM Key Encryption:** Konfigurasikan `WA_BOT_SECRET_ENCRYPTION_KEY` di environment untuk memastikan kunci API Chatbot AI tersimpan dalam bentuk terenkripsi di database SQLite.
+- **Secret Wajib:** Konfigurasikan `WA_BOT_ADMIN_SESSION_SECRET` dan `WA_BOT_SECRET_ENCRYPTION_KEY` masing-masing minimal 32 karakter. Backend tidak lagi memakai fallback secret statis; penyimpanan sesi/provider key gagal tertutup bila kunci enkripsi tidak tersedia.
+- **Sesi Legacy Lokal:** Jika sesi dibuat sebelum v2.9.9 tanpa key eksplisit, pertahankan foldernya tetapi lakukan pairing ulang dengan key baru yang stabil; jangan menghapus folder sesi lama tanpa konfirmasi target yang tepat.
+- **Batas Media dan AI:** Lampiran harus berasal dari `/api/uploads/media/*`; path lokal lain dan URL remote ditolak. Base URL provider AI wajib HTTPS publik, tidak boleh menuju localhost/private/reserved IP, dan redirect HTTP ditolak.
 - **Monitoring Mandiri:** Pantau performa melalui endpoint kesiapan `/health/ready` (untuk API publik) dan `/internal/health/ready` (untuk internal workers). Netdata diatur hanya mendengarkan di localhost (`127.0.0.1:19999`) dan diakses aman menggunakan SSH Tunneling.
 
 ---

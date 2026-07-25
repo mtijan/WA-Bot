@@ -168,12 +168,17 @@ export const refreshToken = async (req, res) => {
     }
 
     const tokenHash = hashToken(getCookieValue(req, 'wa_bot_refresh'));
-    const storedToken = await dbGet(
-      `SELECT jti FROM user_refresh_tokens
-       WHERE jti = ? AND user_id = ? AND token_hash = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
+    const consumedToken = await dbRun(
+      `UPDATE user_refresh_tokens
+       SET revoked_at = CURRENT_TIMESTAMP
+       WHERE jti = ?
+         AND user_id = ?
+         AND token_hash = ?
+         AND revoked_at IS NULL
+         AND expires_at > CURRENT_TIMESTAMP`,
       [session.jti, session.sub, tokenHash]
     );
-    if (!storedToken) {
+    if (consumedToken.changes !== 1) {
       res.setHeader('Set-Cookie', [
         buildClearAccessCookie(),
         buildClearRefreshCookie()
@@ -187,10 +192,6 @@ export const refreshToken = async (req, res) => {
       headers: { cookie: `wa_bot_refresh=${encodeURIComponent(nextRefreshToken)}` }
     });
 
-    await dbRun(
-      'UPDATE user_refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE jti = ? AND user_id = ?',
-      [session.jti, session.sub]
-    );
     await dbRun(
       `INSERT INTO user_refresh_tokens (jti, user_id, token_hash, expires_at)
        VALUES (?, ?, ?, datetime(?, 'unixepoch'))`,

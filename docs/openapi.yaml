@@ -173,7 +173,12 @@ paths:
               type: object
               required: [session_id]
               properties:
-                session_id: { type: string }
+                session_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                  pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$'
+                  description: Filesystem-safe session identifier; path separators, dots, and whitespace are rejected.
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '201': { $ref: '#/components/responses/Success' }

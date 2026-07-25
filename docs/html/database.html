@@ -392,7 +392,8 @@
         <table class="doc-table">
           <thead><tr><th>Nama Kolom</th><th>Tipe Data</th><th>Constraints</th><th>Kegunaan</th></tr></thead>
           <tbody>
-            <tr><td><code>jid</code></td><td>TEXT</td><td><span class="badge badge--pk">PRIMARY KEY</span></td><td>JID unik kontak WhatsApp (format: <code>6281234@s.whatsapp.net</code>)</td></tr>
+            <tr><td><code>user_id</code></td><td>INTEGER</td><td><span class="badge badge--pk">COMPOSITE PK</span> <span class="badge badge--fk">FOREIGN KEY</span></td><td>Pemilik tenant; bersama <code>jid</code> membentuk primary key.</td></tr>
+            <tr><td><code>jid</code></td><td>TEXT</td><td><span class="badge badge--pk">COMPOSITE PK</span></td><td>JID unik di dalam tenant (format: <code>6281234@s.whatsapp.net</code>)</td></tr>
             <tr><td><code>name</code></td><td>TEXT</td><td><span class="badge badge--constraint">NULL</span></td><td>Saved name dari buku kontak perangkat</td></tr>
             <tr><td><code>notify</code></td><td>TEXT</td><td><span class="badge badge--constraint">NULL</span></td><td>Push name (nama publik) yang diatur pengguna</td></tr>
             <tr><td><code>verified_name</code></td><td>TEXT</td><td><span class="badge badge--constraint">NULL</span></td><td>Nama terverifikasi untuk akun WA Business</td></tr>
@@ -490,7 +491,7 @@
     <div class="content-card" id="database-optimization">
       <h3 class="content-card__title" style="font-size: 1.25rem;">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-        Optimasi &amp; Keandalan SQLite3 (v2.9.8)
+        Optimasi &amp; Keandalan SQLite3 (v2.9.9)
         <a href="#database-optimization" class="section-anchor">#</a>
       </h3>
       <p style="color:var(--text-secondary); margin-bottom:1rem; line-height:1.6;">
@@ -513,7 +514,7 @@
   </div>
 
   <footer class="doc-footer">
-    <p>WA-Bot Pro Documentation v2.9.8 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
+    <p>WA-Bot Pro Documentation v2.9.9 &mdash; <a href="index.html">Kembali ke Beranda</a></p>
   </footer>
   <script>
     const toggleBtn = document.querySelector('.theme-toggle');

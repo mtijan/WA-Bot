@@ -6,7 +6,12 @@ import { initAuthCreds, BufferJSON, proto } from '@whiskeysockets/baileys';
 const PREFIX = 'enc:session:v1';
 
 function getEncryptionKey() {
-  const secret = process.env.WA_BOT_SECRET_ENCRYPTION_KEY || 'dev-default-session-encryption-key-12345';
+  const secret = process.env.WA_BOT_SECRET_ENCRYPTION_KEY;
+  if (!secret || secret.length < 32) {
+    const error = new Error('WA_BOT_SECRET_ENCRYPTION_KEY wajib diisi minimal 32 karakter untuk penyimpanan sesi.');
+    error.code = 'SESSION_ENCRYPTION_KEY_NOT_CONFIGURED';
+    throw error;
+  }
   return createHash('sha256').update(secret).digest();
 }
 
