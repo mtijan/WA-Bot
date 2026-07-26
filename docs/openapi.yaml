@@ -290,6 +290,52 @@ paths:
       summary: Create contacts in bulk
       responses:
         '200': { $ref: '#/components/responses/Success' }
+  /contacts/import/preview:
+    post:
+      tags: [Contacts]
+      summary: Preview and validate a Sheet1 XLSX or CSV contact import
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, group_id]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                group_id:
+                  type: integer
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+  /contacts/import:
+    post:
+      tags: [Contacts]
+      summary: Import Sheet1 XLSX or CSV contacts with named custom variables
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, group_id]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                group_id:
+                  type: integer
+                duplicate_mode:
+                  type: string
+                  enum: [update, skip]
+                  default: update
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
   /contacts/cleanup:
     post:
       tags: [Contacts]

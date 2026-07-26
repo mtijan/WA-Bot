@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, 
   Search, 
@@ -15,6 +15,19 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 import MediaUploadField from './MediaUploadField';
+
+const STANDARD_CONTACT_VARIABLES = ['Nama', 'Phone Number', 'Email', 'Company', 'Position', 'Tags', 'Notes'];
+
+const buildContactVariables = (contact) => ({
+  Nama: contact.name || '',
+  'Phone Number': contact.phone_number || '',
+  Email: contact.email || '',
+  Company: contact.company || '',
+  Position: contact.position || '',
+  Tags: contact.tags || '',
+  Notes: contact.notes || '',
+  ...(contact.custom_fields || {})
+});
 
 const BulkCampaign = () => {
   // Campaign list and search state
@@ -47,6 +60,8 @@ const BulkCampaign = () => {
   const [delayMax, setDelayMax] = useState(9);
   const [maxRetries, setMaxRetries] = useState(3);
   const [computedTargets, setComputedTargets] = useState([]);
+  const [availableVariables, setAvailableVariables] = useState(STANDARD_CONTACT_VARIABLES);
+  const messageInputRef = useRef(null);
 
   // Campaign Media/Attachment State
   const [attachmentUrl, setAttachmentUrl] = useState('');
@@ -128,34 +143,111 @@ const BulkCampaign = () => {
   useEffect(() => {
     const calculateTargets = async () => {
       if (selectionMethod === 'groups') {
-        let allTargets = [];
-        for (const groupId of selectedGroupsList) {
-          try {
-            const json = await apiRequest(`/contacts?groupId=${groupId}`);
-            if (json.status === 'success') {
-              const verifiedNumbers = (json.data || [])
-                .filter(c => c.status === 'VERIFIED')
-                .map(c => c.phone_number);
-              allTargets = [...allTargets, ...verifiedNumbers];
-            }
-          } catch (err) {
-            console.error('Gagal menghitung target grup:', err);
-          }
+        if (selectedGroupsList.length === 0) {
+          setComputedTargets([]);
+          setAvailableVariables(STANDARD_CONTACT_VARIABLES);
+          return;
         }
-        setComputedTargets([...new Set(allTargets)]);
+
+        try {
+          const responses = await Promise.all(
+            selectedGroupsList.map((groupId) => apiRequest(`/contacts?groupId=${groupId}`))
+          );
+          const contactsByPhone = new Map();
+          const customVariableNames = new Map();
+
+          for (const json of responses) {
+            if (json.status !== 'success') continue;
+            for (const contact of (json.data || [])) {
+              for (const variableName of Object.keys(contact.custom_fields || {})) {
+                const key = variableName.trim().toLocaleLowerCase('id-ID');
+                if (key && !customVariableNames.has(key)) customVariableNames.set(key, variableName.trim());
+              }
+              if (contact.status !== 'VERIFIED') continue;
+              const normalizedPhone = String(contact.phone_number || '').replace(/\D/g, '').replace(/^0/, '62');
+              if (!normalizedPhone || contactsByPhone.has(normalizedPhone)) continue;
+              const variables = buildContactVariables(contact);
+              contactsByPhone.set(normalizedPhone, {
+                contact_id: contact.id,
+                phone_number: normalizedPhone,
+                variables
+              });
+            }
+          }
+
+          setComputedTargets([...contactsByPhone.values()]);
+          setAvailableVariables([
+            ...STANDARD_CONTACT_VARIABLES,
+            ...customVariableNames.values()
+          ]);
+        } catch (err) {
+          console.error('Gagal menghitung target grup:', err);
+          setComputedTargets([]);
+          setAvailableVariables(STANDARD_CONTACT_VARIABLES);
+        }
       } else if (selectionMethod === 'paste') {
         const nums = pastedNumbers
           .split('\n')
           .map(num => num.replace(/\D/g, ''))
           .filter(Boolean);
         setComputedTargets([...new Set(nums)]);
+        setAvailableVariables(['Phone Number']);
       } else {
         setComputedTargets([]);
+        setAvailableVariables(STANDARD_CONTACT_VARIABLES);
       }
     };
 
     calculateTargets();
   }, [selectedGroupsList, selectionMethod, pastedNumbers]);
+
+  const variableValidation = useMemo(() => {
+    const tokenNames = [...new Set(
+      [...messageContent.matchAll(/\{\{\s*([^{}|]+?)\s*\}\}/g)]
+        .map((match) => match[1].trim())
+        .filter((name) => name.toLocaleLowerCase('id-ID') !== 'random')
+    )];
+    if (selectionMethod !== 'groups' || tokenNames.length === 0 || computedTargets.length === 0) {
+      return { tokenNames, missingContacts: 0 };
+    }
+
+    let missingContacts = 0;
+    for (const target of computedTargets) {
+      const variables = target.variables || {};
+      const lookup = new Map(
+        Object.entries(variables).map(([name, value]) => [
+          name.trim().toLocaleLowerCase('id-ID'),
+          String(value ?? '')
+        ])
+      );
+      if (!lookup.has('name')) lookup.set('name', lookup.get('nama') || '');
+      if (!lookup.has('nama')) lookup.set('nama', lookup.get('name') || '');
+      if (!lookup.has('phone')) lookup.set('phone', lookup.get('phone number') || '');
+      if (!lookup.has('no')) lookup.set('no', lookup.get('phone number') || '');
+
+      const isMissing = tokenNames.some((name) => {
+        const value = lookup.get(name.toLocaleLowerCase('id-ID'));
+        return value === undefined || value === '';
+      });
+      if (isMissing) missingContacts += 1;
+    }
+
+    return { tokenNames, missingContacts };
+  }, [messageContent, selectionMethod, computedTargets]);
+
+  const insertMessageToken = (token) => {
+    const input = messageInputRef.current;
+    const selectionStart = input?.selectionStart ?? messageContent.length;
+    const selectionEnd = input?.selectionEnd ?? selectionStart;
+    setMessageContent((previous) =>
+      `${previous.slice(0, selectionStart)}${token}${previous.slice(selectionEnd)}`
+    );
+    requestAnimationFrame(() => {
+      const cursorPosition = selectionStart + token.length;
+      messageInputRef.current?.focus();
+      messageInputRef.current?.setSelectionRange(cursorPosition, cursorPosition);
+    });
+  };
 
   const fetchCampaigns = async () => {
     try {
@@ -280,6 +372,9 @@ const BulkCampaign = () => {
 
     // Gunakan sesi pertama yang dipilih untuk saat ini
     const primarySessionId = selectedSessions[0];
+    const campaignTargets = selectionMethod === 'groups'
+      ? computedTargets.map((target) => ({ contact_id: target.contact_id }))
+      : computedTargets;
 
     try {
       const json = await apiRequest('/campaigns', {
@@ -289,7 +384,7 @@ const BulkCampaign = () => {
           session_id: primarySessionId,
           name: campaignName,
           message: messageContent,
-          targets: computedTargets,
+          targets: campaignTargets,
           delay_ms_min: delayMin * 1000,
           delay_ms_max: delayMax * 1000,
           attachment_url: attachmentUrl || null,
@@ -329,6 +424,7 @@ const BulkCampaign = () => {
     setAttachmentUrl('');
     setAttachmentType('Image');
     setAttachmentName('');
+    setAvailableVariables(STANDARD_CONTACT_VARIABLES);
   };
 
   const handleSessionToggle = (sessionId) => {
@@ -712,28 +808,21 @@ const BulkCampaign = () => {
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button 
                         type="button" 
-                        onClick={() => setMessageContent(prev => prev + ' {{name}}')}
-                        style={{ padding: '2px 8px', fontSize: '0.7rem', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)' }}
-                      >
-                        Name
-                      </button>
-                      <button 
-                        type="button" 
-                        onClick={() => setMessageContent(prev => prev + ' {Hi|Hello|Good Morning}')}
+                        onClick={() => insertMessageToken('{Hi|Hello|Good Morning}')}
                         style={{ padding: '2px 8px', fontSize: '0.7rem', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)' }}
                       >
                         Spintax
                       </button>
                       <button 
                         type="button" 
-                        onClick={() => setMessageContent(prev => prev + ' {{random}}')}
+                        onClick={() => insertMessageToken('{{random}}')}
                         style={{ padding: '2px 8px', fontSize: '0.7rem', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)' }}
                       >
                         Random
                       </button>
                       <button 
                         type="button" 
-                        onClick={() => setMessageContent(prev => prev + '\n')}
+                        onClick={() => insertMessageToken('\n')}
                         style={{ padding: '2px 8px', fontSize: '0.7rem', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)' }}
                       >
                         Line Break
@@ -756,6 +845,7 @@ const BulkCampaign = () => {
                   )}
 
                   <textarea 
+                    ref={messageInputRef}
                     className="form-control"
                     placeholder="Enter your message here..."
                     value={messageContent}
@@ -776,15 +866,41 @@ const BulkCampaign = () => {
 
                   {/* Advanced Features Informative Box */}
                   <div style={{ marginTop: '10px', padding: '12px', borderRadius: 'var(--border-radius-sm)', backgroundColor: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.1)', fontSize: '0.75rem' }}>
-                    <div style={{ fontWeight: 700, color: 'var(--info)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Layers size={12} /> Advanced Features Available:
+                    <div style={{ fontWeight: 700, color: 'var(--info)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Layers size={12} /> Advanced Features & Contact Variables
                     </div>
-                    <ul style={{ paddingLeft: '14px', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '2px', margin: 0 }}>
-                      <li><b>Recipient Name:</b> Use <code>{"{{name}}"}</code> or <code>{"[name]"}</code> to dynamically insert name</li>
-                      <li><b>Spintax:</b> Use <code>{"{Hi|Hello|Good Morning}"}</code> for rotation</li>
-                      <li><b>Random Numbers:</b> Use <code>{"{{random}}"}</code> or <code>{"[random]"}</code> for unique numbers</li>
-                      <li><b>Family Numbers:</b> Rotates automatically in the campaign queue</li>
-                    </ul>
+                    <div style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      Klik header untuk menambahkan keyword. Variable baru dari Excel/CSV muncul otomatis setelah grup dipilih.
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {availableVariables.map((variableName) => (
+                        <button
+                          key={variableName.toLocaleLowerCase('id-ID')}
+                          type="button"
+                          onClick={() => insertMessageToken(`{{${variableName}}}`)}
+                          style={{
+                            padding: '5px 9px', borderRadius: '999px', cursor: 'pointer',
+                            border: '1px solid rgba(59,130,246,0.25)', color: 'var(--primary-color)',
+                            backgroundColor: 'rgba(59,130,246,0.08)', fontSize: '0.72rem', fontWeight: 600
+                          }}
+                        >
+                          {variableName}
+                        </button>
+                      ))}
+                    </div>
+                    {selectionMethod === 'groups' && selectedGroupsList.length === 0 && (
+                      <div style={{ marginTop: '8px', color: 'var(--text-muted)' }}>
+                        Pilih grup kontak untuk memuat header variable khusus.
+                      </div>
+                    )}
+                    {variableValidation.missingContacts > 0 && (
+                      <div style={{ marginTop: '9px', padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(245,158,11,0.12)', color: '#b45309' }}>
+                        {variableValidation.missingContacts} kontak memiliki nilai kosong atau tidak tersedia untuk keyword yang dipakai.
+                      </div>
+                    )}
+                    <div style={{ marginTop: '8px', color: 'var(--text-muted)' }}>
+                      Spintax: <code>{"{Hi|Hello|Good Morning}"}</code>
+                    </div>
                   </div>
                 </div>
 

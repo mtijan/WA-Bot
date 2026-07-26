@@ -5,6 +5,34 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] - 2026-07-25
+
+### Added
+
+- Added automatic local `backend/.env` loading through `dotenv`, including backend runtime and maintenance scripts. Existing OS/systemd variables retain priority.
+- Updated Windows and Unix launchers to use `backend/.env` when present and retain the interactive/environment fallback when absent.
+- Added authenticated `.xlsx`/`.csv` contact import preview and execution endpoints. Excel imports intentionally read only the sheet named `Sheet1`.
+- Added automatic mapping for standard contact headers and named `custom_fields` storage for every non-standard header.
+- Added Contact Group import UI with header detection, 20-row preview, standard/custom labels, and duplicate update/skip modes.
+- Added dynamic Advanced Features tokens in Bulk Messages; clicking a detected header inserts a token such as `{{NIM}}` or `{{Jatuh Tempo}}`.
+- Added migration `022_contact_custom_fields_campaign_variables` to store contact custom fields plus immutable recipient-variable and rendered-message snapshots in delivery logs.
+
+### Security
+
+- Local `.env` remains ignored by Git; secret values are never copied into `.env.example`, documentation, or frontend assets.
+- Contact import is tenant-scoped, memory-only, limited to 5 MB by default, 10.000 data rows, 50 columns, safe ZIP boundaries, and rejects encrypted/ZIP64 workbooks, duplicate headers, unsupported files, and invalid phone rows.
+- Bulk campaign targets sourced from Contact Groups are resolved server-side by `contact_id`; cross-tenant or missing contacts are rejected before queue creation.
+
+### Verified
+
+- Backend tests: **120/120 passed**.
+- Contact import tests cover `Sheet1`, named custom fields, semicolon CSV, duplicate handling, API preview/import/update, campaign snapshots, rendering, and cross-tenant rejection.
+- Frontend production build and private `:3001/api` bundle guard: passed.
+- Local database migration reports 22 applied migrations after creating a sensitive runtime backup.
+- Express/OpenAPI route parity: **115/115**.
+- Dependency audit remains open with 5 findings (1 low, 1 moderate, 2 high, 1 critical).
+- Staging deploy/browser/socket smoke remains required before this local feature can be treated as staging evidence.
+
 ## [2.9.9] - 2026-07-19
 
 ### Security

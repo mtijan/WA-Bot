@@ -1,3 +1,4 @@
+import './env.js';
 import sqlite3 from 'sqlite3';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';

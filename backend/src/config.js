@@ -1,3 +1,5 @@
+import './env.js';
+
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:4173',
   'http://localhost:5173',
@@ -68,6 +70,7 @@ export const config = {
   },
   uploads: {
     mediaDir: process.env.WA_BOT_MEDIA_UPLOAD_DIR || '',
+    contactImportMaxBytes: parsePositiveInteger(process.env.WA_BOT_CONTACT_IMPORT_MAX_BYTES, 5 * 1024 * 1024),
     imageMaxBytes: parsePositiveInteger(process.env.WA_BOT_IMAGE_UPLOAD_MAX_BYTES, 5 * 1024 * 1024),
     videoMaxBytes: parsePositiveInteger(process.env.WA_BOT_VIDEO_UPLOAD_MAX_BYTES, 10 * 1024 * 1024)
   }

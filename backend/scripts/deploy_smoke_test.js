@@ -1,3 +1,4 @@
+import '../src/env.js';
 import { config } from '../src/config.js';
 
 const RESET = '\x1b[0m';

@@ -2,6 +2,13 @@ $ErrorActionPreference = "Stop"
 
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot ".."))
 
+$localEnvPath = Join-Path (Get-Location) ".env"
+if (Test-Path -LiteralPath $localEnvPath) {
+  Write-Host "[Config] Menggunakan backend/.env lokal. Nilai environment proses tetap memiliki prioritas."
+  npm start
+  exit $LASTEXITCODE
+}
+
 if ([string]::IsNullOrWhiteSpace($env:WA_BOT_SECRET_ENCRYPTION_KEY)) {
   $secureEncryptionKey = Read-Host "Session/provider encryption key (minimal 32 karakter; gunakan nilai yang sama setiap restart)" -AsSecureString
   $encryptionKeyPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureEncryptionKey)

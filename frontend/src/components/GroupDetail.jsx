@@ -37,6 +37,11 @@ const GroupDetail = () => {
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [duplicateMode, setDuplicateMode] = useState('update');
 
   // Confirm Dialog State
   const [confirmDialog, setConfirmDialog] = useState({ 
@@ -242,176 +247,56 @@ const GroupDetail = () => {
     }
   };
 
-  // Excel/CSV Import Parser
-  const handleCsvUpload = (event) => {
+  // Excel/CSV import: parsing and validation are handled by the backend.
+  const handleContactFileSelected = async (event) => {
     const file = event.target.files[0];
+    event.target.value = '';
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const text = e.target.result;
-      const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-      if (lines.length === 0) {
-        alert('File CSV kosong atau tidak memiliki data.');
-        return;
-      }
-      
-      const parseCsvLine = (line) => {
-        const result = [];
-        let insideQuote = false;
-        let entry = '';
-        for (let i = 0; i < line.length; i++) {
-          const char = line[i];
-          if (char === '"') {
-            insideQuote = !insideQuote;
-          } else if (char === ',' && !insideQuote) {
-            result.push(entry.trim());
-            entry = '';
-          } else {
-            entry += char;
-          }
-        }
-        result.push(entry.trim());
-        return result;
-      };
+    setImportLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('group_id', groupId);
+      const json = await apiRequest('/contacts/import/preview', {
+        method: 'POST',
+        body: formData
+      });
+      setImportFile(file);
+      setImportPreview(json.data);
+      setDuplicateMode('update');
+      setShowImportModal(true);
+    } catch (err) {
+      console.error('Error previewing contact import:', err);
+      alert(err.message || 'Gagal membaca file Excel/CSV.');
+    } finally {
+      setImportLoading(false);
+    }
+  };
 
-      const firstLine = lines[0];
-      const parsedFirstLine = parseCsvLine(firstLine);
-      
-      // Auto-detect if there is a header row or if it is raw data
-      const firstCol = parsedFirstLine[0] || '';
-      const isFirstRowData = /\d/.test(firstCol) && firstCol.replace(/\D/g, '').length >= 5;
-      
-      let headers;
-      let startIndex = 1;
-      
-      if (isFirstRowData) {
-        startIndex = 0;
-        headers = parsedFirstLine.map((_, idx) => `column_${idx}`);
-      } else {
-        headers = parsedFirstLine.map(h => h.trim());
-      }
-      
-      const contactsList = [];
-      for (let i = startIndex; i < lines.length; i++) {
-        const values = parseCsvLine(lines[i]);
-        if (values.length === 0 || values.join('').trim() === '') continue;
-        
-        const record = {};
-        headers.forEach((header, index) => {
-          record[header] = values[index] || '';
-        });
-        contactsList.push(record);
-      }
-      
-      const standardContacts = contactsList.map(record => {
-        const keys = Object.keys(record);
-        
-        let phoneKey = keys.find(k => {
-          const lk = k.toLowerCase().trim();
-          return lk === 'phone' || lk === 'phone_number' || lk === 'number' || lk === 'no hp' || 
-                 lk === 'telepon' || lk === 'handphone' || lk === 'telp' || lk === 'mobile' || 
-                 lk === 'contact' || lk === 'phone number';
-        });
-        
-        let nameKey = keys.find(k => {
-          const lk = k.toLowerCase().trim();
-          return lk === 'name' || lk === 'nama' || lk === 'username' || lk === 'fullname' || lk === 'full name';
-        });
-        
-        let emailKey = keys.find(k => { const lk = k.toLowerCase().trim(); return lk === 'email' || lk === 'mail' || lk === 'surel'; });
-        let companyKey = keys.find(k => { const lk = k.toLowerCase().trim(); return lk === 'company' || lk === 'perusahaan' || lk === 'instansi'; });
-        let positionKey = keys.find(k => { const lk = k.toLowerCase().trim(); return lk === 'position' || lk === 'jabatan' || lk === 'role'; });
-        let notesKey = keys.find(k => { const lk = k.toLowerCase().trim(); return lk === 'notes' || lk === 'catatan' || lk === 'keterangan' || lk === 'note'; });
-        let tagsKey = keys.find(k => { const lk = k.toLowerCase().trim(); return lk === 'tags' || lk === 'kategori' || lk === 'tag'; });
-        
-        let vars = {};
-        for (let idx = 1; idx <= 10; idx++) {
-          let varKey = keys.find(k => k.toLowerCase().trim() === `var${idx}`);
-          if (varKey) {
-            vars[`var${idx}`] = record[varKey];
-          }
-        }
-        
-        if (isFirstRowData) {
-          if (keys.length === 1) {
-            phoneKey = keys[0];
-          } else {
-            const col0Val = record[keys[0]] || '';
-            const col1Val = record[keys[1]] || '';
-            const col0HasDigits = /\d/.test(col0Val) && col0Val.replace(/\D/g, '').length >= 5;
-            const col1HasDigits = /\d/.test(col1Val) && col1Val.replace(/\D/g, '').length >= 5;
-            
-            if (col0HasDigits && !col1HasDigits) {
-              phoneKey = keys[0];
-              nameKey = keys[1];
-            } else {
-              nameKey = keys[0];
-              phoneKey = keys[1];
-            }
-            
-            let varIdx = 1;
-            keys.forEach((k) => {
-              if (k !== phoneKey && k !== nameKey && varIdx <= 10) {
-                vars[`var${varIdx}`] = record[k];
-                varIdx++;
-              }
-            });
-          }
-        } else {
-          if (!phoneKey) {
-            phoneKey = keys.find(k => {
-              const val = record[k] || '';
-              return /\d/.test(val) && val.replace(/\D/g, '').length >= 5;
-            }) || keys[0];
-          }
-          if (!nameKey) {
-            nameKey = keys.find(k => k !== phoneKey) || keys[0];
-          }
-          
-          let varIdx = 1;
-          keys.forEach(k => {
-            if (k !== phoneKey && k !== nameKey && k !== emailKey && k !== companyKey && k !== positionKey && k !== notesKey && k !== tagsKey && !k.toLowerCase().startsWith('var') && varIdx <= 10) {
-              vars[`var${varIdx}`] = record[k];
-              varIdx++;
-            }
-          });
-        }
-        
-        let phoneVal = (record[phoneKey] || '').toString().trim();
-        let nameVal = record[nameKey] ? record[nameKey].toString().trim() : '';
-        
-        return {
-          name: nameVal || `Contact-${phoneVal.replace(/\D/g, '')}`,
-          phone_number: phoneVal,
-          email: emailKey ? record[emailKey] : '',
-          company: companyKey ? record[companyKey] : '',
-          position: positionKey ? record[positionKey] : '',
-          notes: notesKey ? record[notesKey] : '',
-          tags: tagsKey ? record[tagsKey] : '',
-          ...vars
-        };
-      }).filter(c => c.phone_number !== '');
-      
-      try {
-        const json = await apiRequest('/contacts/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ group_id: groupId, contacts: standardContacts })
-        });
-        if (json.status === 'success') {
-          alert(json.message);
-          fetchContacts();
-          fetchGroupInfo();
-        } else {
-          alert(json.message || 'Gagal mengimpor CSV');
-        }
-      } catch (err) {
-        console.error('Error importing CSV:', err);
-        alert('Koneksi server gagal');
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = ''; // Reset file input
+  const handleConfirmContactImport = async () => {
+    if (!importFile || !importPreview || importPreview.counts.valid_rows === 0) return;
+    setImportLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      formData.append('group_id', groupId);
+      formData.append('duplicate_mode', duplicateMode);
+      const json = await apiRequest('/contacts/import', {
+        method: 'POST',
+        body: formData
+      });
+      setShowImportModal(false);
+      setImportFile(null);
+      setImportPreview(null);
+      await Promise.all([fetchContacts(), fetchGroupInfo()]);
+      if (window.showSuccess) window.showSuccess(json.message);
+      else alert(json.message);
+    } catch (err) {
+      console.error('Error importing contacts:', err);
+      alert(err.message || 'Gagal mengimpor kontak.');
+    } finally {
+      setImportLoading(false);
+    }
   };
 
   // WhatsApp Verification
@@ -443,36 +328,39 @@ const GroupDetail = () => {
   // CSV Exporter
   const handleExportContacts = () => {
     if (contacts.length === 0) return;
-    const headers = ['Name', 'Phone', 'Email', 'Company', 'Position', 'Notes', 'Tags', 'Var1', 'Var2', 'Var3', 'Var4', 'Var5', 'Var6', 'Var7', 'Var8', 'Var9', 'Var10'];
+    const customHeadersByKey = new Map();
+    for (const contact of contacts) {
+      for (const header of Object.keys(contact.custom_fields || {})) {
+        const key = header.trim().toLocaleLowerCase('id-ID');
+        if (key && !customHeadersByKey.has(key)) customHeadersByKey.set(key, header.trim());
+      }
+    }
+    const customHeaders = [...customHeadersByKey.values()];
+    const headers = ['Name', 'Phone', 'Email', 'Company', 'Position', 'Notes', 'Tags', ...customHeaders];
+    const escapeCsvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const rows = contacts.map(c => [
-      `"${c.name || ''}"`,
-      `"${c.phone_number || ''}"`,
-      `"${c.email || ''}"`,
-      `"${c.company || ''}"`,
-      `"${c.position || ''}"`,
-      `"${c.notes || ''}"`,
-      `"${c.tags || ''}"`,
-      `"${c.var1 || ''}"`,
-      `"${c.var2 || ''}"`,
-      `"${c.var3 || ''}"`,
-      `"${c.var4 || ''}"`,
-      `"${c.var5 || ''}"`,
-      `"${c.var6 || ''}"`,
-      `"${c.var7 || ''}"`,
-      `"${c.var8 || ''}"`,
-      `"${c.var9 || ''}"`,
-      `"${c.var10 || ''}"`
+      c.name,
+      c.phone_number,
+      c.email,
+      c.company,
+      c.position,
+      c.notes,
+      c.tags,
+      ...customHeaders.map((header) => c.custom_fields?.[header] || '')
     ]);
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = [
+      headers.map(escapeCsvCell).join(','),
+      ...rows.map((row) => row.map(escapeCsvCell).join(','))
+    ].join('\r\n');
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", objectUrl);
     link.setAttribute("download", `${groupInfo?.name || 'contacts'}_export.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(objectUrl);
   };
 
   // Delete Invalid Contacts
@@ -532,6 +420,11 @@ const GroupDetail = () => {
     });
   };
 
+  const getImportPreviewValue = (contact, header) => {
+    if (header.type === 'custom') return contact.custom_fields?.[header.name] || '';
+    return contact[header.field] || '';
+  };
+
   // Calculate dynamic stats
   const total = contacts.length;
   const verified = contacts.filter(c => c.status === 'VERIFIED').length;
@@ -582,8 +475,14 @@ const GroupDetail = () => {
           <Clipboard size={16} /> Copy/Paste
         </button>
         <label className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: 'var(--border-radius)', cursor: 'pointer', margin: 0 }}>
-          <FileSpreadsheet size={16} /> Excel Import
-          <input type="file" accept=".csv" onChange={handleCsvUpload} style={{ display: 'none' }} />
+          <FileSpreadsheet size={16} /> {importLoading ? 'Reading File...' : 'Excel/CSV Import'}
+          <input
+            type="file"
+            accept=".xlsx,.csv"
+            onChange={handleContactFileSelected}
+            disabled={importLoading}
+            style={{ display: 'none' }}
+          />
         </label>
         <button 
           onClick={() => {
@@ -721,6 +620,123 @@ const GroupDetail = () => {
           </div>
         )}
       </div>
+
+      {/* EXCEL/CSV IMPORT PREVIEW MODAL */}
+      {showImportModal && importPreview && (
+        <div style={{
+          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.62)',
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          zIndex: 1200, backdropFilter: 'blur(5px)', padding: '20px'
+        }}>
+          <div className="card" style={{ width: 'min(1050px, 96vw)', maxHeight: '92vh', overflowY: 'auto', padding: '24px', position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setShowImportModal(false);
+                setImportFile(null);
+                setImportPreview(null);
+              }}
+              style={{ position: 'absolute', top: '18px', right: '18px', border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              <X size={22} />
+            </button>
+
+            <h3 style={{ margin: 0, color: 'var(--text-main)', fontSize: '1.25rem' }}>Preview Import Kontak</h3>
+            <p style={{ color: 'var(--text-muted)', margin: '6px 0 18px' }}>
+              {importFile?.name} · sumber {importPreview.source_sheet}. File Excel hanya membaca worksheet Sheet1.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(130px, 1fr))', gap: '10px', marginBottom: '18px' }}>
+              {[
+                ['Total Rows', importPreview.counts.total_rows, 'var(--primary-color)'],
+                ['Valid', importPreview.counts.valid_rows, 'var(--success)'],
+                ['Invalid', importPreview.counts.invalid_rows, '#ef4444'],
+                ['Duplicate', importPreview.counts.duplicate_rows, 'var(--warning)']
+              ].map(([label, value, color]) => (
+                <div key={label} style={{ padding: '12px', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{label}</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '7px' }}>Header terdeteksi</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {importPreview.headers.map((header) => (
+                  <span key={header.name} style={{
+                    padding: '5px 9px', borderRadius: '999px', fontSize: '0.72rem',
+                    backgroundColor: header.type === 'custom' ? 'rgba(139,92,246,0.12)' : 'rgba(59,130,246,0.12)',
+                    color: header.type === 'custom' ? '#a78bfa' : '#60a5fa',
+                    border: `1px solid ${header.type === 'custom' ? 'rgba(139,92,246,0.25)' : 'rgba(59,130,246,0.25)'}`
+                  }}>
+                    {header.name} · {header.type === 'custom' ? 'variable baru' : 'field standar'}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {importPreview.counts.formula_cells_ignored > 0 && (
+              <div style={{ marginBottom: '14px', padding: '10px 12px', borderRadius: '8px', color: '#b45309', backgroundColor: '#fef3c7', fontSize: '0.8rem' }}>
+                {importPreview.counts.formula_cells_ignored} sel formula tidak dieksekusi; sistem hanya memakai nilai hasil yang tersimpan di file.
+              </div>
+            )}
+
+            <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '18px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}>
+                    <th style={{ padding: '9px', textAlign: 'left', color: 'var(--text-muted)', fontSize: '0.72rem' }}>Row</th>
+                    {importPreview.headers.map((header) => (
+                      <th key={header.name} style={{ padding: '9px', textAlign: 'left', color: 'var(--text-muted)', fontSize: '0.72rem' }}>{header.name}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {importPreview.preview.length === 0 ? (
+                    <tr>
+                      <td colSpan={importPreview.headers.length + 1} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Sheet1 baru berisi header dan belum memiliki baris kontak.
+                      </td>
+                    </tr>
+                  ) : importPreview.preview.map((contact) => (
+                    <tr key={`${contact.source_row}-${contact.phone_number}`} style={{ borderTop: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '9px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{contact.source_row}</td>
+                      {importPreview.headers.map((header) => (
+                        <td key={header.name} style={{ padding: '9px', color: 'var(--text-main)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                          {getImportPreviewValue(contact, header) || '-'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: '0.82rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Jika nomor sudah ada:
+                <select value={duplicateMode} onChange={(event) => setDuplicateMode(event.target.value)} className="form-control" style={{ width: 'auto' }}>
+                  <option value="update">Perbarui nama dan variabel</option>
+                  <option value="skip">Lewati kontak lama</option>
+                </select>
+              </label>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowImportModal(false)}>Batal</button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleConfirmContactImport}
+                  disabled={importLoading || importPreview.counts.valid_rows === 0}
+                  style={{ opacity: importLoading || importPreview.counts.valid_rows === 0 ? 0.55 : 1 }}
+                >
+                  {importLoading ? 'Mengimpor...' : `Import ${importPreview.counts.valid_rows} Kontak`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MANUAL CONTACT MODAL */}
       {showManualModal && (

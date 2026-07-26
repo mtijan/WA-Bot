@@ -708,6 +708,39 @@ const migrations = [
         'CREATE INDEX idx_whatsapp_contacts_user_lid ON whatsapp_contacts (user_id, lid)'
       ]);
     }
+  },
+  {
+    id: '022_contact_custom_fields_campaign_variables',
+    description: 'Store named contact variables and snapshot recipient variables for bulk campaigns.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'contacts', 'custom_fields', "TEXT NOT NULL DEFAULT '{}'");
+      await addColumnIfMissing(db, 'delivery_logs', 'recipient_variables', "TEXT NOT NULL DEFAULT '{}'");
+      await addColumnIfMissing(db, 'delivery_logs', 'rendered_message', 'TEXT');
+
+      const legacyContacts = await all(
+        db,
+        `SELECT id, var1, var2, var3, var4, var5, var6, var7, var8, var9, var10
+         FROM contacts`
+      );
+      for (const contact of legacyContacts) {
+        const customFields = {};
+        for (let index = 1; index <= 10; index += 1) {
+          const value = contact[`var${index}`];
+          if (value !== null && value !== undefined && String(value) !== '') {
+            customFields[`Var${index}`] = String(value);
+          }
+        }
+        if (Object.keys(customFields).length > 0) {
+          await run(
+            db,
+            `UPDATE contacts
+             SET custom_fields = ?
+             WHERE id = ? AND (custom_fields IS NULL OR custom_fields = '{}' OR custom_fields = '')`,
+            [JSON.stringify(customFields), contact.id]
+          );
+        }
+      }
+    }
   }
 ];
 

@@ -1,3 +1,4 @@
+import '../src/env.js';
 import sqlite3 from 'sqlite3';
 import fs from 'fs';
 import { dirname, join, resolve } from 'path';

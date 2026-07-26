@@ -6,7 +6,7 @@ echo ===================================================
 echo.
 
 echo [+] Membuka server Backend di jendela baru...
-echo     Backend akan meminta password admin. Kosongkan jika ingin mode lokal tanpa login.
+echo     Backend memakai backend\.env jika tersedia; jika tidak, launcher meminta konfigurasi lokal.
 start "S-BRO Backend" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0backend\scripts\start_with_admin_auth.ps1"
 
 echo [+] Membuka server Frontend di jendela baru...

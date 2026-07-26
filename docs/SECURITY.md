@@ -1,7 +1,7 @@
 # WA-Bot Pro Security Baseline
 
 **Status:** Security hardening baseline implemented; production risk review still required  
-**Last updated:** 2026-07-19
+**Last updated:** 2026-07-25
 
 ## 1. Scope
 
@@ -22,12 +22,15 @@ This document separates implemented controls from production requirements. It is
 | Audit trail | Sensitive auth/user/session/campaign/template/chatbot/proxy/settings events are written to append-only `audit_logs`; admin visibility is global and user visibility is actor-scoped. | `backend/src/services/audit.service.js`, `backend/src/controllers/audit.controller.js`, migration `017_audit_logs` |
 | Security response headers | Native Express middleware sets baseline headers such as tuned CSP (allowing Google Fonts and staging/production websocket), frame denial, referrer policy, permissions policy, and optional HSTS. | `backend/src/middleware/security.middleware.js` |
 | Request-size policy | Default JSON/urlencoded body limit is configurable and lower than import endpoints. | `WA_BOT_JSON_BODY_LIMIT`, `WA_BOT_IMPORT_BODY_LIMIT` |
+| Local environment loading | Backend runtime and maintenance scripts load ignored `backend/.env` automatically; existing OS/systemd environment values take priority so deployment configuration is not overridden. | `backend/src/env.js`, `.gitignore`, `backend/.env.example` |
+| Contact file import boundary | Contact imports are owner-scoped and parsed in memory with a dedicated 5 MB default limit, 10.000-row/50-column caps, ZIP entry/uncompressed-size checks, `Sheet1`-only XLSX resolution, duplicate-header rejection, and no formula execution. | `backend/src/services/contact_import.service.js`, `backend/src/controllers/contact_import.controller.js`, `WA_BOT_CONTACT_IMPORT_MAX_BYTES` |
+| Campaign variable isolation | Group targets are submitted as contact IDs and resolved under the session tenant. Named variables are snapshotted per delivery log so later contact edits cannot alter an already queued recipient payload. | `backend/src/services/campaign.service.js`, migration `022_contact_custom_fields_campaign_variables` |
 | Media upload limits and ownership | Uploads have explicit limits and owner-only download/delete. Runtime sending accepts only regular files inside the managed media root after lexical and realpath checks; arbitrary local paths, symlink escapes, and remote attachment URLs are rejected. | `backend/src/services/upload.service.js`, `backend/src/services/whatsapp.helpers.js`, migration `019_uploaded_media_metadata` |
 | Session filesystem boundary | Session IDs are restricted to 1-64 alphanumeric/underscore/hyphen characters and every session directory is resolved beneath the configured root. | `backend/src/utils/session_id.js`, public/internal session routes, `backend/src/services/whatsapp.service.js` |
 | AI outbound request policy | Provider Base URLs must be public HTTPS. Local/private/reserved destinations are rejected after DNS resolution; requests pin the validated public address and reject redirects to close DNS-rebinding/redirect SSRF paths. | `backend/src/utils/outbound_url.js`, `backend/src/controllers/chatbot_ai.controller.js`, `backend/src/services/whatsapp.service.js` |
 | Sensitive log minimization | Error context records request field names rather than body values and redacts password, secret, token, cookie, API key, authorization, and proxy URL fields. Message bodies and recipient identifiers were removed from Chatbot runtime logs. | `backend/src/logger.js`, `backend/src/services/whatsapp.service.js` |
 | Proxy/IPLocate secret masking | Proxy URLs and IPLocate settings responses no longer return credential plaintext; IPLocate env key is preferred for production. | `backend/src/utils/secret_masking.js`, `backend/src/controllers/proxy.controller.js`, `backend/src/controllers/session.controller.js`, `WA_BOT_IPLOCATE_API_KEY` |
-| Dependency audit baseline | `sqlite3@6.x` remediation and dependency overrides are active; latest backend audit was clean (`npm run security:audit`, 2026-06-28). | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
+| Dependency audit baseline | `sqlite3@6.x` remediation and dependency overrides remain active, but the current audit has unresolved findings and must be reviewed separately from test/build status. | `backend/package.json`, `docs/SECURITY_AUDIT.md` |
 | Staging deploy baseline | Domain HTTPS, secure cookie/CORS, provider firewall, Telegram alert timer, backup/restore timers, ACL baseline, and API/worker readiness are verified. | `docs/STAGING.md` |
 | Upload extension spoofing | Whitelisted MIME-type mapping forces server-side file extension generation (Stored XSS mitigation). | `backend/src/services/upload.service.js` |
 | Timing attacks mitigation | Secure timing-safe comparisons (`crypto.timingSafeEqual`) are enforced for all token and admin credentials. | `backend/src/middleware/` |
@@ -67,7 +70,7 @@ Implemented backend hardening:
 - Mandatory AES-256-GCM encryption for newly saved Chatbot AI keys controlled by `WA_BOT_SECRET_ENCRYPTION_KEY`; plaintext fallback writes are rejected.
 - Atomic refresh-token consumption rejects concurrent replay of the same refresh token.
 - AI Base URL validation blocks private/reserved networks, pins the validated DNS address, and rejects redirects; this protects the application path but does not replace host-level egress firewalling.
-- `sqlite3@6.x` upgrade path has been tested and backend dependency audit is currently clean.
+- `sqlite3@6.x` upgrade path has been tested. The current dependency audit is not clean; see `docs/SECURITY_AUDIT.md` for the exact unresolved findings and release-gate status.
 - Staging placeholder secrets were rotated and auth HTTPS smoke passed without exposing secret values.
 - Proxy URLs and IPLocate API key responses are masked; the previous hardcoded IPLocate fallback key was removed in favor of `WA_BOT_IPLOCATE_API_KEY` or protected settings.
 - Multi-process Rate Limiting: Evaluated options for multi-instance scaling. For single-instance staging VPS, the in-memory rate limiter is active and sufficient. For multi-instance production, it is recommended to offload rate limiting to Caddy reverse proxy plugins or a shared Redis database cache.

@@ -1,6 +1,12 @@
 import { dbRun, dbGet, dbAll } from '../database.js';
 import whatsappService from './whatsapp.service.js';
-import { isOptedOut } from './opt_out.service.js';
+import { canonicalPhoneNumber, isOptedOut } from './opt_out.service.js';
+import {
+  contactToVariables,
+  parseVariableJson,
+  renderCampaignMessage,
+  sanitizeVariableMap
+} from './contact_variables.service.js';
 import { config } from '../config.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -53,14 +59,62 @@ class CampaignService {
   }
 
   async createCampaign(sessionId, message, targets, delayMin = 3000, delayMax = 8000, name = '', attachmentUrl = null, attachmentType = null, attachmentName = null) {
-    // Pastikan nomor target unik untuk menghindari pengiriman dobel
-    const uniqueTargets = [...new Set(targets.map(num => num.trim()).filter(Boolean))];
-
     const sessionRow = await dbGet('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
     if (!sessionRow) {
       throw new Error(`Sesi ${sessionId} tidak ditemukan. Kampanye tidak dapat dibuat tanpa pemilik tenant.`);
     }
     const userId = sessionRow.user_id;
+
+    const requestedContactIds = [...new Set(
+      targets
+        .map((target) => Number.parseInt(target?.contact_id, 10))
+        .filter((contactId) => Number.isInteger(contactId) && contactId > 0)
+    )];
+    const contactsById = new Map();
+    for (let offset = 0; offset < requestedContactIds.length; offset += 400) {
+      const chunk = requestedContactIds.slice(offset, offset + 400);
+      const placeholders = chunk.map(() => '?').join(', ');
+      const rows = await dbAll(
+        `SELECT c.*
+         FROM contacts c
+         INNER JOIN contact_groups cg ON cg.id = c.group_id
+         WHERE cg.user_id = ? AND c.id IN (${placeholders})`,
+        [userId, ...chunk]
+      );
+      for (const row of rows) contactsById.set(Number(row.id), row);
+    }
+    if (contactsById.size !== requestedContactIds.length) {
+      throw new Error('Satu atau lebih kontak tidak ditemukan atau bukan milik tenant sesi.');
+    }
+
+    // Pastikan nomor target unik dan snapshot variabel penerima ikut tersimpan.
+    const uniqueRecipients = [];
+    const seenTargets = new Set();
+    for (const target of targets) {
+      const contactId = Number.parseInt(target?.contact_id, 10);
+      const sourceContact = Number.isInteger(contactId) ? contactsById.get(contactId) : null;
+      const rawPhone = sourceContact
+        ? sourceContact.phone_number
+        : (typeof target === 'string'
+          ? target
+          : (target?.phone_number || target?.target_number || target?.phone || ''));
+      const phoneNumber = canonicalPhoneNumber(rawPhone);
+      if (!phoneNumber || seenTargets.has(phoneNumber)) continue;
+      seenTargets.add(phoneNumber);
+
+      const variables = sourceContact
+        ? contactToVariables(sourceContact)
+        : sanitizeVariableMap(
+          typeof target === 'object' && !Array.isArray(target) ? target.variables : {}
+        );
+      if (!Object.keys(variables).some((key) => key.toLocaleLowerCase('id-ID') === 'phone number')) {
+        variables['Phone Number'] = phoneNumber;
+      }
+      uniqueRecipients.push({ phoneNumber, variables });
+    }
+    if (uniqueRecipients.length === 0) {
+      throw new Error('Tidak ada target penerima valid setelah normalisasi.');
+    }
 
     // Buat kampanye utama
     const campaignResult = await dbRun(
@@ -75,10 +129,18 @@ class CampaignService {
     }
 
     // Buat logs untuk masing-masing target
-    for (const target of uniqueTargets) {
+    for (const recipient of uniqueRecipients) {
       await dbRun(
-        'INSERT INTO delivery_logs (campaign_id, target_number, status, user_id) VALUES (?, ?, ?, ?)',
-        [campaignId, target, 'PENDING', userId]
+        `INSERT INTO delivery_logs
+          (campaign_id, target_number, status, user_id, recipient_variables)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          campaignId,
+          recipient.phoneNumber,
+          'PENDING',
+          userId,
+          JSON.stringify(recipient.variables)
+        ]
       );
     }
 
@@ -89,7 +151,10 @@ class CampaignService {
       });
     }
 
-    return campaignId;
+    return {
+      campaignId,
+      totalTargets: uniqueRecipients.length
+    };
   }
 
   async processCampaign(campaignId, delayMin = 3000, delayMax = 8000) {
@@ -154,43 +219,45 @@ class CampaignService {
         const delay = Math.floor(Math.random() * (delayMax - delayMin + 1)) + delayMin;
         await sleep(delay);
 
-        let targetName = '';
-        try {
-          let cleanNum = log.target_number.replace(/\D/g, '');
-          let altNum = cleanNum;
-          if (cleanNum.startsWith('62')) {
-            altNum = '0' + cleanNum.slice(2);
-          } else if (cleanNum.startsWith('0')) {
-            altNum = '62' + cleanNum.slice(1);
+        let recipientVariables = parseVariableJson(log.recipient_variables);
+        const hasSnapshotData = Object.keys(recipientVariables)
+          .some((key) => key.toLocaleLowerCase('id-ID') !== 'phone number');
+
+        if (!hasSnapshotData) {
+          try {
+            const cleanNum = canonicalPhoneNumber(log.target_number);
+            const localNum = cleanNum.startsWith('62') ? `0${cleanNum.slice(2)}` : cleanNum;
+            const contactRow = await dbGet(
+              `SELECT c.*
+               FROM contacts c
+               INNER JOIN contact_groups cg ON c.group_id = cg.id
+               WHERE cg.user_id = ?
+                 AND (c.phone_number = ? OR c.phone_number = ? OR c.phone_number = ?)
+               LIMIT 1`,
+              [userId, log.target_number, cleanNum, localNum]
+            );
+            if (contactRow) {
+              recipientVariables = contactToVariables(contactRow);
+            }
+          } catch (err) {
+            console.error('Error fetching contact variables for personalization:', err);
           }
-          
-          const contactRow = await dbGet(
-            `SELECT c.name
-             FROM contacts c
-             INNER JOIN contact_groups cg ON c.group_id = cg.id
-             WHERE cg.user_id = ?
-               AND (c.phone_number = ? OR c.phone_number = ? OR c.phone_number = ?)
-             LIMIT 1`,
-            [userId, log.target_number, cleanNum, altNum]
-          );
-          if (contactRow && contactRow.name) {
-            targetName = contactRow.name;
-          }
-        } catch (err) {
-          console.error('Error fetching contact name for personalization:', err);
         }
 
-        let personalizedMessage = campaign.message;
-        let displayName = targetName;
-        if (!displayName || displayName.startsWith('Contact-')) {
-          displayName = '';
+        const nameKey = Object.keys(recipientVariables)
+          .find((key) => ['nama', 'name'].includes(key.toLocaleLowerCase('id-ID')));
+        if (nameKey && recipientVariables[nameKey]?.startsWith('Contact-')) {
+          recipientVariables[nameKey] = '';
         }
-        
-        personalizedMessage = personalizedMessage
-          .replace(/\{\{name\}\}/gi, displayName)
-          .replace(/\[name\]/gi, displayName)
-          .replace(/\{\{nama\}\}/gi, displayName)
-          .replace(/\[nama\]/gi, displayName);
+
+        const personalizedMessage = log.rendered_message
+          || renderCampaignMessage(campaign.message, recipientVariables);
+        if (!log.rendered_message) {
+          await dbRun(
+            'UPDATE delivery_logs SET rendered_message = ?, recipient_variables = ? WHERE id = ?',
+            [personalizedMessage, JSON.stringify(recipientVariables), log.id]
+          );
+        }
 
         try {
           if (campaign.attachment_url) {

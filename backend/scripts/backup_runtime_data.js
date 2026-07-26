@@ -1,3 +1,4 @@
+import '../src/env.js';
 import fs from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -23,4 +24,3 @@ if (fs.existsSync(sessionsPath)) {
 
 console.log(`[Backup] Runtime data copied to: ${backupDir}`);
 console.log('[Backup] Treat this directory as sensitive data and encrypt protected storage.');
-

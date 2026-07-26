@@ -5,7 +5,9 @@ echo "      MENYALAKAN SISTEM S-BRO MULTI-ACCOUNT        "
 echo "==================================================="
 echo ""
 
-if [ ${#WA_BOT_SECRET_ENCRYPTION_KEY} -lt 32 ]; then
+if [ -f "backend/.env" ]; then
+  echo "[Config] Menggunakan backend/.env lokal. Nilai environment proses tetap memiliki prioritas."
+elif [ ${#WA_BOT_SECRET_ENCRYPTION_KEY} -lt 32 ]; then
   echo "[ERROR] WA_BOT_SECRET_ENCRYPTION_KEY wajib diisi minimal 32 karakter."
   echo "Gunakan nilai yang sama pada setiap restart agar sesi WhatsApp dapat didekripsi."
   exit 1

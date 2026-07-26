@@ -3,6 +3,11 @@ import whatsappService from '../services/whatsapp.service.js';
 import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
+import {
+  mergeVariableMaps,
+  parseVariableJson,
+  sanitizeVariableMap
+} from '../services/contact_variables.service.js';
 
 // Helper: Deteksi Info Negara
 const getCountryInfo = (num) => {
@@ -196,7 +201,10 @@ export const getContacts = async (req, res) => {
     sql += ' ORDER BY created_at DESC';
 
     const contacts = await dbAll(sql, params);
-    return sendSuccess(res, contacts);
+    return sendSuccess(res, contacts.map((contact) => ({
+      ...contact,
+      custom_fields: parseVariableJson(contact.custom_fields)
+    })));
   } catch (error) {
     logError('getContacts', error, { query: req.query });
     return sendError(res, 500, 'GET_CONTACTS_ERROR', 'Gagal memuat daftar kontak.');
@@ -222,7 +230,8 @@ export const createContact = async (req, res) => {
     var7,
     var8,
     var9,
-    var10
+    var10,
+    custom_fields
   } = req.body;
 
   try {
@@ -241,11 +250,20 @@ export const createContact = async (req, res) => {
 
     const finalName = (name && name.trim()) ? name.trim() : `Contact-${cleanPhone}`;
 
+    const namedVariables = sanitizeVariableMap({
+      ...parseVariableJson(custom_fields),
+      ...Object.fromEntries(
+        [var1, var2, var3, var4, var5, var6, var7, var8, var9, var10]
+          .map((value, index) => [`Var${index + 1}`, value])
+          .filter(([, value]) => value !== undefined && value !== null && String(value) !== '')
+      )
+    });
+
     const result = await dbRun(
       `INSERT INTO contacts (
         group_id, name, phone_number, email, company, position, notes, tags, status,
-        var1, var2, var3, var4, var5, var6, var7, var8, var9, var10
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        var1, var2, var3, var4, var5, var6, var7, var8, var9, var10, custom_fields
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         group_id,
         finalName,
@@ -265,7 +283,8 @@ export const createContact = async (req, res) => {
         var7 || '',
         var8 || '',
         var9 || '',
-        var10 || ''
+        var10 || '',
+        JSON.stringify(namedVariables)
       ]
     );
 
@@ -296,7 +315,8 @@ export const updateContact = async (req, res) => {
     var7,
     var8,
     var9,
-    var10
+    var10,
+    custom_fields
   } = req.body;
 
   try {
@@ -313,10 +333,22 @@ export const updateContact = async (req, res) => {
       }
     }
 
+    const existing = await dbGet('SELECT custom_fields FROM contacts WHERE id = ?', [id]);
+    const namedVariables = mergeVariableMaps(
+      parseVariableJson(existing?.custom_fields),
+      parseVariableJson(custom_fields),
+      Object.fromEntries(
+        [var1, var2, var3, var4, var5, var6, var7, var8, var9, var10]
+          .map((value, index) => [`Var${index + 1}`, value])
+          .filter(([, value]) => value !== undefined && value !== null && String(value) !== '')
+      )
+    );
+
     await dbRun(
       `UPDATE contacts SET 
         name = ?, phone_number = ?, email = ?, company = ?, position = ?, notes = ?, tags = ?, status = ?,
-        var1 = ?, var2 = ?, var3 = ?, var4 = ?, var5 = ?, var6 = ?, var7 = ?, var8 = ?, var9 = ?, var10 = ?
+        var1 = ?, var2 = ?, var3 = ?, var4 = ?, var5 = ?, var6 = ?, var7 = ?, var8 = ?, var9 = ?, var10 = ?,
+        custom_fields = ?
       WHERE id = ?`,
       [
         name,
@@ -337,6 +369,7 @@ export const updateContact = async (req, res) => {
         var8 || '',
         var9 || '',
         var10 || '',
+        JSON.stringify(namedVariables),
         id
       ]
     );
@@ -401,12 +434,20 @@ export const bulkCreateContacts = async (req, res) => {
       const var8 = c.Var8 || c.var8 || '';
       const var9 = c.Var9 || c.var9 || '';
       const var10 = c.Var10 || c.var10 || '';
+      const namedVariables = sanitizeVariableMap({
+        ...parseVariableJson(c.custom_fields),
+        ...Object.fromEntries(
+          [var1, var2, var3, var4, var5, var6, var7, var8, var9, var10]
+            .map((value, index) => [`Var${index + 1}`, value])
+            .filter(([, value]) => value !== undefined && value !== null && String(value) !== '')
+        )
+      });
 
       await dbRun(
         `INSERT INTO contacts (
           group_id, name, phone_number, email, company, position, notes, tags, status,
-          var1, var2, var3, var4, var5, var6, var7, var8, var9, var10
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          var1, var2, var3, var4, var5, var6, var7, var8, var9, var10, custom_fields
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           group_id,
           name,
@@ -426,7 +467,8 @@ export const bulkCreateContacts = async (req, res) => {
           var7,
           var8,
           var9,
-          var10
+          var10,
+          JSON.stringify(namedVariables)
         ]
       );
     }

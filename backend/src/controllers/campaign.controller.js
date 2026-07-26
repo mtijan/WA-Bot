@@ -38,7 +38,7 @@ export const createCampaign = async (req, res) => {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
     }
 
-    const campaignId = await campaignService.createCampaign(
+    const campaignResult = await campaignService.createCampaign(
       session_id,
       message,
       targets,
@@ -49,6 +49,7 @@ export const createCampaign = async (req, res) => {
       attachment_type || null,
       attachment_name || null
     );
+    const campaignId = campaignResult.campaignId;
 
     if (isSessionManagerClientEnabled()) {
       sessionManagerClient.processCampaign(campaignId).catch((err) => {
@@ -59,14 +60,18 @@ export const createCampaign = async (req, res) => {
     auditLog(req, 'CAMPAIGN_CREATE', 'campaign', String(campaignId), 'success', {
       session_id,
       name,
-      total_targets: targets.length,
+      total_targets: campaignResult.totalTargets,
     });
     return sendSuccess(res, {
       campaign_id: campaignId,
-      total_targets: targets.length
+      total_targets: campaignResult.totalTargets
     }, 202, { message: 'Kampanye berhasil dimasukkan ke antrean.' });
   } catch (err) {
-    logError('createCampaign', err, { body: req.body });
+    logError('createCampaign', err, {
+      userId: req.auth?.userId,
+      sessionId: req.body?.session_id,
+      targetCount: Array.isArray(req.body?.targets) ? req.body.targets.length : 0
+    });
     return sendError(res, 500, 'CREATE_CAMPAIGN_ERROR', err.message || 'Gagal membuat kampanye.');
   }
 };

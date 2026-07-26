@@ -12,7 +12,7 @@ router.post('/',
   validateBody({
     session_id: { required: true, type: 'string', min: 1 },
     message: { required: true, type: 'string', min: 1 },
-    targets: { required: true, type: 'array', min: 1 },
+    targets: { required: true, type: 'array', min: 1, max: 10000 },
     attachment_url: { required: false, type: 'string' },
     attachment_type: { required: false, type: 'string', allowedValues: ['Image', 'Video', 'Audio', 'Document'] },
     attachment_name: { required: false, type: 'string' }

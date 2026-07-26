@@ -4,7 +4,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
 **Versi Dokumen/Sistem:** 2.9.9
-**Terakhir Diperbarui:** 2026-07-19
+**Terakhir Diperbarui:** 2026-07-25
 
 ---
 
@@ -24,7 +24,8 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 ## Fitur Utama
 
 - **Multi-Session Management:** Pengelolaan banyak sesi akun WhatsApp secara konkuren dan independen melalui satu antarmuka dashboard.
-- **Bulk Campaign:** Pengiriman pesan massal ke daftar kontak dengan penjadwalan, penundaan acak (random delay) untuk keselamatan akun, personalisasi template (contoh: `{{name|first}}`), dan spintax engine (contoh: `{Hi|Hello}`).
+- **Bulk Campaign:** Pengiriman pesan massal ke daftar kontak dengan penjadwalan, penundaan acak (random delay) untuk keselamatan akun, personalisasi bernama dari header kontak (contoh: `{{NIM}}` atau `{{Jatuh Tempo}}`), dan spintax engine (contoh: `{Hi|Hello}`).
+- **Excel/CSV Contact Import:** Upload `.xlsx` (hanya `Sheet1`) atau `.csv` langsung ke Contact Group, preview header dan baris sebelum impor, pemetaan otomatis field standar, serta penyimpanan header lain sebagai variabel kustom yang muncul otomatis di Advanced Features Bulk Messages.
 - **Account Warmer:** Simulasi percakapan otomatis dua arah antar-sesi internal secara berkala untuk memanaskan reputasi pengirim dan mengurangi risiko pemblokiran.
 - **Chatbot Flow:** Alur auto-reply interaktif berbasis node dengan perancang visual yang mendukung teks, gambar, video, audio, dokumen, dan template respons.
 - **Chatbot Flow Runtime Scaling:** Assignment flow-ke-sesi dinormalisasi melalui `chatbot_flow_sessions`, sehingga pesan masuk hanya mencari flow aktif untuk sesi terkait lewat index dan tidak melakukan scan semua flow aktif.
@@ -64,7 +65,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 .\run.bat
 ```
 
-Launcher akan meminta `WA_BOT_SECRET_ENCRYPTION_KEY` secara aman bila belum tersedia di environment. Masukkan nilai tetap minimal 32 karakter dan gunakan nilai yang sama pada setiap restart; mengganti nilai tanpa prosedur rotasi membuat file sesi lama tidak dapat didekripsi.
+Jika `backend/.env` tersedia, launcher memakainya otomatis dan tidak meminta konfigurasi ulang. Jika file itu tidak tersedia, launcher Windows tetap meminta `WA_BOT_SECRET_ENCRYPTION_KEY` secara aman. Gunakan nilai tetap minimal 32 karakter dan nilai yang sama pada setiap restart; mengganti nilai tanpa prosedur rotasi membuat file sesi lama tidak dapat didekripsi. Environment variable dari OS, systemd, atau terminal selalu memiliki prioritas di atas nilai `.env`.
 
 #### Linux / macOS:
 ```bash
@@ -75,12 +76,22 @@ export WA_BOT_SECRET_ENCRYPTION_KEY='replace-with-a-stable-secret-of-at-least-32
 
 ### Secara Manual
 
+Siapkan konfigurasi lokal satu kali:
+
+```powershell
+Copy-Item .\backend\.env.example .\backend\.env
+```
+
+Isi secret yang masih berupa placeholder. Jangan commit atau membagikan `backend/.env`; file tersebut sudah dilindungi aturan `.gitignore`.
+
 #### Terminal 1 - Backend (API & Session Manager):
 ```bash
 cd backend
 npm install
 npm start
 ```
+
+Backend memuat `backend/.env` berdasarkan lokasi aplikasinya, sehingga tetap berfungsi walaupun proses Node dijalankan dari direktori lain.
 
 #### Terminal 2 - Frontend (React Dev Server):
 ```bash
@@ -95,6 +106,18 @@ npm run dev
 |---------|-----|-----------|
 | Backend API | `http://localhost:3001/api` | REST API utama |
 | Frontend Dev | `http://localhost:5173` | Halaman dashboard React dev |
+
+---
+
+### Alur Import Kontak dan Pesan Variabel
+
+1. Buka **Contacts**, pilih sebuah Contact Group, lalu upload file `.xlsx` atau `.csv`.
+2. Untuk Excel, sistem hanya membaca sheet bernama `Sheet1`. Header standar yang dikenali adalah nama, nomor telepon, email, company, position, tags, dan notes.
+3. Header lain, misalnya `NIM`, `No Rek`, `Jumlah`, atau `Jatuh Tempo`, disimpan sebagai variabel kustom setelah operator menyetujui preview dan memilih mode duplicate update/skip.
+4. Verifikasi nomor kontak, lalu buka **Bulk Messages** dan pilih grup. Header kustom muncul otomatis di **Advanced Features**; klik header untuk menyisipkan token seperti `{{NIM}}`.
+5. Saat kampanye dibuat, backend mengambil dan menyimpan snapshot variabel milik setiap penerima sehingga token dirender berbeda untuk setiap kontak.
+
+Batas file import kontak dikontrol oleh `WA_BOT_CONTACT_IMPORT_MAX_BYTES` dan default-nya 5 MB. Maksimal 10.000 baris data dan 50 kolom per file.
 
 ---
 
@@ -128,7 +151,7 @@ Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan
 ## Panduan Pengujian (Testing)
 
 ### Pengujian Unit & Integrasi Backend
-Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, serta isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite terakhir: 114 test pass.
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, serta isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite terakhir: 120 test pass.
 ```bash
 cd backend
 npm test

@@ -1,3 +1,4 @@
+import '../src/env.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import { dirname, join, relative, resolve, sep } from 'path';
