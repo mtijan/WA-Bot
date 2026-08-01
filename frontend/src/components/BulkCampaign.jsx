@@ -17,6 +17,15 @@ import { apiRequest } from '../apiClient';
 import MediaUploadField from './MediaUploadField';
 
 const STANDARD_CONTACT_VARIABLES = ['Nama', 'Phone Number', 'Email', 'Company', 'Position', 'Tags', 'Notes'];
+const DELIVERY_ACK_META = {
+  QUEUED: { label: 'Antrean', color: 'var(--text-muted)', background: 'rgba(107,114,128,0.1)' },
+  SERVER_ACK: { label: '1 centang', color: 'var(--warning)', background: 'rgba(245,158,11,0.12)' },
+  DELIVERED: { label: 'Delivered', color: 'var(--info)', background: 'rgba(59,130,246,0.12)' },
+  READ: { label: 'Read', color: 'var(--success)', background: 'rgba(16,185,129,0.12)' },
+  PLAYED: { label: 'Played', color: 'var(--success)', background: 'rgba(16,185,129,0.12)' },
+  FAILED: { label: 'Gagal', color: 'var(--danger)', background: 'rgba(239,68,68,0.12)' },
+  UNKNOWN: { label: 'Log lama', color: 'var(--text-muted)', background: 'rgba(107,114,128,0.1)' }
+};
 
 const buildContactVariables = (contact) => ({
   Nama: contact.name || '',
@@ -1265,6 +1274,7 @@ const BulkCampaign = () => {
                   {drawerProgress.logs.map((log) => {
                     const isLogSent = log.status === 'SENT';
                     const isLogFailed = log.status === 'FAILED';
+                    const ackMeta = DELIVERY_ACK_META[log.ack_status || 'QUEUED'] || DELIVERY_ACK_META.UNKNOWN;
                     return (
                       <div 
                         key={log.id} 
@@ -1282,17 +1292,36 @@ const BulkCampaign = () => {
                           <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', fontFamily: 'monospace' }}>
                             {log.target_number}
                           </span>
-                          <span style={{ 
-                            fontSize: '0.65rem', 
-                            fontWeight: 700, 
-                            padding: '1px 6px', 
-                            borderRadius: '4px',
-                            backgroundColor: isLogSent ? 'rgba(16,185,129,0.1)' : isLogFailed ? 'rgba(239,68,68,0.1)' : 'rgba(107,114,128,0.1)',
-                            color: isLogSent ? 'var(--success)' : isLogFailed ? 'var(--danger)' : 'var(--text-muted)'
-                          }}>
-                            {log.status}
-                          </span>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                            <span style={{
+                              fontSize: '0.65rem',
+                              fontWeight: 700,
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: isLogSent ? 'rgba(16,185,129,0.1)' : isLogFailed ? 'rgba(239,68,68,0.1)' : 'rgba(107,114,128,0.1)',
+                              color: isLogSent ? 'var(--success)' : isLogFailed ? 'var(--danger)' : 'var(--text-muted)'
+                            }}>
+                              {log.status}
+                            </span>
+                            {isLogSent && (
+                              <span style={{
+                                fontSize: '0.65rem',
+                                fontWeight: 700,
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: ackMeta.background,
+                                color: ackMeta.color
+                              }}>
+                                {ackMeta.label}
+                              </span>
+                            )}
+                          </div>
                         </div>
+                        {isLogSent && log.ack_updated_at && (
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                            Delivery update: {new Date(log.ack_updated_at).toLocaleString()}
+                          </div>
+                        )}
                         {isLogFailed && log.error_message && (
                           <div style={{ fontSize: '0.7rem', color: 'var(--danger)', fontStyle: 'italic' }}>
                             {log.error_message}

@@ -16,6 +16,11 @@ import { assertSafeOutboundUrl, createSafeOutboundFetch } from '../utils/outboun
 import { resolveKnowledgeBase } from './chatbot_ai.service.js';
 import { getActiveFlowSummariesForSession } from './chatbot_flow_sessions.service.js';
 import {
+  mapBaileysMessageStatus,
+  mapBaileysReceipt,
+  updateDeliveryReceipt
+} from './delivery_receipt.service.js';
+import {
   getMediaSource,
   getMimeTypeFromUrl,
   getFileNameFromUrl,
@@ -34,6 +39,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const SESSIONS_DIR = join(__dirname, '..', '..', 'sessions');
+
+export function isRepairableSignalCacheFile(fileName) {
+  return /^session-.+\.json$/.test(fileName) || /^sender-key-.+\.json$/.test(fileName);
+}
 
 // Pastikan folder sesi ada
 if (!fs.existsSync(SESSIONS_DIR)) {
@@ -127,6 +136,36 @@ class WhatsAppService {
     this.sockets[sessionId] = sock;
 
     sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('messages.update', async (updates) => {
+      for (const { key, update } of updates || []) {
+        if (!key?.fromMe || !key.id || update?.status == null) continue;
+        const ackStatus = mapBaileysMessageStatus(update.status);
+        if (!ackStatus) continue;
+        try {
+          await updateDeliveryReceipt(
+            key.id,
+            ackStatus,
+            ackStatus === 'FAILED' ? 'WhatsApp melaporkan kegagalan pengiriman.' : null
+          );
+        } catch (err) {
+          logError('WhatsAppService.messages.update.deliveryReceipt', err, { sessionId });
+        }
+      }
+    });
+
+    sock.ev.on('message-receipt.update', async (updates) => {
+      for (const { key, receipt } of updates || []) {
+        if (!key?.fromMe || !key.id) continue;
+        const ackStatus = mapBaileysReceipt(receipt);
+        if (!ackStatus) continue;
+        try {
+          await updateDeliveryReceipt(key.id, ackStatus);
+        } catch (err) {
+          logError('WhatsAppService.message-receipt.update', err, { sessionId });
+        }
+      }
+    });
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -656,22 +695,29 @@ class WhatsAppService {
     }
 
     // Format nomor WhatsApp (e.g. 0812 -> 62812@s.whatsapp.net)
-    let cleanNumber = target.replace(/\D/g, '');
+    let cleanNumber = String(target || '').replace(/\D/g, '');
     if (cleanNumber.startsWith('0')) {
       cleanNumber = '62' + cleanNumber.slice(1);
     }
     
-    const jid = `${cleanNumber}@s.whatsapp.net`;
+    const requestedJid = `${cleanNumber}@s.whatsapp.net`;
 
     // Cek status kepemilikan nomor WhatsApp sebelum kirim (Opsional & Aman)
-    const [result] = await sock.onWhatsApp(jid);
+    const [result] = await sock.onWhatsApp(requestedJid);
     if (!result || !result.exists) {
       throw new Error(`Nomor ${target} tidak terdaftar di WhatsApp.`);
     }
+    const jid = typeof result.jid === 'string'
+      && result.jid.endsWith('@s.whatsapp.net')
+      ? result.jid
+      : requestedJid;
 
     const parsedText = parseSpintax(text || '');
-    await sock.sendMessage(jid, { text: parsedText });
-    return true;
+    const sentMessage = await sock.sendMessage(jid, { text: parsedText });
+    return {
+      messageId: sentMessage?.key?.id || null,
+      remoteJid: sentMessage?.key?.remoteJid || jid
+    };
   }
 
   async executeFlowNodes(sock, jid, flow, sessionId, incomingText = '') {
@@ -925,18 +971,22 @@ class WhatsAppService {
       throw new Error(`Sesi ${sessionId} tidak aktif atau belum terhubung.`);
     }
 
-    let jid = target;
+    let jid = String(target || '');
     if (!jid.endsWith('@g.us')) {
-      let cleanNumber = target.replace(/\D/g, '');
+      let cleanNumber = jid.replace(/\D/g, '');
       if (cleanNumber.startsWith('0')) {
         cleanNumber = '62' + cleanNumber.slice(1);
       }
-      jid = `${cleanNumber}@s.whatsapp.net`;
+      const requestedJid = `${cleanNumber}@s.whatsapp.net`;
       
-      const [result] = await sock.onWhatsApp(jid);
+      const [result] = await sock.onWhatsApp(requestedJid);
       if (!result || !result.exists) {
         throw new Error(`Nomor ${target} tidak terdaftar di WhatsApp.`);
       }
+      jid = typeof result.jid === 'string'
+        && result.jid.endsWith('@s.whatsapp.net')
+        ? result.jid
+        : requestedJid;
     }
 
     const { messageType, text, attachmentUrl, attachmentType, attachmentName, templateId } = payload;
@@ -1014,6 +1064,11 @@ class WhatsAppService {
     };
 
     const parsedText = formatMessageText(text || '');
+    let sentMessage = null;
+    const sendOutbound = async (content, options) => {
+      sentMessage = await sock.sendMessage(jid, content, options);
+      return sentMessage;
+    };
 
     if (messageType === 'template' && templateId) {
       const template = await dbGet(
@@ -1028,7 +1083,7 @@ class WhatsAppService {
       const content = formatMessageText(template.content || '');
 
       if (type === 'text') {
-        await sock.sendMessage(jid, { text: content });
+        await sendOutbound({ text: content });
       } else if (type === 'media' || type === 'image' || type === 'video' || type === 'document' || type === 'audio') {
         const url = resolveUploadedMediaPath(template.attachment_url);
         const caption = content;
@@ -1054,7 +1109,7 @@ class WhatsAppService {
           } else {
             mediaPayload = { document: mediaSource, mimetype: getMimeTypeFromUrl(url, 'application/pdf'), fileName: template.attachment_name || getFileNameFromUrl(url, 'Document.pdf'), caption };
           }
-          await sock.sendMessage(jid, mediaPayload);
+          await sendOutbound(mediaPayload);
         }
       } else if (type === 'poll') {
         const question = formatMessageText(template.poll_question || 'Poll Question');
@@ -1065,7 +1120,7 @@ class WhatsAppService {
           options = (template.poll_options || '').split(/[\r\n,]+/).map(o => o.trim()).filter(Boolean);
         }
         options = options.map(o => formatMessageText(o));
-        await sock.sendMessage(jid, {
+        await sendOutbound({
           poll: {
             name: question,
             values: options,
@@ -1074,17 +1129,17 @@ class WhatsAppService {
         });
       } else if (type === 'contact') {
         const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${template.contact_name || 'Contact'}\nTEL;type=CELL;type=VOICE;waid=${(template.contact_number || '').replace(/\D/g, '')}:${template.contact_number || ''}\nEND:VCARD`;
-        await sock.sendMessage(jid, {
+        await sendOutbound({
           contacts: {
             displayName: template.contact_name || 'Contact',
             contacts: [{ vcard }]
           }
         });
       } else {
-        await sock.sendMessage(jid, { text: content });
+        await sendOutbound({ text: content });
       }
     } else if (messageType === 'text') {
-      await sock.sendMessage(jid, { text: parsedText });
+      await sendOutbound({ text: parsedText });
     } else if (messageType === 'media' && attachmentUrl) {
       let mediaPayload = {};
       const url = resolveUploadedMediaPath(attachmentUrl);
@@ -1109,13 +1164,19 @@ class WhatsAppService {
             mediaPayload = { document: mediaSource, mimetype: getMimeTypeFromUrl(url, 'application/octet-stream'), fileName: attachmentName || getFileNameFromUrl(url, 'File'), caption };
             break;
         }
-        await sock.sendMessage(jid, mediaPayload);
+        await sendOutbound(mediaPayload);
       }
     } else {
       throw new Error(`Data pesan tidak lengkap.`);
     }
 
-    return true;
+    if (!sentMessage?.key?.id) {
+      throw new Error('WhatsApp tidak mengembalikan ID pesan keluar.');
+    }
+    return {
+      messageId: sentMessage.key.id,
+      remoteJid: sentMessage.key.remoteJid || jid
+    };
   }
 
   async getDetailedGroups(sessionId) {
@@ -1305,8 +1366,9 @@ class WhatsAppService {
         const files = fs.readdirSync(sessionFolder);
         let deletedCount = 0;
         for (const file of files) {
-          // Hanya hapus file Signal session cache, biarkan creds.json tetap utuh
-          if (file !== 'creds.json') {
+          // Hanya bersihkan sesi ratchet yang dapat dinegosiasikan ulang.
+          // Pertahankan creds, pre-key, app-state, dan LID mapping.
+          if (isRepairableSignalCacheFile(file)) {
             fs.rmSync(join(sessionFolder, file), { recursive: true, force: true });
             deletedCount++;
           }

@@ -45,6 +45,7 @@ describe('Internal Router - /internal/single-message/send', () => {
       capturedSessionId = sessionId;
       capturedTarget = target;
       capturedPayload = payload;
+      return { messageId: 'internal-single-message-id', remoteJid: '628123456789@s.whatsapp.net' };
     };
 
     try {
@@ -62,6 +63,10 @@ describe('Internal Router - /internal/single-message/send', () => {
 
       assert.equal(res.status, 200);
       assert.equal(res.body.status, 'success');
+      assert.deepEqual(res.body.data, {
+        messageId: 'internal-single-message-id',
+        remoteJid: '628123456789@s.whatsapp.net'
+      });
       
       // Pastikan data flat dari req.body terdestruktur secara tepat ke parameter payload di whatsappService.sendSingleMessage
       assert.equal(capturedSessionId, 'test-session-id');

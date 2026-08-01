@@ -89,4 +89,35 @@ describe('Encrypted Auth State Provider', () => {
     assert.deepEqual(retrieved['1'], { public: 'pub1', private: 'priv1' });
     assert.deepEqual(retrieved['2'], { public: 'pub2', private: 'priv2' });
   });
+
+  it('seharusnya menulis file key yang sama secara berurutan saat ada operasi paralel', async () => {
+    const raceDir = path.join(TEMP_TEST_DIR, 'race_test');
+    const provider = await useEncryptedMultiFileAuthState(raceDir);
+
+    await Promise.all(
+      Array.from({ length: 30 }, (_, index) => provider.state.keys.set({
+        session: {
+          '628100000000@s.whatsapp.net': {
+            index,
+            payload: 'x'.repeat(512)
+          }
+        }
+      }))
+    );
+
+    const retrieved = await provider.state.keys.get('session', ['628100000000@s.whatsapp.net']);
+    assert.equal(typeof retrieved['628100000000@s.whatsapp.net'].index, 'number');
+    assert.equal(retrieved['628100000000@s.whatsapp.net'].payload.length, 512);
+
+    await provider.state.keys.set({
+      session: {
+        '628100000000@s.whatsapp.net': {
+          index: 31,
+          payload: 'final'
+        }
+      }
+    });
+    const finalValue = await provider.state.keys.get('session', ['628100000000@s.whatsapp.net']);
+    assert.deepEqual(finalValue['628100000000@s.whatsapp.net'], { index: 31, payload: 'final' });
+  });
 });

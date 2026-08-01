@@ -4,6 +4,27 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypt
 import { initAuthCreds, BufferJSON, proto } from '@whiskeysockets/baileys';
 
 const PREFIX = 'enc:session:v1';
+const fileLocks = new Map();
+
+async function withFileLock(filePath, operation) {
+  const previous = fileLocks.get(filePath) || Promise.resolve();
+  let releaseCurrent;
+  const current = new Promise((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const tail = previous.catch(() => {}).then(() => current);
+  fileLocks.set(filePath, tail);
+
+  await previous.catch(() => {});
+  try {
+    return await operation();
+  } finally {
+    releaseCurrent();
+    if (fileLocks.get(filePath) === tail) {
+      fileLocks.delete(filePath);
+    }
+  }
+}
 
 function getEncryptionKey() {
   const secret = process.env.WA_BOT_SECRET_ENCRYPTION_KEY;
@@ -48,15 +69,17 @@ export const useEncryptedMultiFileAuthState = async (folder) => {
     const jsonStr = JSON.stringify(data, BufferJSON.replacer);
     const encryptedStr = encrypt(jsonStr);
     const filePath = path.join(folder, fixFileName(file));
-    await fs.promises.writeFile(filePath, encryptedStr, 'utf8');
+    await withFileLock(filePath, () => fs.promises.writeFile(filePath, encryptedStr, 'utf8'));
   };
 
   const readData = async (file) => {
     try {
       const filePath = path.join(folder, fixFileName(file));
-      const fileContent = await fs.promises.readFile(filePath, 'utf8');
-      const decryptedStr = decrypt(fileContent);
-      return JSON.parse(decryptedStr, BufferJSON.reviver);
+      return await withFileLock(filePath, async () => {
+        const fileContent = await fs.promises.readFile(filePath, 'utf8');
+        const decryptedStr = decrypt(fileContent);
+        return JSON.parse(decryptedStr, BufferJSON.reviver);
+      });
     } catch (error) {
       return null;
     }
@@ -65,7 +88,7 @@ export const useEncryptedMultiFileAuthState = async (folder) => {
   const removeData = async (file) => {
     try {
       const filePath = path.join(folder, fixFileName(file));
-      await fs.promises.unlink(filePath);
+      await withFileLock(filePath, () => fs.promises.unlink(filePath));
     } catch (error) {
       // Ignore
     }

@@ -7,6 +7,7 @@ import {
   renderCampaignMessage,
   sanitizeVariableMap
 } from './contact_variables.service.js';
+import { recordOutboundDelivery } from './delivery_receipt.service.js';
 import { config } from '../config.js';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -176,9 +177,9 @@ class CampaignService {
         );
         await dbRun(
           `UPDATE delivery_logs
-           SET status = ?, error_message = ?
+           SET status = ?, error_message = ?, ack_status = ?, ack_updated_at = CURRENT_TIMESTAMP
            WHERE campaign_id = ? AND status = 'PENDING'`,
-          ['FAILED', 'Sesi kampanye tidak ditemukan. Kampanye dihentikan untuk mencegah salah tenant.', campaignId]
+          ['FAILED', 'Sesi kampanye tidak ditemukan. Kampanye dihentikan untuk mencegah salah tenant.', 'FAILED', campaignId]
         );
         console.warn(`[Campaign Worker] Kampanye #${campaignId} dihentikan: sesi ${campaign.session_id} tidak ditemukan.`);
         this.activeCampaigns.delete(campaignId);
@@ -199,7 +200,7 @@ class CampaignService {
       for (const log of pendingLogs) {
         if (await isOptedOut(log.target_number, userId)) {
           await dbRun(
-            'UPDATE delivery_logs SET status = ?, error_message = ? WHERE id = ?',
+            'UPDATE delivery_logs SET status = ?, error_message = ?, ack_updated_at = CURRENT_TIMESTAMP WHERE id = ?',
             ['SKIPPED_OPT_OUT', 'Penerima berada dalam suppression list.', log.id]
           );
           console.log(`[Campaign Worker] Kampanye #${campaignId} melewati satu penerima yang telah opt-out.`);
@@ -260,6 +261,7 @@ class CampaignService {
         }
 
         try {
+          let sendResult;
           if (campaign.attachment_url) {
             const payload = {
               messageType: 'media',
@@ -268,20 +270,22 @@ class CampaignService {
               attachmentType: campaign.attachment_type,
               attachmentName: campaign.attachment_name
             };
-            await whatsappService.sendSingleMessage(campaign.session_id, log.target_number, payload);
+            sendResult = await whatsappService.sendSingleMessage(campaign.session_id, log.target_number, payload);
           } else {
-            await whatsappService.sendMessage(campaign.session_id, log.target_number, personalizedMessage);
+            sendResult = await whatsappService.sendMessage(campaign.session_id, log.target_number, personalizedMessage);
           }
           
           // Sukses kirim
-          await dbRun('UPDATE delivery_logs SET status = ? WHERE id = ?', ['SENT', log.id]);
+          await recordOutboundDelivery(log.id, sendResult);
           console.log(`[Campaign Worker] Kampanye #${campaignId} berhasil mengirim satu pesan.`);
         } catch (err) {
           // Gagal kirim
           console.error(`[Campaign Worker] Kampanye #${campaignId} gagal mengirim satu pesan:`, err.message);
           await dbRun(
-            'UPDATE delivery_logs SET status = ?, error_message = ? WHERE id = ?',
-            ['FAILED', err.message, log.id]
+            `UPDATE delivery_logs
+             SET status = ?, error_message = ?, ack_status = ?, ack_updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            ['FAILED', err.message, 'FAILED', log.id]
           );
         }
       }
@@ -306,7 +310,7 @@ class CampaignService {
       [campaignId]
     );
 
-    const metrics = { sent: 0, failed: 0, pending: 0, skippedOptOut: 0 };
+    const metrics = { sent: 0, failed: 0, pending: 0, skippedOptOut: 0, serverAck: 0, delivered: 0, read: 0, played: 0 };
     stats.forEach(row => {
       if (row.status === 'SENT') metrics.sent = row.count;
       if (row.status === 'FAILED') metrics.failed = row.count;
@@ -314,8 +318,25 @@ class CampaignService {
       if (row.status === 'SKIPPED_OPT_OUT') metrics.skippedOptOut = row.count;
     });
 
+    const ackStats = await dbAll(
+      `SELECT ack_status, COUNT(*) as count
+       FROM delivery_logs
+       WHERE campaign_id = ? AND status = 'SENT'
+       GROUP BY ack_status`,
+      [campaignId]
+    );
+    ackStats.forEach(row => {
+      if (row.ack_status === 'SERVER_ACK') metrics.serverAck = row.count;
+      if (row.ack_status === 'DELIVERED') metrics.delivered = row.count;
+      if (row.ack_status === 'READ') metrics.read = row.count;
+      if (row.ack_status === 'PLAYED') metrics.played = row.count;
+    });
+
     const logs = await dbAll(
-      'SELECT id, target_number, status, error_message FROM delivery_logs WHERE campaign_id = ? ORDER BY id DESC',
+      `SELECT id, target_number, status, ack_status, ack_updated_at, error_message
+       FROM delivery_logs
+       WHERE campaign_id = ?
+       ORDER BY id DESC`,
       [campaignId]
     );
 

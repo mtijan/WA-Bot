@@ -44,12 +44,16 @@ describe('Campaign tenant isolation', () => {
       whatsappService.getSessionStatus = async () => ({ status: 'CONNECTED' });
       whatsappService.sendMessage = async (_sessionId, _target, text) => {
         sentText = text;
+        return { messageId: 'campaign-501-message', remoteJid: '628111@s.whatsapp.net' };
       };
 
       await campaignService.processCampaign(501, 0, 0);
 
-      const log = await dbGet('SELECT status FROM delivery_logs WHERE campaign_id = 501');
+      const log = await dbGet('SELECT status, message_id, remote_jid, ack_status FROM delivery_logs WHERE campaign_id = 501');
       assert.equal(log.status, 'SENT');
+      assert.equal(log.message_id, 'campaign-501-message');
+      assert.equal(log.remote_jid, '628111@s.whatsapp.net');
+      assert.equal(log.ack_status, 'SERVER_ACK');
       assert.equal(sentText, 'Alice Own Tenant hi');
     } finally {
       whatsappService.getSessionStatus = originalGetSessionStatus;
@@ -93,6 +97,7 @@ describe('Campaign tenant isolation', () => {
       whatsappService.getSessionStatus = async () => ({ status: 'CONNECTED' });
       whatsappService.sendMessage = async (_sessionId, _target, text) => {
         sentText = text;
+        return { messageId: 'campaign-502-message', remoteJid: '628222@s.whatsapp.net' };
       };
 
       await campaignService.processCampaign(502, 0, 0);

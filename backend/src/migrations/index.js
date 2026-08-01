@@ -741,6 +741,28 @@ const migrations = [
         }
       }
     }
+  },
+  {
+    id: '023_delivery_receipts',
+    description: 'Track outbound WhatsApp message IDs and delivery acknowledgements.',
+    up: async (db) => {
+      await addColumnIfMissing(db, 'delivery_logs', 'message_id', 'TEXT');
+      await addColumnIfMissing(db, 'delivery_logs', 'remote_jid', 'TEXT');
+      await addColumnIfMissing(db, 'delivery_logs', 'ack_status', "TEXT NOT NULL DEFAULT 'QUEUED'");
+      await addColumnIfMissing(db, 'delivery_logs', 'ack_updated_at', 'DATETIME');
+      await run(
+        db,
+        `UPDATE delivery_logs
+         SET ack_status = CASE
+           WHEN status = 'FAILED' THEN 'FAILED'
+           WHEN status = 'SENT' THEN 'UNKNOWN'
+           ELSE 'QUEUED'
+         END
+         WHERE message_id IS NULL`
+      );
+      await run(db, 'CREATE INDEX IF NOT EXISTS idx_delivery_logs_message_id ON delivery_logs (message_id)');
+      await run(db, 'CREATE INDEX IF NOT EXISTS idx_delivery_logs_ack_status ON delivery_logs (ack_status)');
+    }
   }
 ];
 

@@ -2,6 +2,7 @@ import whatsappService from '../services/whatsapp.service.js';
 import { dbGet, dbRun } from '../database.js';
 import { isOptedOut } from '../services/opt_out.service.js';
 import { isSessionManagerClientEnabled, sessionManagerClient } from '../services/session_manager_client.service.js';
+import { recordOutboundDelivery } from '../services/delivery_receipt.service.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
 
@@ -56,19 +57,22 @@ export const sendMessage = async (req, res) => {
       templateId
     };
 
+    let sendResult;
     if (isSessionManagerClientEnabled()) {
-      await sessionManagerClient.sendSingleMessage(sessionId, target, payload);
+      const response = await sessionManagerClient.sendSingleMessage(sessionId, target, payload);
+      sendResult = response?.data;
     } else {
-      await whatsappService.sendSingleMessage(sessionId, target, payload);
+      sendResult = await whatsappService.sendSingleMessage(sessionId, target, payload);
     }
 
     // Catat log pengiriman pesan sebagai single message (campaign_id = NULL)
-    await dbRun(
-      "INSERT INTO delivery_logs (campaign_id, target_number, status, user_id) VALUES (NULL, ?, 'SENT', ?)",
+    const logResult = await dbRun(
+      "INSERT INTO delivery_logs (campaign_id, target_number, status, user_id) VALUES (NULL, ?, 'PENDING', ?)",
       [target, req.auth.userId]
     );
+    await recordOutboundDelivery(logResult.id, sendResult);
 
-    return sendSuccess(res, null, 200, { message: 'Pesan tunggal berhasil dikirim.' });
+    return sendSuccess(res, sendResult, 200, { message: 'Pesan tunggal berhasil dikirim.' });
   } catch (err) {
     logError('sendMessage', err, { body: req.body });
     return sendError(res, 500, 'SEND_MESSAGE_ERROR', err.message || 'Gagal mengirim pesan tunggal.');

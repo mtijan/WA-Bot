@@ -231,8 +231,8 @@ export const sendSingleMessageInternal = async (req, res) => {
   const { sessionId, target, ...payload } = req.body;
 
   try {
-    await whatsappService.sendSingleMessage(sessionId, target, payload);
-    return sendSuccess(res, null, 200, { message: 'Pesan tunggal berhasil dikirim oleh session manager.' });
+    const result = await whatsappService.sendSingleMessage(sessionId, target, payload);
+    return sendSuccess(res, result, 200, { message: 'Pesan tunggal berhasil dikirim oleh session manager.' });
   } catch (err) {
     logError('sendSingleMessageInternal', err, { body: req.body });
     return sendError(res, 500, 'SEND_MESSAGE_ERROR', err.message || 'Gagal mengirim pesan tunggal.');
@@ -357,4 +357,3 @@ export const getFailedRepliesHealthInternal = async (req, res) => {
     });
   }
 };
-

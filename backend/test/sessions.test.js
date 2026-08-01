@@ -1,11 +1,20 @@
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { getAuthenticatedAgent, cleanupTestDb } from './helpers/test_app.js';
-import whatsappService from '../src/services/whatsapp.service.js';
+import whatsappService, { isRepairableSignalCacheFile } from '../src/services/whatsapp.service.js';
 
 after(() => cleanupTestDb());
 
 describe('Session Reconnect Endpoints', () => {
+  it('hanya menganggap cache ratchet sebagai target aman untuk Repair', () => {
+    assert.equal(isRepairableSignalCacheFile('session-628123@s.whatsapp.net.json'), true);
+    assert.equal(isRepairableSignalCacheFile('sender-key-120363@g.us--628123@s.whatsapp.net.json'), true);
+    assert.equal(isRepairableSignalCacheFile('creds.json'), false);
+    assert.equal(isRepairableSignalCacheFile('pre-key-1.json'), false);
+    assert.equal(isRepairableSignalCacheFile('app-state-sync-key-abc.json'), false);
+    assert.equal(isRepairableSignalCacheFile('lid-mapping-628123.json'), false);
+  });
+
   it('menolak session_id traversal sebelum menyentuh filesystem atau database', async () => {
     const { agent, cookie } = await getAuthenticatedAgent();
     const { dbGet } = await import('../src/database.js');

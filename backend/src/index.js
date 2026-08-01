@@ -2,10 +2,12 @@ import { config } from './config.js';
 import { logger, logError } from './logger.js';
 import { getRuntimeRole, shouldStartHttpServer, startRuntimeServices } from './runtime.js';
 import { createApp } from './app.js';
+import { installRuntimeErrorHandlers } from './utils/runtime_errors.js';
 
 const PORT = config.port;
 const runtimeRole = getRuntimeRole();
 const app = createApp({ runtimeRole });
+installRuntimeErrorHandlers();
 
 const boot = async () => {
   if (shouldStartHttpServer(runtimeRole)) {
