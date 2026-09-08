@@ -214,6 +214,13 @@ npm run logs:prune:apply
 
 ## Indeks Dokumentasi Lengkap
 
+Perencanaan terbaru mencakup dua workstream yang tetap **PLANNED**: Chatbot AI Token Optimization / Hybrid RAG (2026-09-05) dan WhatsApp Socket Lifecycle & AI Delivery Race Hardening (2026-09-07). Workstream socket menutup risiko balasan memakai socket lama setelah reconnect, timer reconnect tumpang tindih, dan klasifikasi salah antara error provider AI dengan transport WhatsApp. Belum ada implementasi/deploy runtime dari revisi dokumentasi ini.
+
+- [Rencana optimasi dan baseline biaya](docs/CHATBOT_AI_TOKEN_OPTIMIZATION.md)
+- [Desain detail FR/RTM, ERD, diagram dan API target](docs/CHATBOT_AI_RAG_DESIGN.md)
+- [Checklist pekerjaan, dependencies, acceptance dan bukti](docs/CHATBOT_AI_RAG_CHECKLIST.md)
+- [Rencana hardening lifecycle socket dan race pengiriman AI](docs/WHATSAPP_SOCKET_LIFECYCLE_HARDENING_PLAN.md)
+
 Seluruh dokumentasi teknis tersimpan di dalam folder `docs/`. Anda dapat merujuk ke dokumen berikut untuk pemahaman mendalam:
 
 | Berkas Dokumen | Tujuan & Deskripsi |
@@ -226,6 +233,7 @@ Seluruh dokumentasi teknis tersimpan di dalam folder `docs/`. Anda dapat merujuk
 | [docs/STAGING.md](file:///d:/Self%20Project/WA-Bot/docs/STAGING.md) | Catatan dan bukti verifikasi lingkungan staging VPS. |
 | [docs/CODEBASE_QUALITY.md](file:///d:/Self%20Project/WA-Bot/docs/CODEBASE_QUALITY.md) | Panduan migrasi logger Pino, response helper, dan struktur config. |
 | [docs/MEDIA_UPLOAD_WORKLOG.md](file:///d:/Self%20Project/WA-Bot/docs/MEDIA_UPLOAD_WORKLOG.md) | Catatan log implementasi fitur pengunggahan media di backend & frontend. |
+| [docs/WHATSAPP_SOCKET_LIFECYCLE_HARDENING_PLAN.md](file:///d:/Self%20Project/WA-Bot/docs/WHATSAPP_SOCKET_LIFECYCLE_HARDENING_PLAN.md) | Rencana generation-safe socket, outbound gateway, retry aman, test race, observability, rollout, dan rollback. |
 | [docs/deploy/README.md](file:///d:/Self%20Project/WA-Bot/docs/deploy/README.md) | Template konfigurasi server (PM2, systemd, Caddy, logrotate). |
 | [docs/openapi.yaml](file:///d:/Self%20Project/WA-Bot/docs/openapi.yaml) | Spesifikasi OpenAPI 3.0 untuk endpoints REST API. |
 | [checklist.html](file:///d:/Self%20Project/WA-Bot/checklist.html) | Halaman referensi interaktif status roadmap development. |

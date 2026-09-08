@@ -37,6 +37,9 @@ ListApiLLM.txt
 *.xls
 !contacts_sample_template.csv
 
+# Local VPS access credentials
+/vps-access.txt
+
 # QA/runtime output
 qa_tests/screenshots/
 qa_tests/videos/
@@ -61,11 +64,7 @@ AGENTS.md
 HANDOFF.md
 checklist.html
 sdlc_documentation.md
-docs/STAGING.md
-docs/deploy/STAGING_HARDENING.commands.md
-docs/html/
-docs/images/
-docs/SECURITY_AUDIT.md
+docs/
 
 # OS/editor noise
 .DS_Store
