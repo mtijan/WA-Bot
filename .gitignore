@@ -41,6 +41,12 @@ ListApiLLM.txt
 /vps-access.txt
 /apiDevelopment.txt
 
+# Json Flow
+/ChatBot-Flow (2).json
+
+# Persona Chat Bot
+/PersonaChatBot.txt
+
 # QA/runtime output
 qa_tests/screenshots/
 qa_tests/videos/
