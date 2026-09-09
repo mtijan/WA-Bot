@@ -39,6 +39,7 @@ ListApiLLM.txt
 
 # Local VPS access credentials
 /vps-access.txt
+/apiDevelopment.txt
 
 # QA/runtime output
 qa_tests/screenshots/
