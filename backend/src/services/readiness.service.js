@@ -2,6 +2,8 @@ import { databaseReady, dbGet } from '../database.js';
 import whatsappService from './whatsapp.service.js';
 import campaignService from './campaign.service.js';
 import warmerService from './warmer.service.js';
+import ragIndexPollingWorker from './chatbot_ai_rag_worker.service.js';
+import { config } from '../config.js';
 
 const startedAt = new Date();
 const getCurrentRole = () => (process.env.WA_BOT_PROCESS_ROLE || 'all').trim().toLowerCase();
@@ -38,7 +40,9 @@ export const getReadiness = async (role = getCurrentRole()) => {
       active_campaigns: activeCampaigns,
       active_warmer_campaigns: activeWarmerCampaigns,
       campaign_worker_polling: Boolean(campaignService.pollingTimer),
-      warmer_worker_polling: Boolean(warmerService.pollingTimer)
+      warmer_worker_polling: Boolean(warmerService.pollingTimer),
+      rag_index_worker_enabled: config.runtime.ragIndexWorkerEnabled,
+      rag_index_worker_polling: Boolean(ragIndexPollingWorker.pollingTimer)
     }
   };
 };

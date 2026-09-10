@@ -34,6 +34,11 @@ export function parseNonNegativeInteger(value, fallback = 0) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+export function parseBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === '') return fallback;
+  return String(value).trim().toLowerCase() === 'true';
+}
+
 export function splitCsv(value, fallback = []) {
   if (!value) return fallback;
   return value.split(',').map(item => item.trim()).filter(Boolean);
@@ -63,7 +68,10 @@ export const config = {
     role: (process.env.WA_BOT_PROCESS_ROLE || 'all').trim().toLowerCase(),
     heartbeatMs: parsePositiveInteger(process.env.WA_BOT_PROCESS_HEARTBEAT_MS, 60_000),
     campaignWorkerPollMs: parsePositiveInteger(process.env.WA_BOT_CAMPAIGN_WORKER_POLL_MS, 15_000),
-    warmerWorkerPollMs: parsePositiveInteger(process.env.WA_BOT_WARMER_WORKER_POLL_MS, 30_000)
+    warmerWorkerPollMs: parsePositiveInteger(process.env.WA_BOT_WARMER_WORKER_POLL_MS, 30_000),
+    ragIndexWorkerEnabled: parseBoolean(process.env.WA_BOT_RAG_INDEX_WORKER_ENABLED, false),
+    ragIndexWorkerPollMs: parsePositiveInteger(process.env.WA_BOT_RAG_INDEX_WORKER_POLL_MS, 5_000),
+    ragIndexWorkerBatchSize: parsePositiveInteger(process.env.WA_BOT_RAG_INDEX_WORKER_BATCH_SIZE, 10)
   },
   internal: {
     token: process.env.WA_BOT_INTERNAL_TOKEN || '',
