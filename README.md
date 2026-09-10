@@ -214,13 +214,14 @@ npm run logs:prune:apply
 
 ## Indeks Dokumentasi Lengkap
 
-Chatbot AI Token Optimization / Hybrid RAG berstatus **IN_PROGRESS — LOCAL**: migrations 024/025, default/maksimum output 2.048, prompt/usage/budget/retry, schema RAG tenant-scoped + FTS, serta extractor manual/Flow dan chunker 150–300 token telah diimplementasikan lokal. Eksperimen chat development staging-like 2026-09-10 memakai snapshot ignored `ChatBot-Flow (2).json` dan `PersonaChatBot.txt`: pada 8 chat A/B, oracle-source menurunkan input rata-rata dari 20.138 ke 3.569 token (82,28%), output 283 ke 246, dan memperoleh rubric PASS 7/8 dibanding full-KB 6/8; naturalness keduanya 4,625/5. Transkrip tersanitasi dan usage per respons dicatat lokal. Tiga puluh empat dari 128 item DONE; RAG-0011 tetap parsial karena oracle belum menguji retrieval otomatis, review independen/manusia, dan billing belum direkonsiliasi. File development tidak menjadi dependency runtime/staging/production. Budget moneter default nonaktif; database runtime belum dimigrasi, durable index/retrieval worker belum dibuat, dan deploy/UAT belum dilakukan.
+Chatbot AI Token Optimization / Hybrid RAG berstatus **IN_PROGRESS — LOCAL**: migrations 024/025, default/maksimum output 2.048, prompt/usage/budget/retry, schema RAG tenant-scoped + FTS, extractor manual/Flow, chunker 150–300 token, dan enqueue index idempotent RAG-0301 telah diimplementasikan lokal. Enqueue menjaga owner/current revision/source aktif, deduplikasi concurrent, dan persistence SQLite. Eksperimen chat development staging-like tetap memakai snapshot ignored `ChatBot-Flow (2).json` dan `PersonaChatBot.txt`. Tiga puluh lima dari 128 item DONE; RAG-0011 tetap parsial karena retrieval otomatis, review independen/manusia, dan billing belum selesai. Focused RAG 41/41 dan backend 168/168 lulus pada 2026-09-11. File development tidak menjadi dependency runtime/staging/production. Budget moneter default nonaktif; database runtime belum dimigrasi, polling/index worker dan retrieval belum dibuat, dan deploy/UAT belum dilakukan.
 
 Baseline terbaru menambahkan 12 pertanyaan bebas dalam lingkup KB tanpa nomor Flow melalui `npm run test:rag-freeform-development`. Paid run menjawab 24/24 profil A/B; oracle-source menurunkan input rata-rata dari 20.140 ke 3.170 token (84,26%) dan menaikkan rata-rata groundedness, relevance, completeness, persona, serta naturalness. Ini masih bukti development dengan source oracle dan same-model judge, bukan bukti retriever atau staging. Detail: [catatan free-form](docs/RAG_DEVELOPMENT_FREEFORM_EXPERIMENT_2026-09-10.md).
 
 - [Rencana optimasi dan baseline biaya](docs/CHATBOT_AI_TOKEN_OPTIMIZATION.md)
 - [Desain detail FR/RTM, ERD, diagram dan API target](docs/CHATBOT_AI_RAG_DESIGN.md)
 - [Checklist pekerjaan, dependencies, acceptance dan bukti](docs/CHATBOT_AI_RAG_CHECKLIST.md)
+- [Log seluruh test dan percobaan chat RAG](docs/RAG_DEVELOPMENT_TEST_LOG.md)
 - [Rencana hardening lifecycle socket dan race pengiriman AI](docs/WHATSAPP_SOCKET_LIFECYCLE_HARDENING_PLAN.md)
 
 Seluruh dokumentasi teknis tersimpan di dalam folder `docs/`. Anda dapat merujuk ke dokumen berikut untuk pemahaman mendalam:
