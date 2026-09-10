@@ -5,6 +5,21 @@ import { getFlowsKnowledgeBase } from '../services/chatbot_ai.service.js';
 import { sendError, sendSuccess } from '../utils/http_response.js';
 import { logError } from '../logger.js';
 import { assertSafeOutboundUrl, createSafeOutboundFetch } from '../utils/outbound_url.js';
+import {
+  buildChatCompletionPayload,
+  normalizeMaxOutputTokens,
+  resolveChatTemperature,
+  validateMaxOutputTokens
+} from '../services/chatbot_ai_runtime.service.js';
+import {
+  buildConnectionTestMessages,
+  buildSandboxMessages
+} from '../services/chatbot_ai_prompt.service.js';
+import {
+  recordChatbotAIUsageSafely,
+  resolveAIProvider
+} from '../services/chatbot_ai_usage.service.js';
+import { executeInstrumentedChatCompletion } from '../services/chatbot_ai_provider.service.js';
 
 export const maskAISettings = (settings) => ({
   ...settings,
@@ -199,7 +214,8 @@ export const getAISettings = async (req, res) => {
         delay_seconds: 2,
         show_typing: 1,
         credential_id: null,
-        chatbot_mode: 'both'
+        chatbot_mode: 'both',
+        max_output_tokens: 2048
       };
     } else {
       if (settings.knowledge_source === undefined || settings.knowledge_source === null) {
@@ -207,6 +223,9 @@ export const getAISettings = async (req, res) => {
       }
       if (settings.chatbot_mode === undefined || settings.chatbot_mode === null) {
         settings.chatbot_mode = 'both';
+      }
+      if (settings.max_output_tokens === undefined || settings.max_output_tokens === null) {
+        settings.max_output_tokens = 2048;
       }
     }
 
@@ -225,6 +244,18 @@ export const saveAISettings = async (req, res) => {
   const { session_id, credential_id } = req.body;
 
   try {
+    if (Object.prototype.hasOwnProperty.call(req.body, 'max_output_tokens')) {
+      const outputLimitError = validateMaxOutputTokens(req.body.max_output_tokens);
+      if (outputLimitError) {
+        return sendError(
+          res,
+          400,
+          'VALIDATION_ERROR',
+          'Payload permintaan tidak valid.',
+          { max_output_tokens: outputLimitError }
+        );
+      }
+    }
     if (req.body.base_url !== undefined) {
       await assertSafeOutboundUrl(req.body.base_url);
     }
@@ -259,7 +290,8 @@ export const saveAISettings = async (req, res) => {
         { key: 'delay_seconds', dbKey: 'delay_seconds', type: 'number' },
         { key: 'show_typing', dbKey: 'show_typing', type: 'boolean' },
         { key: 'credential_id', dbKey: 'credential_id', type: 'number' },
-        { key: 'chatbot_mode', dbKey: 'chatbot_mode', type: 'string', default: 'both' }
+        { key: 'chatbot_mode', dbKey: 'chatbot_mode', type: 'string', default: 'both' },
+        { key: 'max_output_tokens', dbKey: 'max_output_tokens', type: 'number' }
       ];
 
       for (const item of keysToUpdate) {
@@ -270,6 +302,8 @@ export const saveAISettings = async (req, res) => {
             values.push(protectSecret(resolveStoredApiKey(existing.api_key, req.body.api_key, req.body.clear_api_key)));
           } else if (item.type === 'boolean') {
             values.push(req.body[item.key] ? 1 : 0);
+          } else if (item.key === 'max_output_tokens') {
+            values.push(normalizeMaxOutputTokens(req.body[item.key]));
           } else if (item.type === 'number') {
             values.push(req.body[item.key] !== null && req.body[item.key] !== undefined ? parseInt(req.body[item.key], 10) : null);
           } else {
@@ -297,11 +331,12 @@ export const saveAISettings = async (req, res) => {
       const show_typing = req.body.show_typing !== undefined ? (req.body.show_typing ? 1 : 0) : 1;
       const cred_id = credential_id !== undefined && credential_id !== null ? parseInt(credential_id, 10) : null;
       const chatbot_mode = req.body.chatbot_mode || 'both';
+      const max_output_tokens = normalizeMaxOutputTokens(req.body.max_output_tokens);
 
       await dbRun(
         `INSERT INTO chatbot_ai_settings 
-         (session_id, is_active, base_url, api_key, model_name, system_instruction, knowledge_base, knowledge_source, delay_seconds, show_typing, credential_id, chatbot_mode)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (session_id, is_active, base_url, api_key, model_name, system_instruction, knowledge_base, knowledge_source, delay_seconds, show_typing, credential_id, chatbot_mode, max_output_tokens)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           session_id,
           is_active,
@@ -314,7 +349,8 @@ export const saveAISettings = async (req, res) => {
           delay_seconds,
           show_typing,
           cred_id,
-          chatbot_mode
+          chatbot_mode,
+          max_output_tokens
         ]
       );
     }
@@ -332,7 +368,46 @@ export const saveAISettings = async (req, res) => {
 };
 
 export const testAISettings = async (req, res) => {
-  const { base_url, api_key, model_name, session_id, credential_id, prompt_override } = req.body;
+  const {
+    base_url,
+    api_key,
+    model_name,
+    session_id,
+    credential_id,
+    test_kind,
+    system_prompt,
+    user_message,
+    prompt_override,
+    max_output_tokens
+  } = req.body;
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'max_output_tokens')) {
+    const outputLimitError = validateMaxOutputTokens(max_output_tokens);
+    if (outputLimitError) {
+      return sendError(
+        res,
+        400,
+        'VALIDATION_ERROR',
+        'Payload permintaan tidak valid.',
+        { max_output_tokens: outputLimitError }
+      );
+    }
+  }
+
+  const isSandbox = test_kind === 'sandbox'
+    || (!test_kind && Boolean(system_prompt || user_message || prompt_override));
+  let messages;
+  try {
+    messages = isSandbox
+      ? buildSandboxMessages({
+          systemPrompt: system_prompt,
+          userMessage: user_message,
+          legacyPromptOverride: prompt_override
+        })
+      : buildConnectionTestMessages();
+  } catch (error) {
+    return sendError(res, 400, error.code || 'INVALID_AI_TEST_PAYLOAD', error.message);
+  }
 
   try {
     if (session_id) {
@@ -394,37 +469,76 @@ export const testAISettings = async (req, res) => {
     return sendError(res, 400, 'API_KEY_REQUIRED', 'API Key wajib disertakan atau dipilih untuk melakukan uji coba.');
   }
 
+  let usageContext = null;
+  let providerResponse = null;
+  let usageRecorded = false;
+  let resolvedProvider = 'unknown';
+  const resolvedRequestKind = isSandbox ? 'sandbox' : 'test';
+
   try {
     const safeBaseUrl = await assertSafeOutboundUrl(resolvedBaseUrl || 'https://ai.sumopod.com/v1');
+    resolvedProvider = resolveAIProvider(safeBaseUrl);
     const openai = new OpenAI({
       apiKey: resolvedKey,
       baseURL: safeBaseUrl,
       timeout: 15000,
+      maxRetries: 0,
       fetch: createSafeOutboundFetch()
     });
 
-    const messages = [];
-    if (prompt_override) {
-      messages.push({ role: 'user', content: prompt_override });
-    } else {
-      messages.push({ role: 'user', content: 'Say hello in a creative and professional way' });
-    }
+    const temperature = resolveChatTemperature(isSandbox ? 'grounded' : 'existing');
 
-    const response = await openai.chat.completions.create({
+    const completion = await executeInstrumentedChatCompletion({
+      openai,
+      payload: buildChatCompletionPayload({
+        model: resolvedModelName || 'gpt-4o-mini',
+        messages,
+        maxOutputTokens: max_output_tokens,
+        temperature,
+        requestKind: resolvedRequestKind
+      }),
+      requestKind: resolvedRequestKind,
+      userId: req.auth.userId,
+      sessionId: session_id || null,
+      provider: resolvedProvider,
       model: resolvedModelName || 'gpt-4o-mini',
-      messages,
-      max_tokens: 1000,
-      temperature: 0.7
+      maxAttempts: 2
     });
+    usageContext = completion.context;
+    providerResponse = completion.response;
 
-    const reply = response.choices[0]?.message?.content;
+    const reply = providerResponse.choices[0]?.message?.content;
+    usageRecorded = await recordChatbotAIUsageSafely({
+      context: usageContext,
+      userId: req.auth.userId,
+      sessionId: session_id || null,
+      provider: resolvedProvider,
+      model: resolvedModelName || 'gpt-4o-mini',
+      response: providerResponse,
+      deliveryStatus: 'NOT_APPLICABLE'
+    });
     if (reply === undefined || reply === null || reply.trim() === '') {
       return sendError(res, 400, 'EMPTY_MODEL_RESPONSE', `Koneksi API berhasil, tetapi model '${resolvedModelName || 'gpt-4o-mini'}' mengembalikan respon kosong. Silakan ganti model ke 'gpt-4o-mini' atau 'MiniMax-M2.7-highspeed' di pengaturan.`);
     }
-    return sendSuccess(res, { reply }, 200, { message: 'Koneksi API SumoPod berhasil terjalin!' });
+    return sendSuccess(res, { reply, test_kind: resolvedRequestKind }, 200, { message: 'Koneksi API SumoPod berhasil terjalin!' });
   } catch (error) {
+    if (usageContext && !usageRecorded) {
+      await recordChatbotAIUsageSafely({
+        context: usageContext,
+        userId: req.auth.userId,
+        sessionId: session_id || null,
+        provider: resolvedProvider,
+        model: resolvedModelName || 'gpt-4o-mini',
+        response: providerResponse,
+        error: providerResponse ? null : error,
+        deliveryStatus: 'NOT_APPLICABLE'
+      });
+    }
     if (error.code === 'UNSAFE_OUTBOUND_URL') {
       return sendError(res, 400, error.code, error.message);
+    }
+    if (error.code === 'AI_BUDGET_EXCEEDED' || error.code === 'AI_CIRCUIT_OPEN') {
+      return sendError(res, 429, error.code, error.message);
     }
     logError('testAISettings', error, { body: req.body });
     return sendError(res, 500, 'TEST_AI_SETTINGS_ERROR', 'Uji coba koneksi gagal: ' + error.message);

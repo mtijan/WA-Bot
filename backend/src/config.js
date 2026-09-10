@@ -29,6 +29,11 @@ export function parseOptionalPositiveInteger(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+export function parseNonNegativeInteger(value, fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 export function splitCsv(value, fallback = []) {
   if (!value) return fallback;
   return value.split(',').map(item => item.trim()).filter(Boolean);
@@ -67,6 +72,13 @@ export const config = {
   },
   integrations: {
     iplocateApiKey: process.env.WA_BOT_IPLOCATE_API_KEY || ''
+  },
+  aiBudget: {
+    dailyLimitMicrousd: parseNonNegativeInteger(process.env.WA_BOT_AI_DAILY_BUDGET_MICROUSD, 0),
+    attemptReservationMicrousd: parseNonNegativeInteger(process.env.WA_BOT_AI_ATTEMPT_RESERVATION_MICROUSD, 0),
+    reservationTtlSeconds: parsePositiveInteger(process.env.WA_BOT_AI_BUDGET_RESERVATION_TTL_SECONDS, 120),
+    circuitFailureThreshold: parseNonNegativeInteger(process.env.WA_BOT_AI_CIRCUIT_FAILURE_THRESHOLD, 5),
+    circuitWindowSeconds: parsePositiveInteger(process.env.WA_BOT_AI_CIRCUIT_WINDOW_SECONDS, 300)
   },
   uploads: {
     mediaDir: process.env.WA_BOT_MEDIA_UPLOAD_DIR || '',

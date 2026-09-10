@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSpintax } from '../src/services/whatsapp.service.js';
+import { parseSpintax } from '../src/services/whatsapp.helpers.js';
 
 describe('parseSpintax', () => {
   it('seharusnya mengembalikan teks asli jika tidak ada spintax', () => {

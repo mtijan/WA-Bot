@@ -763,11 +763,392 @@ const migrations = [
       await run(db, 'CREATE INDEX IF NOT EXISTS idx_delivery_logs_message_id ON delivery_logs (message_id)');
       await run(db, 'CREATE INDEX IF NOT EXISTS idx_delivery_logs_ack_status ON delivery_logs (ack_status)');
     }
+  },
+  {
+    id: '024_chatbot_ai_usage_and_limits',
+    description: 'Add Chatbot AI output limits, per-attempt usage telemetry, and atomic daily budget reservations.',
+    up: async (db) => {
+      const invalidSessionOwner = await get(
+        db,
+        `SELECT s.session_id, s.user_id
+         FROM sessions s
+         LEFT JOIN users u ON u.id = s.user_id
+         WHERE s.user_id IS NULL OR u.id IS NULL
+         LIMIT 1`
+      );
+      if (invalidSessionOwner) {
+        throw new Error(
+          `Migration 024 requires every session to have a valid owner; invalid session: ${invalidSessionOwner.session_id}`
+        );
+      }
+
+      await addColumnIfMissing(
+        db,
+        'chatbot_ai_settings',
+        'max_output_tokens',
+        'INTEGER NOT NULL DEFAULT 2048 CHECK (max_output_tokens BETWEEN 64 AND 2048)'
+      );
+
+      await exec(db, [
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_session_user_unique ON sessions (session_id, user_id)',
+        `CREATE TABLE IF NOT EXISTS chatbot_ai_usage (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          session_id TEXT,
+          request_id TEXT NOT NULL,
+          attempt_no INTEGER NOT NULL DEFAULT 1 CHECK (attempt_no >= 1),
+          request_kind TEXT NOT NULL CHECK (request_kind IN ('production', 'sandbox', 'test', 'embedding')),
+          operation TEXT NOT NULL CHECK (operation IN ('chat', 'query_embedding', 'source_embedding')),
+          provider TEXT,
+          model TEXT,
+          provider_response_id TEXT,
+          input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
+          output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
+          total_tokens INTEGER CHECK (total_tokens IS NULL OR total_tokens >= 0),
+          cached_tokens INTEGER CHECK (cached_tokens IS NULL OR cached_tokens >= 0),
+          reasoning_tokens INTEGER CHECK (reasoning_tokens IS NULL OR reasoning_tokens >= 0),
+          latency_ms INTEGER CHECK (latency_ms IS NULL OR latency_ms >= 0),
+          http_status INTEGER,
+          error_code TEXT,
+          finish_reason TEXT,
+          retrieval_type TEXT,
+          chunk_count INTEGER CHECK (chunk_count IS NULL OR chunk_count >= 0),
+          config_revision_digest TEXT,
+          source_revision_digest TEXT,
+          request_status TEXT NOT NULL DEFAULT 'UNKNOWN'
+            CHECK (request_status IN ('SUCCEEDED', 'FAILED', 'UNKNOWN')),
+          delivery_status TEXT NOT NULL DEFAULT 'NOT_APPLICABLE'
+            CHECK (delivery_status IN ('NOT_APPLICABLE', 'PENDING', 'SENT', 'FAILED', 'UNKNOWN')),
+          rate_snapshot_json TEXT,
+          estimated_cost_microusd INTEGER
+            CHECK (estimated_cost_microusd IS NULL OR estimated_cost_microusd >= 0),
+          usage_status TEXT NOT NULL DEFAULT 'UNKNOWN'
+            CHECK (usage_status IN ('KNOWN', 'UNKNOWN', 'ESTIMATED', 'RECONCILED')),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+          FOREIGN KEY (session_id, user_id) REFERENCES sessions (session_id, user_id) ON DELETE CASCADE,
+          UNIQUE (user_id, request_id, attempt_no, operation)
+        )`,
+        'CREATE INDEX IF NOT EXISTS idx_chatbot_ai_usage_user_created ON chatbot_ai_usage (user_id, created_at)',
+        'CREATE INDEX IF NOT EXISTS idx_chatbot_ai_usage_session_created ON chatbot_ai_usage (session_id, created_at)',
+        'CREATE INDEX IF NOT EXISTS idx_chatbot_ai_usage_kind_created ON chatbot_ai_usage (request_kind, created_at)',
+        `CREATE TABLE IF NOT EXISTS chatbot_ai_budget_daily (
+          user_id INTEGER NOT NULL,
+          budget_day TEXT NOT NULL,
+          limit_microusd INTEGER NOT NULL CHECK (limit_microusd >= 0),
+          spent_microusd INTEGER NOT NULL DEFAULT 0 CHECK (spent_microusd >= 0),
+          reserved_microusd INTEGER NOT NULL DEFAULT 0 CHECK (reserved_microusd >= 0),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (user_id, budget_day),
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+          CHECK (length(budget_day) = 10 AND substr(budget_day, 5, 1) = '-' AND substr(budget_day, 8, 1) = '-')
+        )`,
+        `CREATE TABLE IF NOT EXISTS chatbot_ai_budget_reservations (
+          attempt_id TEXT PRIMARY KEY,
+          user_id INTEGER NOT NULL,
+          budget_day TEXT NOT NULL,
+          reserved_microusd INTEGER NOT NULL CHECK (reserved_microusd >= 0),
+          settled_cost_microusd INTEGER CHECK (settled_cost_microusd IS NULL OR settled_cost_microusd >= 0),
+          status TEXT NOT NULL DEFAULT 'RESERVED'
+            CHECK (status IN ('RESERVED', 'SETTLED', 'UNKNOWN', 'RELEASED')),
+          expires_at DATETIME NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id, budget_day)
+            REFERENCES chatbot_ai_budget_daily (user_id, budget_day) ON DELETE CASCADE
+        )`,
+        'CREATE INDEX IF NOT EXISTS idx_chatbot_ai_budget_reservations_status_expiry ON chatbot_ai_budget_reservations (status, expires_at)',
+        'CREATE INDEX IF NOT EXISTS idx_chatbot_ai_budget_reservations_user_day ON chatbot_ai_budget_reservations (user_id, budget_day)'
+      ]);
+    }
+  },
+  {
+    id: '025_chatbot_ai_rag_index',
+    description: 'Add tenant-scoped RAG sources, chunks, FTS index, jobs, embedding profiles, cache, and settings.',
+    up: async (db) => {
+      const invalidOwner = await get(
+        db,
+        `SELECT entity_type, entity_id FROM (
+           SELECT 'session' AS entity_type, s.session_id AS entity_id
+           FROM sessions s LEFT JOIN users u ON u.id = s.user_id
+           WHERE s.user_id IS NULL OR u.id IS NULL
+           UNION ALL
+           SELECT 'flow', CAST(f.id AS TEXT)
+           FROM chatbot_flows f LEFT JOIN users u ON u.id = f.user_id
+           WHERE f.user_id IS NULL OR u.id IS NULL
+           UNION ALL
+           SELECT 'credential', CAST(c.id AS TEXT)
+           FROM chatbot_ai_credentials c LEFT JOIN users u ON u.id = c.user_id
+           WHERE c.user_id IS NULL OR u.id IS NULL
+         ) LIMIT 1`
+      );
+      if (invalidOwner) {
+        throw new Error(
+          `Migration 025 requires valid tenant ownership; invalid ${invalidOwner.entity_type}: ${invalidOwner.entity_id}`
+        );
+      }
+
+      const invalidSettingsOwner = await get(
+        db,
+        `SELECT ais.session_id
+         FROM chatbot_ai_settings ais
+         LEFT JOIN sessions s ON s.session_id = ais.session_id
+         LEFT JOIN chatbot_ai_credentials c ON c.id = ais.credential_id
+         WHERE s.session_id IS NULL
+            OR (ais.credential_id IS NOT NULL AND (c.id IS NULL OR c.user_id <> s.user_id))
+         LIMIT 1`
+      );
+      if (invalidSettingsOwner) {
+        throw new Error(
+          `Migration 025 requires settings and credentials to share the session owner; invalid settings: ${invalidSettingsOwner.session_id}`
+        );
+      }
+
+      const invalidFlowAssignment = await get(
+        db,
+        `SELECT cfs.flow_id, cfs.session_id
+         FROM chatbot_flow_sessions cfs
+         LEFT JOIN chatbot_flows f ON f.id = cfs.flow_id
+         LEFT JOIN sessions s ON s.session_id = cfs.session_id
+         WHERE f.id IS NULL OR s.session_id IS NULL
+            OR cfs.user_id <> f.user_id OR cfs.user_id <> s.user_id
+         LIMIT 1`
+      );
+      if (invalidFlowAssignment) {
+        throw new Error(
+          `Migration 025 requires tenant-safe flow assignments; invalid assignment: ${invalidFlowAssignment.flow_id}/${invalidFlowAssignment.session_id}`
+        );
+      }
+
+      await exec(db, [
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_chatbot_flows_id_user_unique ON chatbot_flows (id, user_id)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_chatbot_ai_credentials_id_user_unique ON chatbot_ai_credentials (id, user_id)',
+        `CREATE TABLE rag_embedding_profiles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL UNIQUE,
+          credential_id INTEGER,
+          model TEXT NOT NULL,
+          dimensions INTEGER NOT NULL CHECK (dimensions > 0),
+          config_revision INTEGER NOT NULL DEFAULT 1 CHECK (config_revision >= 1),
+          config_hash TEXT NOT NULL,
+          capability_status TEXT NOT NULL DEFAULT 'UNKNOWN'
+            CHECK (capability_status IN ('UNKNOWN', 'SUPPORTED', 'UNSUPPORTED', 'FAILED')),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (id, user_id),
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+          FOREIGN KEY (credential_id, user_id)
+            REFERENCES chatbot_ai_credentials (id, user_id) ON DELETE RESTRICT
+        )`,
+        `CREATE TABLE chatbot_ai_settings_v025 (
+          session_id TEXT PRIMARY KEY,
+          user_id INTEGER,
+          is_active INTEGER DEFAULT 0,
+          base_url TEXT DEFAULT 'https://ai.sumopod.com/v1',
+          api_key TEXT,
+          model_name TEXT DEFAULT 'glm-5-turbo',
+          system_instruction TEXT,
+          knowledge_base TEXT,
+          delay_seconds INTEGER DEFAULT 2,
+          show_typing INTEGER DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          credential_id INTEGER,
+          knowledge_source TEXT DEFAULT 'manual',
+          chatbot_mode TEXT DEFAULT 'both',
+          last_error TEXT,
+          last_error_at DATETIME,
+          max_output_tokens INTEGER NOT NULL DEFAULT 2048
+            CHECK (max_output_tokens BETWEEN 64 AND 2048),
+          temperature REAL NOT NULL DEFAULT 0.3 CHECK (temperature BETWEEN 0 AND 2),
+          rag_mode TEXT NOT NULL DEFAULT 'off' CHECK (rag_mode IN ('off', 'fts', 'hybrid')),
+          rag_top_k INTEGER NOT NULL DEFAULT 4 CHECK (rag_top_k BETWEEN 1 AND 5),
+          rag_context_tokens INTEGER NOT NULL DEFAULT 1000
+            CHECK (rag_context_tokens BETWEEN 100 AND 2200),
+          rag_input_budget_tokens INTEGER NOT NULL DEFAULT 2200
+            CHECK (rag_input_budget_tokens BETWEEN 256 AND 8192),
+          embedding_profile_id INTEGER,
+          cache_enabled INTEGER NOT NULL DEFAULT 0 CHECK (cache_enabled IN (0, 1)),
+          cache_ttl_seconds INTEGER NOT NULL DEFAULT 86400
+            CHECK (cache_ttl_seconds BETWEEN 60 AND 86400),
+          direct_answer_enabled INTEGER NOT NULL DEFAULT 0
+            CHECK (direct_answer_enabled IN (0, 1)),
+          debounce_ms INTEGER NOT NULL DEFAULT 0 CHECK (debounce_ms BETWEEN 0 AND 60000),
+          prompt_version INTEGER NOT NULL DEFAULT 1 CHECK (prompt_version >= 1),
+          config_revision INTEGER NOT NULL DEFAULT 1 CHECK (config_revision >= 1),
+          FOREIGN KEY (session_id, user_id)
+            REFERENCES sessions (session_id, user_id) ON DELETE CASCADE,
+          FOREIGN KEY (embedding_profile_id, user_id)
+            REFERENCES rag_embedding_profiles (id, user_id) ON DELETE RESTRICT
+        )`,
+        `INSERT INTO chatbot_ai_settings_v025 (
+           session_id, user_id, is_active, base_url, api_key, model_name,
+           system_instruction, knowledge_base, delay_seconds, show_typing, created_at,
+           credential_id, knowledge_source, chatbot_mode, last_error, last_error_at,
+           max_output_tokens
+         )
+         SELECT ais.session_id, s.user_id, ais.is_active, ais.base_url, ais.api_key,
+                ais.model_name, ais.system_instruction, ais.knowledge_base,
+                ais.delay_seconds, ais.show_typing, ais.created_at, ais.credential_id,
+                ais.knowledge_source, ais.chatbot_mode, ais.last_error, ais.last_error_at,
+                ais.max_output_tokens
+         FROM chatbot_ai_settings ais
+         JOIN sessions s ON s.session_id = ais.session_id`,
+        'DROP TABLE chatbot_ai_settings',
+        'ALTER TABLE chatbot_ai_settings_v025 RENAME TO chatbot_ai_settings',
+        `CREATE TRIGGER trg_chatbot_ai_settings_owner_insert
+         AFTER INSERT ON chatbot_ai_settings
+         WHEN NEW.user_id IS NULL
+         BEGIN
+           UPDATE chatbot_ai_settings
+           SET user_id = (SELECT user_id FROM sessions WHERE session_id = NEW.session_id)
+           WHERE session_id = NEW.session_id;
+         END`,
+        `CREATE TRIGGER trg_chatbot_ai_settings_owner_update
+         AFTER UPDATE OF session_id, user_id ON chatbot_ai_settings
+         WHEN NEW.user_id IS NULL
+         BEGIN
+           UPDATE chatbot_ai_settings
+           SET user_id = (SELECT user_id FROM sessions WHERE session_id = NEW.session_id)
+           WHERE session_id = NEW.session_id;
+         END`,
+        'CREATE INDEX idx_chatbot_ai_settings_user_id ON chatbot_ai_settings (user_id)',
+        'CREATE INDEX idx_chatbot_ai_settings_embedding_profile ON chatbot_ai_settings (embedding_profile_id, user_id)',
+        `CREATE TABLE rag_sources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          source_type TEXT NOT NULL CHECK (source_type IN ('flow', 'manual')),
+          flow_id INTEGER,
+          manual_session_id TEXT,
+          content_hash TEXT NOT NULL,
+          current_revision INTEGER NOT NULL DEFAULT 1 CHECK (current_revision >= 1),
+          indexed_revision INTEGER NOT NULL DEFAULT 0 CHECK (indexed_revision >= 0),
+          lexical_status TEXT NOT NULL DEFAULT 'PENDING'
+            CHECK (lexical_status IN ('PENDING', 'READY', 'FAILED', 'STALE')),
+          embedding_status TEXT NOT NULL DEFAULT 'DISABLED'
+            CHECK (embedding_status IN ('DISABLED', 'PENDING', 'READY', 'FAILED', 'STALE')),
+          embedding_profile_id INTEGER,
+          is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (user_id, flow_id),
+          UNIQUE (user_id, manual_session_id),
+          UNIQUE (id, user_id),
+          CHECK (
+            (source_type = 'flow' AND flow_id IS NOT NULL AND manual_session_id IS NULL)
+            OR
+            (source_type = 'manual' AND flow_id IS NULL AND manual_session_id IS NOT NULL)
+          ),
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+          FOREIGN KEY (flow_id, user_id)
+            REFERENCES chatbot_flows (id, user_id) ON DELETE CASCADE,
+          FOREIGN KEY (manual_session_id, user_id)
+            REFERENCES sessions (session_id, user_id) ON DELETE CASCADE,
+          FOREIGN KEY (embedding_profile_id, user_id)
+            REFERENCES rag_embedding_profiles (id, user_id) ON DELETE RESTRICT
+        )`,
+        'CREATE INDEX idx_rag_sources_user_active ON rag_sources (user_id, is_active, source_type)',
+        'CREATE INDEX idx_rag_sources_revision_status ON rag_sources (user_id, current_revision, lexical_status, embedding_status)',
+        `CREATE TABLE rag_session_sources (
+          session_id TEXT NOT NULL,
+          source_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (session_id, source_id),
+          FOREIGN KEY (session_id, user_id)
+            REFERENCES sessions (session_id, user_id) ON DELETE CASCADE,
+          FOREIGN KEY (source_id, user_id)
+            REFERENCES rag_sources (id, user_id) ON DELETE CASCADE
+        )`,
+        'CREATE INDEX idx_rag_session_sources_user_session ON rag_session_sources (user_id, session_id)',
+        'CREATE INDEX idx_rag_session_sources_source ON rag_session_sources (source_id, user_id)',
+        `CREATE TABLE rag_chunks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          source_revision INTEGER NOT NULL CHECK (source_revision >= 1),
+          chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+          chunk_text TEXT NOT NULL,
+          token_count INTEGER NOT NULL CHECK (token_count > 0),
+          metadata_json TEXT,
+          content_hash TEXT NOT NULL,
+          embedding BLOB,
+          embedding_model TEXT,
+          embedding_dimensions INTEGER CHECK (embedding_dimensions IS NULL OR embedding_dimensions > 0),
+          embedding_config_hash TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (source_id, source_revision, chunk_index),
+          FOREIGN KEY (source_id, user_id)
+            REFERENCES rag_sources (id, user_id) ON DELETE CASCADE
+        )`,
+        'CREATE INDEX idx_rag_chunks_user_source_revision ON rag_chunks (user_id, source_id, source_revision)',
+        `CREATE VIRTUAL TABLE rag_chunks_fts USING fts5(
+          chunk_text,
+          content='rag_chunks',
+          content_rowid='id',
+          tokenize='unicode61 remove_diacritics 2'
+        )`,
+        `CREATE TRIGGER trg_rag_chunks_fts_insert AFTER INSERT ON rag_chunks BEGIN
+           INSERT INTO rag_chunks_fts(rowid, chunk_text) VALUES (NEW.id, NEW.chunk_text);
+         END`,
+        `CREATE TRIGGER trg_rag_chunks_fts_delete AFTER DELETE ON rag_chunks BEGIN
+           INSERT INTO rag_chunks_fts(rag_chunks_fts, rowid, chunk_text)
+           VALUES ('delete', OLD.id, OLD.chunk_text);
+         END`,
+        `CREATE TRIGGER trg_rag_chunks_fts_update AFTER UPDATE OF chunk_text ON rag_chunks BEGIN
+           INSERT INTO rag_chunks_fts(rag_chunks_fts, rowid, chunk_text)
+           VALUES ('delete', OLD.id, OLD.chunk_text);
+           INSERT INTO rag_chunks_fts(rowid, chunk_text) VALUES (NEW.id, NEW.chunk_text);
+         END`,
+        `CREATE TABLE rag_index_jobs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          requested_revision INTEGER NOT NULL CHECK (requested_revision >= 1),
+          embedding_config_hash TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'PENDING'
+            CHECK (status IN ('PENDING', 'PROCESSING', 'SUCCEEDED', 'FAILED', 'CANCELLED')),
+          attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+          lease_owner TEXT,
+          lease_expires_at DATETIME,
+          next_attempt_at DATETIME,
+          last_error_code TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (source_id, requested_revision, embedding_config_hash),
+          FOREIGN KEY (source_id, user_id)
+            REFERENCES rag_sources (id, user_id) ON DELETE CASCADE
+        )`,
+        'CREATE INDEX idx_rag_index_jobs_status_schedule ON rag_index_jobs (status, next_attempt_at, lease_expires_at)',
+        'CREATE INDEX idx_rag_index_jobs_user_source ON rag_index_jobs (user_id, source_id)',
+        `CREATE TABLE rag_response_cache (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          session_id TEXT NOT NULL,
+          cache_key TEXT NOT NULL,
+          source_revision_digest TEXT NOT NULL,
+          response_ciphertext BLOB NOT NULL,
+          expires_at DATETIME NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (user_id, session_id, cache_key),
+          FOREIGN KEY (session_id, user_id)
+            REFERENCES sessions (session_id, user_id) ON DELETE CASCADE
+        )`,
+        'CREATE INDEX idx_rag_response_cache_expires ON rag_response_cache (expires_at)',
+        'CREATE INDEX idx_rag_response_cache_session ON rag_response_cache (user_id, session_id)'
+      ]);
+    }
   }
 ];
 
 export const runMigrations = async (db, options = {}) => {
   const logger = options.logger || console;
+  const targetId = options.targetId || null;
+
+  if (targetId && !migrations.some((migration) => migration.id === targetId)) {
+    throw new Error(`Unknown migration target: ${targetId}`);
+  }
 
   await run(db, 'PRAGMA foreign_keys = ON');
   await run(db, `CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -782,7 +1163,10 @@ export const runMigrations = async (db, options = {}) => {
   let appliedCount = 0;
 
   for (const migration of migrations) {
-    if (applied.has(migration.id)) continue;
+    if (applied.has(migration.id)) {
+      if (migration.id === targetId) break;
+      continue;
+    }
 
     logger.log(`[DB Migrate] Applying ${migration.id}: ${migration.description}`);
 
@@ -794,6 +1178,7 @@ export const runMigrations = async (db, options = {}) => {
       ]);
       appliedCount += 1;
       logger.log(`[DB Migrate] Applied ${migration.id}`);
+      if (migration.id === targetId) break;
       continue;
     }
 
@@ -811,6 +1196,8 @@ export const runMigrations = async (db, options = {}) => {
       await run(db, 'ROLLBACK').catch(() => {});
       throw err;
     }
+
+    if (migration.id === targetId) break;
   }
 
   return {

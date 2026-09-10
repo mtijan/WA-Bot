@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createMediaFilename } from '../src/services/upload.service.js';
+import { createMediaFilename } from '../src/services/upload_metadata.service.js';
 import { getFileNameFromUrl, getMediaSource } from '../src/services/whatsapp.helpers.js';
 
 describe('Preservasi Nama Berkas Media', () => {

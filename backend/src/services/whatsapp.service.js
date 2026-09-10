@@ -14,6 +14,13 @@ import { MEDIA_UPLOAD_DIR, resolveUploadedMediaPath } from './upload.service.js'
 import { resolveSessionDirectory } from '../utils/session_id.js';
 import { assertSafeOutboundUrl, createSafeOutboundFetch } from '../utils/outbound_url.js';
 import { resolveKnowledgeBase } from './chatbot_ai.service.js';
+import { buildChatCompletionPayload, resolveChatTemperature } from './chatbot_ai_runtime.service.js';
+import { buildProductionMessages } from './chatbot_ai_prompt.service.js';
+import {
+  recordChatbotAIUsageSafely,
+  resolveAIProvider
+} from './chatbot_ai_usage.service.js';
+import { executeInstrumentedChatCompletion } from './chatbot_ai_provider.service.js';
 import { getActiveFlowSummariesForSession } from './chatbot_flow_sessions.service.js';
 import {
   mapBaileysMessageStatus,
@@ -505,46 +512,51 @@ class WhatsAppService {
                 }
               }
 
-              try {
-                const systemPrompt = [];
-                if (aiSettings.system_instruction) {
-                  systemPrompt.push(aiSettings.system_instruction);
-                }
-                const resolvedKb = await resolveKnowledgeBase(aiSettings);
-                if (resolvedKb) {
-                  systemPrompt.push(
-                    "Anda adalah asisten virtual yang ramah dan membantu untuk menjawab pertanyaan pelanggan.\n\n" +
-                    "Gunakan informasi berikut sebagai basis pengetahuan untuk menjawab pertanyaan pelanggan. Informasi ini berisi catatan manual dan alur chatbot otomatis (yang terdiri dari nama 'Alur' dan 'Isi Pesan').\n\n" +
-                    "Aturan menjawab:\n" +
-                    "1. Jika pelanggan bertanya tentang topik yang relevan dengan salah satu Alur (misalnya tentang pendaftaran, biaya, beasiswa, akreditasi, dll), berikan informasi, link, dan kontak yang tertera di bawah Alur tersebut secara ramah. Jangan katakan bahwa Anda tidak mengetahuinya jika ada alur yang membahas topik tersebut; cukup arahkan mereka menggunakan informasi di alur tersebut.\n" +
-                    "2. Jika pertanyaan benar-benar di luar topik yang disediakan di bawah ini, jawablah secara sopan bahwa Anda belum memiliki informasi tersebut dan tawarkan mereka untuk menghubungi customer service.\n" +
-                    "3. Jangan sebutkan kata teknis seperti 'database', 'alur', atau 'knowledge base' kepada pelanggan.\n\n" +
-                    "Berikut adalah basis pengetahuan Anda:\n" +
-                    resolvedKb
-                  );
-                }
+              let usageContext = null;
+              let providerResponse = null;
+              let usageRecorded = false;
+              let resolvedProvider = 'unknown';
+              let providerLatencyMs = null;
 
-                const finalSystemPrompt = systemPrompt.join("\n\n");
+              try {
+                const resolvedKb = await resolveKnowledgeBase(aiSettings);
+                const messages = buildProductionMessages({
+                  systemInstruction: aiSettings.system_instruction,
+                  knowledgeBase: resolvedKb,
+                  userMessage: cleanText
+                });
 
                 const { OpenAI } = await import('openai');
                 const safeBaseUrl = await assertSafeOutboundUrl(baseUrlToUse);
+                resolvedProvider = resolveAIProvider(safeBaseUrl);
                 const openai = new OpenAI({
                   apiKey: apiKeyToUse,
                   baseURL: safeBaseUrl,
                   timeout: 15000,
+                  maxRetries: 0,
                   fetch: createSafeOutboundFetch()
                 });
 
-                const response = await openai.chat.completions.create({
+                const completion = await executeInstrumentedChatCompletion({
+                  openai,
+                  payload: buildChatCompletionPayload({
+                    model: modelNameToUse || 'gpt-4o-mini',
+                    messages,
+                    maxOutputTokens: aiSettings.max_output_tokens,
+                    temperature: resolveChatTemperature('existing')
+                  }),
+                  requestKind: 'production',
+                  userId: tenantUserId,
+                  sessionId,
+                  provider: resolvedProvider,
                   model: modelNameToUse || 'gpt-4o-mini',
-                  messages: [
-                    ...(finalSystemPrompt ? [{ role: 'system', content: finalSystemPrompt }] : []),
-                    { role: 'user', content: cleanText }
-                  ],
-                  temperature: 0.7
+                  maxAttempts: 2
                 });
+                usageContext = completion.context;
+                providerResponse = completion.response;
+                providerLatencyMs = completion.latencyMs;
 
-                const aiReply = response.choices[0]?.message?.content;
+                const aiReply = providerResponse.choices[0]?.message?.content;
 
                 // Terapkan delay sebelum mengirim pesan balasan
                 const delay = aiSettings.delay_seconds || 2;
@@ -563,6 +575,16 @@ class WhatsAppService {
 
                 if (aiReply && aiReply.trim() !== '') {
                   await sock.sendMessage(senderId, { text: aiReply.trim() });
+                  usageRecorded = await recordChatbotAIUsageSafely({
+                    context: usageContext,
+                    userId: tenantUserId,
+                    sessionId,
+                    provider: resolvedProvider,
+                    model: modelNameToUse || 'gpt-4o-mini',
+                    response: providerResponse,
+                    deliveryStatus: 'SENT',
+                    latencyMs: providerLatencyMs
+                  });
                   logger.info(`[Chatbot AI] Sesi ${sessionId} berhasil mengirim balasan.`);
                   try {
                     await dbRun('UPDATE chatbot_ai_settings SET last_error = NULL, last_error_at = NULL WHERE session_id = ?', [sessionId]);
@@ -570,6 +592,16 @@ class WhatsAppService {
                     // Abaikan
                   }
                 } else {
+                  usageRecorded = await recordChatbotAIUsageSafely({
+                    context: usageContext,
+                    userId: tenantUserId,
+                    sessionId,
+                    provider: resolvedProvider,
+                    model: modelNameToUse || 'gpt-4o-mini',
+                    response: providerResponse,
+                    deliveryStatus: 'FAILED',
+                    latencyMs: providerLatencyMs
+                  });
                   logger.warn(`[Chatbot AI Warning] Model '${modelNameToUse}' mengembalikan respons kosong untuk sesi ${sessionId}.`);
                   try {
                     const cleanPhone = senderId.split('@')[0];
@@ -589,6 +621,19 @@ class WhatsAppService {
                   }
                 }
               } catch (aiErr) {
+                if (usageContext && !usageRecorded) {
+                  await recordChatbotAIUsageSafely({
+                    context: usageContext,
+                    userId: tenantUserId,
+                    sessionId,
+                    provider: resolvedProvider,
+                    model: modelNameToUse || 'gpt-4o-mini',
+                    response: providerResponse,
+                    error: providerResponse ? null : aiErr,
+                    deliveryStatus: providerResponse ? 'UNKNOWN' : 'NOT_APPLICABLE',
+                    latencyMs: providerLatencyMs ?? (Date.now() - usageContext.startedAtMs)
+                  });
+                }
                 logError('WhatsAppService.messages.upsert.chatbotAI', aiErr, { sessionId, senderId });
                 const errMsg = aiErr.message || String(aiErr);
                 try {

@@ -441,7 +441,8 @@ function ChatbotAI() {
     setTesting(true);
     try {
       const payload = {
-        session_id: selectedSession
+        session_id: selectedSession,
+        test_kind: 'connection'
       };
 
       if (selectedCredentialId) {
@@ -515,8 +516,9 @@ function ChatbotAI() {
 
       const payload = {
         session_id: selectedSession,
+        test_kind: 'sandbox',
         system_prompt: finalSystemPrompt,
-        prompt_override: `Instruksi Asisten:\n${finalSystemPrompt}\n\nPertanyaan Pengguna:\n${userMessage}`
+        user_message: userMessage
       };
 
       if (selectedCredentialId) {
