@@ -1139,6 +1139,52 @@ const migrations = [
         'CREATE INDEX idx_rag_response_cache_session ON rag_response_cache (user_id, session_id)'
       ]);
     }
+  },
+  {
+    id: '026_rag_index_job_state_model',
+    description: 'Align durable RAG index jobs with explicit lifecycle states independent from source readiness.',
+    up: async (db) => {
+      await exec(db, [
+        `CREATE TABLE rag_index_jobs_v026 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          requested_revision INTEGER NOT NULL CHECK (requested_revision >= 1),
+          embedding_config_hash TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'PENDING'
+            CHECK (status IN ('PENDING', 'RUNNING', 'READY', 'FAILED', 'SUPERSEDED')),
+          attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+          lease_owner TEXT,
+          lease_expires_at DATETIME,
+          next_attempt_at DATETIME,
+          last_error_code TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (source_id, requested_revision, embedding_config_hash),
+          FOREIGN KEY (source_id, user_id)
+            REFERENCES rag_sources (id, user_id) ON DELETE CASCADE
+        )`,
+        `INSERT INTO rag_index_jobs_v026 (
+           id, source_id, user_id, requested_revision, embedding_config_hash,
+           status, attempts, lease_owner, lease_expires_at, next_attempt_at,
+           last_error_code, created_at, updated_at
+         )
+         SELECT id, source_id, user_id, requested_revision, embedding_config_hash,
+           CASE status
+             WHEN 'PROCESSING' THEN 'RUNNING'
+             WHEN 'SUCCEEDED' THEN 'READY'
+             WHEN 'CANCELLED' THEN 'SUPERSEDED'
+             ELSE status
+           END,
+           attempts, lease_owner, lease_expires_at, next_attempt_at,
+           last_error_code, created_at, updated_at
+         FROM rag_index_jobs`,
+        'DROP TABLE rag_index_jobs',
+        'ALTER TABLE rag_index_jobs_v026 RENAME TO rag_index_jobs',
+        'CREATE INDEX idx_rag_index_jobs_status_schedule ON rag_index_jobs (status, next_attempt_at, lease_expires_at)',
+        'CREATE INDEX idx_rag_index_jobs_user_source ON rag_index_jobs (user_id, source_id)'
+      ]);
+    }
   }
 ];
 
