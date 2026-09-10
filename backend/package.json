@@ -24,6 +24,9 @@
     "logs:prune:apply": "node scripts/prune_delivery_logs.js --apply",
     "test": "node --test test/**/*.test.js",
     "test:smoke": "node scripts/deploy_smoke_test.js",
+    "test:ai-provider": "node scripts/probe_chatbot_ai_provider.js",
+    "test:rag-development": "node scripts/probe_chatbot_ai_rag_development.js",
+    "test:rag-freeform-development": "node scripts/probe_chatbot_ai_rag_development.js --conversation true --question-mode freeform --judge true --cases 12 --answer-cap 512 --judge-cap 1024 --seed 20260910",
     "user:create": "node scripts/seed_admin_user.js"
   },
   "dependencies": {
