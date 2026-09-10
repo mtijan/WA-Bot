@@ -1,6 +1,9 @@
 import whatsappService from './services/whatsapp.service.js';
 import campaignService from './services/campaign.service.js';
 import warmerService from './services/warmer.service.js';
+import ragIndexPollingWorker, {
+  isRagIndexPollingRole
+} from './services/chatbot_ai_rag_worker.service.js';
 import { startInternalServer } from './internal_server.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
@@ -23,6 +26,13 @@ export const shouldStartCampaignWorker = (role = getRuntimeRole()) => {
 
 export const shouldStartWarmerWorker = (role = getRuntimeRole()) => {
   return role === 'all' || role === 'worker' || role === 'warmer-worker';
+};
+
+export const shouldStartRagIndexWorker = (
+  role = getRuntimeRole(),
+  enabled = config.runtime.ragIndexWorkerEnabled
+) => {
+  return isRagIndexPollingRole(role, enabled);
 };
 
 export const shouldRunInlineWorkers = (role = getRuntimeRole()) => {
@@ -51,6 +61,10 @@ export const startRuntimeServices = async (role = getRuntimeRole()) => {
 
   if (shouldStartWarmerWorker(role)) {
     await warmerService.startPollingWorker();
+  }
+
+  if (shouldStartRagIndexWorker(role)) {
+    await ragIndexPollingWorker.startPollingWorker();
   }
 
   if (!shouldStartHttpServer(role)) {
