@@ -54,9 +54,9 @@ npm run build
 Also verify focused RAG tests, Express/OpenAPI parity, documentation audit, `git diff --check`, and ignored/sensitive-file coverage. Review the exact range rather than using `git add .`:
 
 ```powershell
-git diff --name-status origin/main...release/rag-merge-ready
-git diff --name-status release/rag-merge-ready...develop/rag-experiments
-git diff --name-status origin/main...hotfix/urgent-fixes
+git diff --name-status origin/main..release/rag-merge-ready
+git diff --name-status release/rag-merge-ready..develop/rag-experiments
+git diff --name-status origin/main..hotfix/urgent-fixes
 ```
 
 Expected separation at creation:
