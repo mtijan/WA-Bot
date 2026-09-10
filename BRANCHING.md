@@ -1,6 +1,6 @@
 # WA-Bot Branch Strategy
 
-Updated: 2026-09-10
+Updated: 2026-09-11
 
 ## Branch responsibilities
 
@@ -11,7 +11,7 @@ Updated: 2026-09-10
 | `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | Experiment commit `e758db7` on top of `da2867d` |
 | `hotfix/urgent-fixes` | Urgent production/staging bug fixes | The smallest isolated fix and its focused regression test; no unfinished RAG or experiment files | Directly from `origin/main` at `63c93c6` |
 
-The branches are local until an explicit push is approved. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
+The three branches were published to `origin` on 2026-09-11 after explicit approval. Publishing the refs did not merge or deploy them, and `origin/main` remained at `63c93c6`. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
 
 ## Separation rules
 
