@@ -1,6 +1,5 @@
 import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, generateWAMessageFromContent, proto } from '@whiskeysockets/baileys';
 import { useEncryptedMultiFileAuthState } from '../utils/encrypted_auth_state.js';
-import { revealSecret } from './secret.service.js';
 import { isOptOutKeyword, recordOptOut } from './opt_out.service.js';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -12,16 +11,15 @@ import { HttpsProxyAgent } from 'https-proxy-agent';
 import { dbRun, dbGet, dbAll } from '../database.js';
 import { MEDIA_UPLOAD_DIR, resolveUploadedMediaPath } from './upload.service.js';
 import { resolveSessionDirectory } from '../utils/session_id.js';
-import { assertSafeOutboundUrl, createSafeOutboundFetch } from '../utils/outbound_url.js';
-import { resolveKnowledgeBase } from './chatbot_ai.service.js';
-import { buildChatCompletionPayload, resolveChatTemperature } from './chatbot_ai_runtime.service.js';
-import { buildProductionMessages } from './chatbot_ai_prompt.service.js';
-import {
-  recordChatbotAIUsageSafely,
-  resolveAIProvider
-} from './chatbot_ai_usage.service.js';
-import { executeInstrumentedChatCompletion } from './chatbot_ai_provider.service.js';
 import { getActiveFlowSummariesForSession } from './chatbot_flow_sessions.service.js';
+import {
+  normalizeChatbotMode,
+  processInboundAIMessage,
+  resolveAICredentials,
+  RAG_RUNTIME_STATUSES,
+  shouldEvaluateFlow,
+  shouldProcessAIFallback
+} from './chatbot_ai_rag_runtime.service.js';
 import {
   mapBaileysMessageStatus,
   mapBaileysReceipt,
@@ -441,18 +439,20 @@ class WhatsAppService {
         
         const cleanText = normalizeIncomingText(text);
 
-        // Ambil pengaturan Chatbot AI/Mode untuk sesi ini
-        const aiSettings = await dbGet('SELECT * FROM chatbot_ai_settings WHERE session_id = ?', [sessionId]);
-        const chatbotMode = aiSettings ? (aiSettings.chatbot_mode || 'both') : 'both';
+        const aiSettings = await dbGet(
+          'SELECT * FROM chatbot_ai_settings WHERE session_id = ? AND user_id = ?',
+          [sessionId, tenantUserId]
+        );
+        const chatbotMode = normalizeChatbotMode(aiSettings?.chatbot_mode);
 
         if (chatbotMode === 'off') {
-          return; // Chatbot dinonaktifkan sepenuhnya untuk sesi ini
+          continue;
         }
 
         let matchedFlow = null;
         let activeFlowCount = 0;
         let candidateFlowCount = 0;
-        if (chatbotMode === 'flow' || chatbotMode === 'both') {
+        if (shouldEvaluateFlow(chatbotMode)) {
           const flows = await getActiveFlowSummariesForSession(sessionId);
           activeFlowCount = flows.length;
           candidateFlowCount = flows.length;
@@ -466,202 +466,114 @@ class WhatsAppService {
           if (matchedFlow.delay > 0) {
              await new Promise(r => setTimeout(r, matchedFlow.delay * 1000));
           }
-          const flowDetail = await dbGet('SELECT * FROM chatbot_flows WHERE id = ?', [matchedFlow.id]);
+          const flowDetail = await dbGet(
+            'SELECT * FROM chatbot_flows WHERE id = ? AND user_id = ?',
+            [matchedFlow.id, tenantUserId]
+          );
           const stats = await this.executeFlowNodes(sock, senderId, flowDetail || matchedFlow, sessionId, cleanText);
           await this.recordFlowDeliveryStats(matchedFlow.id, {
             triggered: 1,
             sent: stats.sent,
             failed: stats.failed
           });
-        } else {
-          if (chatbotMode === 'flow' || chatbotMode === 'both') {
-            logger.debug(`[Chatbot Debug] Tidak ada flow match untuk sesi ${sessionId}. activeFlows=${activeFlowCount}, assignedFlows=${candidateFlowCount}, isGroup=${isGroup}, textLength=${cleanText.length}`);
+          continue;
+        }
+
+        if (shouldEvaluateFlow(chatbotMode)) {
+          logger.debug(`[Chatbot Debug] Tidak ada flow match untuk sesi ${sessionId}. activeFlows=${activeFlowCount}, assignedFlows=${candidateFlowCount}, isGroup=${isGroup}, textLength=${cleanText.length}`);
+        }
+        if (!shouldProcessAIFallback({ chatbotMode, matchedFlow, isGroup, aiSettings })) {
+          continue;
+        }
+
+        const credentials = await resolveAICredentials(aiSettings, tenantUserId);
+        if (!credentials) continue;
+
+        logger.info(`[Chatbot AI] Sesi ${sessionId} memproses fallback AI.`);
+        if (aiSettings.show_typing) {
+          try {
+            await sock.presenceSubscribe(senderId);
+            await sock.sendPresenceUpdate('composing', senderId);
+          } catch {
+            // Presence bukan gate pengiriman pesan.
           }
+        }
 
-          if ((chatbotMode === 'ai' || chatbotMode === 'both') && !isGroup && aiSettings && aiSettings.is_active === 1) {
-            // Fallback ke Chatbot AI (SumoPod API)
-            let apiKeyToUse = null;
-            let baseUrlToUse = aiSettings.base_url || 'https://ai.sumopod.com/v1';
-            let modelNameToUse = aiSettings.model_name || 'gpt-4o-mini';
+        let typingPaused = false;
+        const pauseTyping = async () => {
+          if (!aiSettings.show_typing || typingPaused) return;
+          typingPaused = true;
+          try {
+            await sock.sendPresenceUpdate('paused', senderId);
+          } catch {
+            // Presence bukan gate pengiriman pesan.
+          }
+        };
+        const deliverAIReply = async (reply) => {
+          const delay = aiSettings.delay_seconds || 2;
+          if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay * 1000));
+          await pauseTyping();
+          await sock.sendMessage(senderId, { text: reply });
+        };
 
-            if (aiSettings.credential_id) {
-              const cred = await dbGet(
-                'SELECT * FROM chatbot_ai_credentials WHERE id = ? AND user_id = ? AND is_active = 1',
-                [aiSettings.credential_id, tenantUserId]
-              );
-              if (cred && cred.api_key) {
-                apiKeyToUse = revealSecret(cred.api_key);
-                baseUrlToUse = cred.base_url || baseUrlToUse;
-                modelNameToUse = cred.model_name || modelNameToUse;
-              } else {
-                logger.info(`[Chatbot AI] Sesi ${sessionId} dilewati karena kredensial terikat (#${aiSettings.credential_id}) tidak aktif atau tidak ditemukan.`);
-              }
-            } else if (aiSettings.api_key) {
-              apiKeyToUse = revealSecret(aiSettings.api_key);
-            }
+        const result = await processInboundAIMessage({
+          sessionId,
+          userId: tenantUserId,
+          cleanText,
+          aiSettings,
+          credentials,
+          deliverReply: deliverAIReply
+        });
 
-            if (apiKeyToUse) {
-              logger.info(`[Chatbot AI] Sesi ${sessionId} memproses pesan masuk via provider AI.`);
-              
-              if (aiSettings.show_typing) {
-                try {
-                  await sock.presenceSubscribe(senderId);
-                  await sock.sendPresenceUpdate('composing', senderId);
-                } catch (e) {
-                  // Abaikan jika presence gagal
-                }
-              }
+        if (result.ragMetadata) {
+          logger.debug(`[Chatbot AI RAG] sesi=${sessionId} mode=${result.ragMetadata.rag_mode} effective=${result.ragMetadata.effective_mode} reason=${result.ragMetadata.retrieval_reason || '-'} chunks=${result.ragMetadata.selected_count ?? '-'} ctxTokens=${result.ragMetadata.context_tokens ?? '-'}`);
+        }
 
-              let usageContext = null;
-              let providerResponse = null;
-              let usageRecorded = false;
-              let resolvedProvider = 'unknown';
-              let providerLatencyMs = null;
-
-              try {
-                const resolvedKb = await resolveKnowledgeBase(aiSettings);
-                const messages = buildProductionMessages({
-                  systemInstruction: aiSettings.system_instruction,
-                  knowledgeBase: resolvedKb,
-                  userMessage: cleanText
-                });
-
-                const { OpenAI } = await import('openai');
-                const safeBaseUrl = await assertSafeOutboundUrl(baseUrlToUse);
-                resolvedProvider = resolveAIProvider(safeBaseUrl);
-                const openai = new OpenAI({
-                  apiKey: apiKeyToUse,
-                  baseURL: safeBaseUrl,
-                  timeout: 15000,
-                  maxRetries: 0,
-                  fetch: createSafeOutboundFetch()
-                });
-
-                const completion = await executeInstrumentedChatCompletion({
-                  openai,
-                  payload: buildChatCompletionPayload({
-                    model: modelNameToUse || 'gpt-4o-mini',
-                    messages,
-                    maxOutputTokens: aiSettings.max_output_tokens,
-                    temperature: resolveChatTemperature('existing')
-                  }),
-                  requestKind: 'production',
-                  userId: tenantUserId,
-                  sessionId,
-                  provider: resolvedProvider,
-                  model: modelNameToUse || 'gpt-4o-mini',
-                  maxAttempts: 2
-                });
-                usageContext = completion.context;
-                providerResponse = completion.response;
-                providerLatencyMs = completion.latencyMs;
-
-                const aiReply = providerResponse.choices[0]?.message?.content;
-
-                // Terapkan delay sebelum mengirim pesan balasan
-                const delay = aiSettings.delay_seconds || 2;
-                if (delay > 0) {
-                  await new Promise(r => setTimeout(r, delay * 1000));
-                }
-
-                // Hentikan status mengetik
-                if (aiSettings.show_typing) {
-                  try {
-                    await sock.sendPresenceUpdate('paused', senderId);
-                  } catch (e) {
-                    // Abaikan jika presence gagal
-                  }
-                }
-
-                if (aiReply && aiReply.trim() !== '') {
-                  await sock.sendMessage(senderId, { text: aiReply.trim() });
-                  usageRecorded = await recordChatbotAIUsageSafely({
-                    context: usageContext,
-                    userId: tenantUserId,
-                    sessionId,
-                    provider: resolvedProvider,
-                    model: modelNameToUse || 'gpt-4o-mini',
-                    response: providerResponse,
-                    deliveryStatus: 'SENT',
-                    latencyMs: providerLatencyMs
-                  });
-                  logger.info(`[Chatbot AI] Sesi ${sessionId} berhasil mengirim balasan.`);
-                  try {
-                    await dbRun('UPDATE chatbot_ai_settings SET last_error = NULL, last_error_at = NULL WHERE session_id = ?', [sessionId]);
-                  } catch (dbErr) {
-                    // Abaikan
-                  }
-                } else {
-                  usageRecorded = await recordChatbotAIUsageSafely({
-                    context: usageContext,
-                    userId: tenantUserId,
-                    sessionId,
-                    provider: resolvedProvider,
-                    model: modelNameToUse || 'gpt-4o-mini',
-                    response: providerResponse,
-                    deliveryStatus: 'FAILED',
-                    latencyMs: providerLatencyMs
-                  });
-                  logger.warn(`[Chatbot AI Warning] Model '${modelNameToUse}' mengembalikan respons kosong untuk sesi ${sessionId}.`);
-                  try {
-                    const cleanPhone = senderId.split('@')[0];
-                    await dbRun(
-                      `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
-                       VALUES (?, ?, ?, ?, ?)`,
-                      [
-                        sessionId,
-                        cleanPhone,
-                        cleanText,
-                        'Chatbot AI',
-                        `Model '${modelNameToUse}' mengembalikan respon kosong`
-                      ]
-                    );
-                  } catch (dbErr) {
-                    logError('WhatsAppService.messages.upsert.chatbotAI.logFailed', dbErr, { sessionId, senderId });
-                  }
-                }
-              } catch (aiErr) {
-                if (usageContext && !usageRecorded) {
-                  await recordChatbotAIUsageSafely({
-                    context: usageContext,
-                    userId: tenantUserId,
-                    sessionId,
-                    provider: resolvedProvider,
-                    model: modelNameToUse || 'gpt-4o-mini',
-                    response: providerResponse,
-                    error: providerResponse ? null : aiErr,
-                    deliveryStatus: providerResponse ? 'UNKNOWN' : 'NOT_APPLICABLE',
-                    latencyMs: providerLatencyMs ?? (Date.now() - usageContext.startedAtMs)
-                  });
-                }
-                logError('WhatsAppService.messages.upsert.chatbotAI', aiErr, { sessionId, senderId });
-                const errMsg = aiErr.message || String(aiErr);
-                try {
-                  await dbRun('UPDATE chatbot_ai_settings SET last_error = ?, last_error_at = CURRENT_TIMESTAMP WHERE session_id = ?', [errMsg, sessionId]);
-                  const cleanPhone = senderId.split('@')[0];
-                  await dbRun(
-                    `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
-                     VALUES (?, ?, ?, ?, ?)`,
-                    [
-                      sessionId,
-                      cleanPhone,
-                      cleanText,
-                      'Chatbot AI',
-                      errMsg
-                    ]
-                  );
-                } catch (dbErr) {
-                  logError('WhatsAppService.messages.upsert.chatbotAI.dbUpdate', dbErr, { sessionId, senderId });
-                }
-                if (aiSettings.show_typing) {
-                  try {
-                    await sock.sendPresenceUpdate('paused', senderId);
-                  } catch (e) {
-                    // Abaikan
-                  }
-                }
-              }
-            }
+        if (result.status === RAG_RUNTIME_STATUSES.REPLIED) {
+          logger.info(`[Chatbot AI] Sesi ${sessionId} berhasil mengirim balasan provider.`);
+          try {
+            await dbRun(
+              'UPDATE chatbot_ai_settings SET last_error = NULL, last_error_at = NULL WHERE session_id = ? AND user_id = ?',
+              [sessionId, tenantUserId]
+            );
+          } catch {
+            // Error badge bersifat best effort.
+          }
+        } else if (result.status === RAG_RUNTIME_STATUSES.CS_FALLBACK) {
+          await deliverAIReply(result.reply);
+          logger.info(`[Chatbot AI] Sesi ${sessionId} mengirim fallback customer service.`);
+        } else if (result.status === RAG_RUNTIME_STATUSES.EMPTY_REPLY) {
+          await pauseTyping();
+          logger.warn(`[Chatbot AI Warning] Model mengembalikan respons kosong untuk sesi ${sessionId}.`);
+          try {
+            const cleanPhone = senderId.split('@')[0];
+            await dbRun(
+              `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
+               VALUES (?, ?, ?, ?, ?)`,
+              [sessionId, cleanPhone, cleanText, 'Chatbot AI', result.error || 'Respon kosong']
+            );
+          } catch (dbErr) {
+            logError('WhatsAppService.messages.upsert.chatbotAI.logFailed', dbErr, { sessionId, senderId });
+          }
+        } else if (result.status === RAG_RUNTIME_STATUSES.ERROR) {
+          await pauseTyping();
+          const runtimeError = result.error instanceof Error
+            ? result.error
+            : new Error(String(result.error || 'Unknown error'));
+          logError('WhatsAppService.messages.upsert.chatbotAI', runtimeError, { sessionId, senderId });
+          try {
+            await dbRun(
+              'UPDATE chatbot_ai_settings SET last_error = ?, last_error_at = CURRENT_TIMESTAMP WHERE session_id = ? AND user_id = ?',
+              [runtimeError.message, sessionId, tenantUserId]
+            );
+            const cleanPhone = senderId.split('@')[0];
+            await dbRun(
+              `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
+               VALUES (?, ?, ?, ?, ?)`,
+              [sessionId, cleanPhone, cleanText, 'Chatbot AI', runtimeError.message]
+            );
+          } catch (dbErr) {
+            logError('WhatsAppService.messages.upsert.chatbotAI.dbUpdate', dbErr, { sessionId, senderId });
           }
         }
         }
