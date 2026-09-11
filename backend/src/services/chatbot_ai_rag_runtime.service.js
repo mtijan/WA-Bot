@@ -1,0 +1,482 @@
+import { logError } from '../logger.js';
+import { dbGet, dbAll } from '../database.js';
+import { assertSafeOutboundUrl, createSafeOutboundFetch } from '../utils/outbound_url.js';
+import { revealSecret } from './secret.service.js';
+import { resolveKnowledgeBase } from './chatbot_ai.service.js';
+import { buildChatCompletionPayload, resolveChatTemperature } from './chatbot_ai_runtime.service.js';
+import {
+  buildProductionMessages,
+  buildRagProductionMessages
+} from './chatbot_ai_prompt.service.js';
+import { executeInstrumentedChatCompletion } from './chatbot_ai_provider.service.js';
+import {
+  recordChatbotAIUsageSafely,
+  resolveAIProvider
+} from './chatbot_ai_usage.service.js';
+import {
+  getTenantEmbeddingProfile,
+  generateQueryEmbedding,
+  resolveEffectiveRagRetrievalMode
+} from './chatbot_ai_embedding.service.js';
+import {
+  RAG_CONTEXT_DEFAULTS,
+  retrieveRagContext
+} from './chatbot_ai_rag_context.service.js';
+import { estimateRagTokens } from './chatbot_ai_rag_extractor.service.js';
+
+export const CS_FALLBACK_MESSAGE =
+  'Mohon maaf, saya belum bisa menjawab pertanyaan tersebut saat ini. ' +
+  'Silakan hubungi customer service kami untuk informasi lebih lanjut.';
+
+export const RAG_RUNTIME_STATUSES = Object.freeze({
+  REPLIED: 'REPLIED',
+  EMPTY_REPLY: 'EMPTY_REPLY',
+  CS_FALLBACK: 'CS_FALLBACK',
+  ERROR: 'ERROR',
+  SKIPPED: 'SKIPPED'
+});
+
+const CHATBOT_MODES = new Set(['off', 'flow', 'ai', 'both']);
+
+function createRuntimeError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function requirePositiveInteger(value, field) {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw createRuntimeError('RAG_RUNTIME_INVALID_INPUT', `${field} harus integer positif.`);
+  }
+  return value;
+}
+
+function requireNonEmptyString(value, field) {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    throw createRuntimeError('RAG_RUNTIME_INVALID_INPUT', `${field} wajib diisi.`);
+  }
+  return normalized;
+}
+
+function resolveDatabaseClient(databaseClient = null) {
+  if (databaseClient) {
+    if (typeof databaseClient.get !== 'function' || typeof databaseClient.all !== 'function') {
+      throw createRuntimeError(
+        'RAG_RUNTIME_DATABASE_CLIENT_REQUIRED',
+        'Database client runtime harus menyediakan fungsi get dan all.'
+      );
+    }
+    return databaseClient;
+  }
+  return { get: dbGet, all: dbAll };
+}
+
+export function normalizeChatbotMode(value) {
+  const normalized = String(value || 'both').trim().toLowerCase();
+  return CHATBOT_MODES.has(normalized) ? normalized : 'both';
+}
+
+export function shouldEvaluateFlow(chatbotMode) {
+  const mode = normalizeChatbotMode(chatbotMode);
+  return mode === 'flow' || mode === 'both';
+}
+
+export function shouldProcessAIFallback({
+  chatbotMode,
+  matchedFlow = null,
+  isGroup = false,
+  aiSettings = null
+} = {}) {
+  const mode = normalizeChatbotMode(chatbotMode);
+  return !matchedFlow
+    && !isGroup
+    && (mode === 'ai' || mode === 'both')
+    && aiSettings?.is_active === 1;
+}
+
+export function shouldUseRag(aiSettings) {
+  const mode = String(aiSettings?.rag_mode || 'off').trim().toLowerCase();
+  return mode === 'fts' || mode === 'hybrid';
+}
+
+export function estimateChatInputTokens(messages, tokenEstimator = estimateRagTokens) {
+  if (!Array.isArray(messages)) {
+    throw createRuntimeError('RAG_RUNTIME_INVALID_INPUT', 'messages harus berupa array.');
+  }
+  return messages.reduce((total, message) => {
+    const role = String(message?.role || '');
+    const content = String(message?.content || '');
+    return total + 4 + tokenEstimator(role) + tokenEstimator(content);
+  }, 2);
+}
+
+function resolveHardInputBudget(aiSettings) {
+  const configured = Number(aiSettings?.rag_input_budget_tokens);
+  if (!Number.isInteger(configured) || configured <= 0) {
+    return RAG_CONTEXT_DEFAULTS.HARD_TOTAL_INPUT_TOKENS;
+  }
+  return Math.min(configured, RAG_CONTEXT_DEFAULTS.HARD_TOTAL_INPUT_TOKENS);
+}
+
+function buildFallbackResult(reason, ragMetadata = {}) {
+  return {
+    status: RAG_RUNTIME_STATUSES.CS_FALLBACK,
+    reply: CS_FALLBACK_MESSAGE,
+    delivered: false,
+    ragMetadata: {
+      ...ragMetadata,
+      retrieval_reason: reason,
+      cs_fallback: true
+    },
+    usageContext: null,
+    error: null
+  };
+}
+
+export async function checkSessionIndexReadiness(
+  userId,
+  sessionId,
+  databaseClient = null
+) {
+  requirePositiveInteger(userId, 'userId');
+  const safeSessionId = requireNonEmptyString(sessionId, 'sessionId');
+  const client = resolveDatabaseClient(databaseClient);
+  const rows = await client.all(
+    `SELECT s.id, s.lexical_status, s.current_revision, s.indexed_revision
+     FROM sessions AS sess
+     JOIN rag_session_sources AS rss
+       ON rss.session_id = sess.session_id AND rss.user_id = sess.user_id
+     JOIN rag_sources AS s
+       ON s.id = rss.source_id AND s.user_id = rss.user_id
+     WHERE sess.session_id = ? AND sess.user_id = ? AND s.is_active = 1`,
+    [safeSessionId, userId]
+  );
+  const readyCount = rows.filter((row) =>
+    row.lexical_status === 'READY'
+      && Number(row.current_revision) === Number(row.indexed_revision)).length;
+  return Object.freeze({
+    ready: readyCount > 0,
+    sourceCount: rows.length,
+    readyCount
+  });
+}
+
+export async function resolveAICredentials(
+  aiSettings,
+  tenantUserId,
+  databaseClient = null
+) {
+  requirePositiveInteger(tenantUserId, 'tenantUserId');
+  if (!aiSettings || typeof aiSettings !== 'object') return null;
+  const client = resolveDatabaseClient(databaseClient);
+  let apiKey = null;
+  let baseUrl = aiSettings.base_url || 'https://ai.sumopod.com/v1';
+  let model = aiSettings.model_name || 'gpt-4o-mini';
+
+  if (aiSettings.credential_id) {
+    const credential = await client.get(
+      `SELECT id, api_key, base_url, model_name
+       FROM chatbot_ai_credentials
+       WHERE id = ? AND user_id = ? AND is_active = 1`,
+      [aiSettings.credential_id, tenantUserId]
+    );
+    if (!credential?.api_key) return null;
+    apiKey = revealSecret(credential.api_key);
+    baseUrl = credential.base_url || baseUrl;
+    model = credential.model_name || model;
+  } else if (aiSettings.api_key) {
+    apiKey = revealSecret(aiSettings.api_key);
+  }
+
+  return apiKey ? Object.freeze({ apiKey, baseUrl, model }) : null;
+}
+
+async function createDefaultChatClient({ apiKey, safeBaseUrl }) {
+  const { OpenAI } = await import('openai');
+  return new OpenAI({
+    apiKey,
+    baseURL: safeBaseUrl,
+    timeout: 15000,
+    maxRetries: 0,
+    fetch: createSafeOutboundFetch()
+  });
+}
+
+function resolveDependencies(overrides = {}) {
+  return {
+    assertSafeOutboundUrl,
+    buildChatCompletionPayload,
+    checkSessionIndexReadiness,
+    createChatClient: createDefaultChatClient,
+    estimateChatInputTokens,
+    executeChatCompletion: executeInstrumentedChatCompletion,
+    executeRagRetrieval,
+    generateQueryEmbedding,
+    getTenantEmbeddingProfile,
+    recordUsage: recordChatbotAIUsageSafely,
+    resolveAIProvider,
+    resolveKnowledgeBase,
+    retrieveRagContext,
+    ...overrides
+  };
+}
+
+export async function executeRagRetrieval({
+  userId,
+  sessionId,
+  cleanText,
+  aiSettings,
+  baseInputTokens,
+  databaseClient = null
+}, dependencyOverrides = {}) {
+  const dependencies = resolveDependencies(dependencyOverrides);
+  const readiness = await dependencies.checkSessionIndexReadiness(
+    userId,
+    sessionId,
+    databaseClient
+  );
+  if (!readiness.ready) {
+    return { ragResult: null, effectiveMode: 'fts', reason: 'index_not_ready' };
+  }
+
+  const profile = await dependencies.getTenantEmbeddingProfile(userId, databaseClient);
+  let effectiveMode = resolveEffectiveRagRetrievalMode({
+    ragMode: aiSettings.rag_mode,
+    profile
+  });
+  let queryVector = null;
+
+  if (effectiveMode === 'hybrid' && profile) {
+    try {
+      const embedding = await dependencies.generateQueryEmbedding({
+        query: cleanText,
+        model: profile.model,
+        dimensions: profile.dimensions,
+        baseUrl: profile.base_url,
+        credentialId: profile.credential_id,
+        userId,
+        sessionId,
+        databaseClient
+      });
+      queryVector = embedding.vector;
+    } catch (error) {
+      logError('chatbot_ai_rag_runtime.queryEmbedding', error, { sessionId });
+      effectiveMode = 'fts';
+    }
+  }
+
+  const hardInputBudget = resolveHardInputBudget(aiSettings);
+  const ragResult = await dependencies.retrieveRagContext({
+    userId,
+    sessionId,
+    query: cleanText,
+    queryVector,
+    mode: queryVector ? 'hybrid' : 'fts',
+    relevanceThreshold: RAG_CONTEXT_DEFAULTS.RELEVANCE_THRESHOLD,
+    topK: aiSettings.rag_top_k || RAG_CONTEXT_DEFAULTS.TOP_K,
+    contextTokenBudget:
+      aiSettings.rag_context_tokens || RAG_CONTEXT_DEFAULTS.CONTEXT_TOKEN_BUDGET,
+    baseInputTokens,
+    targetTotalInputTokens: RAG_CONTEXT_DEFAULTS.TARGET_TOTAL_INPUT_TOKENS,
+    hardTotalInputTokens: hardInputBudget
+  }, databaseClient);
+
+  return {
+    ragResult,
+    effectiveMode,
+    reason: ragResult.selected_count > 0 ? 'ready' : 'no_relevant_chunks'
+  };
+}
+
+export async function processInboundAIMessage({
+  sessionId,
+  userId,
+  cleanText,
+  aiSettings,
+  credentials,
+  databaseClient = null,
+  deliverReply = null
+}, dependencyOverrides = {}) {
+  const safeSessionId = requireNonEmptyString(sessionId, 'sessionId');
+  const safeText = requireNonEmptyString(cleanText, 'cleanText');
+  requirePositiveInteger(userId, 'userId');
+  if (!aiSettings || typeof aiSettings !== 'object') {
+    throw createRuntimeError('RAG_RUNTIME_INVALID_INPUT', 'aiSettings wajib diisi.');
+  }
+  if (!credentials?.apiKey || !credentials?.baseUrl) {
+    throw createRuntimeError('RAG_RUNTIME_CREDENTIALS_REQUIRED', 'Kredensial AI tidak tersedia.');
+  }
+  if (deliverReply !== null && typeof deliverReply !== 'function') {
+    throw createRuntimeError('RAG_RUNTIME_INVALID_INPUT', 'deliverReply harus berupa fungsi.');
+  }
+
+  const dependencies = resolveDependencies(dependencyOverrides);
+  const ragEnabled = shouldUseRag(aiSettings);
+  const model = credentials.model || 'gpt-4o-mini';
+  let usageContext = null;
+  let providerResponse = null;
+  let usageRecorded = false;
+  let providerLatencyMs = null;
+  let resolvedProvider = 'unknown';
+  let ragMetadata = {
+    rag_mode: ragEnabled ? String(aiSettings.rag_mode).toLowerCase() : 'off',
+    effective_mode: ragEnabled ? null : 'legacy'
+  };
+
+  try {
+    let messages;
+    if (ragEnabled) {
+      const baseMessages = buildRagProductionMessages({
+        systemInstruction: aiSettings.system_instruction,
+        ragContext: '',
+        userMessage: safeText
+      });
+      const baseInputTokens = dependencies.estimateChatInputTokens(baseMessages);
+      const hardInputBudget = resolveHardInputBudget(aiSettings);
+      if (baseInputTokens > hardInputBudget) {
+        return buildFallbackResult('input_budget_exceeded', {
+          ...ragMetadata,
+          base_input_tokens: baseInputTokens,
+          hard_input_budget_tokens: hardInputBudget
+        });
+      }
+
+      const retrieval = await dependencies.executeRagRetrieval({
+        userId,
+        sessionId: safeSessionId,
+        cleanText: safeText,
+        aiSettings,
+        baseInputTokens,
+        databaseClient
+      }, dependencies);
+      ragMetadata = {
+        ...ragMetadata,
+        effective_mode: retrieval.effectiveMode,
+        retrieval_reason: retrieval.reason
+      };
+      if (retrieval.reason !== 'ready' || !retrieval.ragResult) {
+        return buildFallbackResult(retrieval.reason, ragMetadata);
+      }
+
+      messages = buildRagProductionMessages({
+        systemInstruction: aiSettings.system_instruction,
+        ragContext: retrieval.ragResult.context,
+        userMessage: safeText
+      });
+      const estimatedInputTokens = dependencies.estimateChatInputTokens(messages);
+      if (estimatedInputTokens > hardInputBudget) {
+        return buildFallbackResult('final_input_budget_exceeded', {
+          ...ragMetadata,
+          estimated_total_input_tokens: estimatedInputTokens,
+          hard_input_budget_tokens: hardInputBudget
+        });
+      }
+      ragMetadata = {
+        ...ragMetadata,
+        selected_count: retrieval.ragResult.selected_count,
+        context_tokens: retrieval.ragResult.context_tokens,
+        estimated_total_input_tokens: estimatedInputTokens,
+        hard_input_budget_tokens: hardInputBudget,
+        within_hard_budget: true
+      };
+    } else {
+      const knowledgeBase = await dependencies.resolveKnowledgeBase(aiSettings);
+      messages = buildProductionMessages({
+        systemInstruction: aiSettings.system_instruction,
+        knowledgeBase,
+        userMessage: safeText
+      });
+    }
+
+    const safeBaseUrl = await dependencies.assertSafeOutboundUrl(credentials.baseUrl);
+    resolvedProvider = dependencies.resolveAIProvider(safeBaseUrl);
+    const openai = await dependencies.createChatClient({
+      apiKey: credentials.apiKey,
+      safeBaseUrl
+    });
+    const completion = await dependencies.executeChatCompletion({
+      openai,
+      payload: dependencies.buildChatCompletionPayload({
+        model,
+        messages,
+        maxOutputTokens: aiSettings.max_output_tokens,
+        temperature: resolveChatTemperature('existing')
+      }),
+      requestKind: 'production',
+      userId,
+      sessionId: safeSessionId,
+      provider: resolvedProvider,
+      model,
+      maxAttempts: 2
+    });
+    usageContext = completion.context;
+    providerResponse = completion.response;
+    providerLatencyMs = completion.latencyMs;
+    const reply = String(providerResponse?.choices?.[0]?.message?.content || '').trim();
+
+    if (!reply) {
+      usageRecorded = await dependencies.recordUsage({
+        context: usageContext,
+        userId,
+        sessionId: safeSessionId,
+        provider: resolvedProvider,
+        model,
+        response: providerResponse,
+        deliveryStatus: 'FAILED',
+        latencyMs: providerLatencyMs
+      }, databaseClient);
+      return {
+        status: RAG_RUNTIME_STATUSES.EMPTY_REPLY,
+        reply: null,
+        delivered: false,
+        ragMetadata,
+        usageContext,
+        error: `Model '${model}' mengembalikan respon kosong.`
+      };
+    }
+
+    if (deliverReply) await deliverReply(reply);
+    usageRecorded = await dependencies.recordUsage({
+      context: usageContext,
+      userId,
+      sessionId: safeSessionId,
+      provider: resolvedProvider,
+      model,
+      response: providerResponse,
+      deliveryStatus: deliverReply ? 'SENT' : 'NOT_APPLICABLE',
+      latencyMs: providerLatencyMs
+    }, databaseClient);
+    return {
+      status: RAG_RUNTIME_STATUSES.REPLIED,
+      reply,
+      delivered: Boolean(deliverReply),
+      ragMetadata,
+      usageContext,
+      error: null
+    };
+  } catch (error) {
+    if (usageContext && !usageRecorded) {
+      await dependencies.recordUsage({
+        context: usageContext,
+        userId,
+        sessionId: safeSessionId,
+        provider: resolvedProvider,
+        model,
+        response: providerResponse,
+        error: providerResponse ? null : error,
+        deliveryStatus: providerResponse ? 'UNKNOWN' : 'NOT_APPLICABLE',
+        latencyMs: providerLatencyMs ?? (Date.now() - usageContext.startedAtMs)
+      }, databaseClient);
+    }
+    logError('chatbot_ai_rag_runtime.processInboundAIMessage', error, { sessionId: safeSessionId });
+    return {
+      status: RAG_RUNTIME_STATUSES.ERROR,
+      reply: null,
+      delivered: false,
+      ragMetadata,
+      usageContext,
+      error
+    };
+  }
+}
