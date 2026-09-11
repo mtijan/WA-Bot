@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { dbRun } from '../database.js';
 import { logError } from '../logger.js';
+
+let runtimeDbRunPromise = null;
+async function getRuntimeDbRun() {
+  if (!runtimeDbRunPromise) {
+    runtimeDbRunPromise = import('../database.js').then(({ dbRun }) => dbRun);
+  }
+  return runtimeDbRunPromise;
+}
 
 const REQUEST_KINDS = new Set(['production', 'sandbox', 'test', 'embedding']);
 const OPERATIONS = new Set(['chat', 'query_embedding', 'source_embedding']);
@@ -117,9 +124,10 @@ export function buildAIUsageRecord({
   };
 }
 
-export async function recordChatbotAIUsage(input) {
+export async function recordChatbotAIUsage(input, databaseClient = null) {
   const record = buildAIUsageRecord(input);
-  await dbRun(
+  const runFn = databaseClient?.run ? databaseClient.run.bind(databaseClient) : await getRuntimeDbRun();
+  await runFn(
     `INSERT INTO chatbot_ai_usage (
        user_id, session_id, request_id, attempt_no, request_kind, operation,
        provider, model, provider_response_id, input_tokens, output_tokens,
@@ -153,9 +161,9 @@ export async function recordChatbotAIUsage(input) {
   return record;
 }
 
-export async function recordChatbotAIUsageSafely(input) {
+export async function recordChatbotAIUsageSafely(input, databaseClient = null) {
   try {
-    await recordChatbotAIUsage(input);
+    await recordChatbotAIUsage(input, databaseClient);
     return true;
   } catch (error) {
     logError('recordChatbotAIUsage', error, {

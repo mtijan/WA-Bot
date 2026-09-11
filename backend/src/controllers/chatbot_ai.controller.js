@@ -24,6 +24,12 @@ import {
   syncManualKnowledgeSourceSafely,
   reindexSessionKnowledgeSources
 } from '../services/chatbot_ai_rag_index.service.js';
+import {
+  getTenantEmbeddingProfile,
+  upsertTenantEmbeddingProfile,
+  testEmbeddingCapability,
+  EMBEDDING_CAPABILITY_STATUSES
+} from '../services/chatbot_ai_embedding.service.js';
 
 export const maskAISettings = (settings) => ({
   ...settings,
@@ -594,6 +600,126 @@ export const reindexAISession = async (req, res) => {
     }
     logError('reindexAISession', error, { sessionId, body: req.body });
     return sendError(res, 500, 'REINDEX_AI_ERROR', 'Gagal memproses permintaan reindex.');
+  }
+};
+
+// ==========================================
+// RAG Embedding Profile & Capability Handlers
+// ==========================================
+
+export const getEmbeddingProfile = async (req, res) => {
+  try {
+    const profile = await getTenantEmbeddingProfile(req.auth.userId, req.dbClient || null);
+    if (!profile) {
+      return sendSuccess(res, {
+        id: null,
+        user_id: req.auth.userId,
+        credential_id: null,
+        model: 'text-embedding-3-small',
+        dimensions: 1536,
+        config_revision: 1,
+        config_hash: '',
+        capability_status: 'UNKNOWN',
+        credential_name: null,
+        base_url: null,
+        credential_is_active: null
+      });
+    }
+    return sendSuccess(res, profile);
+  } catch (error) {
+    logError('getEmbeddingProfile', error, { userId: req.auth.userId });
+    return sendError(res, 500, 'GET_EMBEDDING_PROFILE_ERROR', 'Gagal memuat profil embedding.');
+  }
+};
+
+export const saveEmbeddingProfile = async (req, res) => {
+  const { credential_id, model, dimensions, test_capability } = req.body || {};
+  const userId = req.auth.userId;
+  const getFn = req.dbClient?.get ? req.dbClient.get.bind(req.dbClient) : dbGet;
+
+  try {
+    let capabilityStatus = EMBEDDING_CAPABILITY_STATUSES.UNKNOWN;
+
+    if (test_capability && credential_id) {
+      const cred = await getFn(
+        'SELECT base_url, api_key FROM chatbot_ai_credentials WHERE id = ? AND user_id = ?',
+        [credential_id, userId]
+      );
+      if (cred && cred.api_key) {
+        const apiKey = revealSecret(cred.api_key);
+        const capTest = await testEmbeddingCapability({
+          baseUrl: cred.base_url,
+          apiKey,
+          model: model || 'text-embedding-3-small',
+          dimensions: dimensions || 1536
+        });
+        capabilityStatus = capTest.capabilityStatus;
+      }
+    }
+
+    const saved = await upsertTenantEmbeddingProfile({
+      userId,
+      credentialId: credential_id || null,
+      model: model || 'text-embedding-3-small',
+      dimensions: dimensions || 1536,
+      capabilityStatus
+    }, req.dbClient || null);
+
+    return sendSuccess(res, saved, 200, {
+      message: 'Profil embedding berhasil disimpan.'
+    });
+  } catch (error) {
+    if (error?.code === 'EMBEDDING_CREDENTIAL_NOT_FOUND' || error?.code === 'EMBEDDING_INVALID_INPUT') {
+      return sendError(res, 400, error.code, error.message);
+    }
+    logError('saveEmbeddingProfile', error, { userId, body: req.body });
+    return sendError(res, 500, 'SAVE_EMBEDDING_PROFILE_ERROR', 'Gagal menyimpan profil embedding.');
+  }
+};
+
+export const testEmbeddingProfileCapability = async (req, res) => {
+  const { credential_id, base_url, api_key, model, dimensions } = req.body || {};
+  const userId = req.auth.userId;
+  const getFn = req.dbClient?.get ? req.dbClient.get.bind(req.dbClient) : dbGet;
+
+  let resolvedKey = api_key;
+  let resolvedBaseUrl = base_url;
+
+  try {
+    if (!resolvedKey && credential_id) {
+      const cred = await getFn(
+        'SELECT base_url, api_key FROM chatbot_ai_credentials WHERE id = ? AND user_id = ?',
+        [credential_id, userId]
+      );
+      if (!cred) {
+        return sendError(res, 404, 'CREDENTIAL_NOT_FOUND', 'Kredensial tidak ditemukan atau bukan milik tenant.');
+      }
+      if (cred.api_key) {
+        resolvedKey = revealSecret(cred.api_key);
+      }
+      if (!resolvedBaseUrl) {
+        resolvedBaseUrl = cred.base_url;
+      }
+    }
+
+    if (!resolvedKey) {
+      return sendError(res, 400, 'API_KEY_REQUIRED', 'API Key wajib disediakan atau dipilih via kredensial.');
+    }
+
+    const result = await testEmbeddingCapability({
+      baseUrl: resolvedBaseUrl,
+      apiKey: resolvedKey,
+      model: model || 'text-embedding-3-small',
+      dimensions: dimensions || 1536
+    });
+
+    return sendSuccess(res, result);
+  } catch (error) {
+    if (error?.code === 'UNSAFE_OUTBOUND_URL') {
+      return sendError(res, 400, error.code, error.message);
+    }
+    logError('testEmbeddingProfileCapability', error, { userId, body: req.body });
+    return sendError(res, 500, 'TEST_EMBEDDING_ERROR', 'Uji capability embedding gagal: ' + error.message);
   }
 };
 
