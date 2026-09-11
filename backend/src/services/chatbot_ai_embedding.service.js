@@ -41,6 +41,64 @@ export const EMBEDDING_CAPABILITY_STATUSES = Object.freeze({
   FAILED: 'FAILED'
 });
 
+export const EMBEDDING_BOUNDS = Object.freeze({
+  MIN_TIMEOUT_MS: 500,
+  MAX_TIMEOUT_MS: 60000,
+  MIN_BATCH_SIZE: 1,
+  MAX_BATCH_SIZE: 64,
+  MIN_ATTEMPTS: 1,
+  MAX_ATTEMPTS: 3,
+  MIN_RETRY_DELAY_MS: 0,
+  MAX_RETRY_DELAY_MS: 5000
+});
+
+export function clampEmbeddingOptions({
+  timeoutMs = EMBEDDING_DEFAULTS.TIMEOUT_MS,
+  maxBatchSize = EMBEDDING_DEFAULTS.MAX_BATCH_SIZE,
+  maxAttempts = EMBEDDING_DEFAULTS.MAX_ATTEMPTS,
+  retryDelayMs = EMBEDDING_DEFAULTS.RETRY_DELAY_MS
+} = {}) {
+  const parsedTimeout = timeoutMs !== undefined && timeoutMs !== null ? Number(timeoutMs) : NaN;
+  const parsedBatchSize = maxBatchSize !== undefined && maxBatchSize !== null ? Number(maxBatchSize) : NaN;
+  const parsedAttempts = maxAttempts !== undefined && maxAttempts !== null ? Number(maxAttempts) : NaN;
+  const parsedDelay = retryDelayMs !== undefined && retryDelayMs !== null ? Number(retryDelayMs) : NaN;
+
+  const safeTimeout = Math.max(
+    EMBEDDING_BOUNDS.MIN_TIMEOUT_MS,
+    Math.min(
+      EMBEDDING_BOUNDS.MAX_TIMEOUT_MS,
+      Number.isFinite(parsedTimeout) ? parsedTimeout : EMBEDDING_DEFAULTS.TIMEOUT_MS
+    )
+  );
+  const safeBatchSize = Math.max(
+    EMBEDDING_BOUNDS.MIN_BATCH_SIZE,
+    Math.min(
+      EMBEDDING_BOUNDS.MAX_BATCH_SIZE,
+      Number.isFinite(parsedBatchSize) ? parsedBatchSize : EMBEDDING_DEFAULTS.MAX_BATCH_SIZE
+    )
+  );
+  const safeAttempts = Math.max(
+    EMBEDDING_BOUNDS.MIN_ATTEMPTS,
+    Math.min(
+      EMBEDDING_BOUNDS.MAX_ATTEMPTS,
+      Number.isFinite(parsedAttempts) ? parsedAttempts : EMBEDDING_DEFAULTS.MAX_ATTEMPTS
+    )
+  );
+  const safeDelay = Math.max(
+    EMBEDDING_BOUNDS.MIN_RETRY_DELAY_MS,
+    Math.min(
+      EMBEDDING_BOUNDS.MAX_RETRY_DELAY_MS,
+      Number.isFinite(parsedDelay) ? parsedDelay : EMBEDDING_DEFAULTS.RETRY_DELAY_MS
+    )
+  );
+  return {
+    timeoutMs: safeTimeout,
+    maxBatchSize: safeBatchSize,
+    maxAttempts: safeAttempts,
+    retryDelayMs: safeDelay
+  };
+}
+
 export function createEmbeddingError(code, message, details = {}) {
   const error = new Error(message);
   error.code = code;
@@ -191,6 +249,75 @@ export function cosineSimilarity(vecA, vecB) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+export function rankChunksByCosineSimilarity({
+  queryVector,
+  chunks = [],
+  topK = 5,
+  minSimilarity = null,
+  expectedDimensions = null
+}) {
+  if (!queryVector || (!Array.isArray(queryVector) && !(queryVector instanceof Float32Array))) {
+    throw createEmbeddingError(
+      'EMBEDDING_INVALID_VECTOR',
+      'Query vector harus berupa Array atau Float32Array.'
+    );
+  }
+  const qVec = queryVector instanceof Float32Array ? queryVector : new Float32Array(queryVector);
+  const qDim = qVec.length;
+  if (expectedDimensions !== null && Number(expectedDimensions) !== qDim) {
+    throw createEmbeddingError(
+      'EMBEDDING_DIMENSION_MISMATCH',
+      `Dimensi query vector (${qDim}) tidak sesuai expectedDimensions (${expectedDimensions}).`,
+      { expected: Number(expectedDimensions), actual: qDim }
+    );
+  }
+
+  if (!Array.isArray(chunks) || chunks.length === 0) {
+    return [];
+  }
+
+  const scored = [];
+  for (let i = 0; i < chunks.length; i += 1) {
+    const chunk = chunks[i];
+    let chunkVec;
+    if (chunk.embedding instanceof Float32Array) {
+      chunkVec = chunk.embedding;
+    } else if (Array.isArray(chunk.embedding)) {
+      chunkVec = new Float32Array(chunk.embedding);
+    } else if (Buffer.isBuffer(chunk.embedding)) {
+      chunkVec = deserializeEmbeddingVector(chunk.embedding, qDim);
+    } else {
+      continue;
+    }
+
+    if (chunkVec.length !== qDim) {
+      throw createEmbeddingError(
+        'EMBEDDING_DIMENSION_MISMATCH',
+        `Dimensi chunk vector pada item ${i} (${chunkVec.length}) tidak cocok dengan query vector (${qDim}).`,
+        { expected: qDim, actual: chunkVec.length }
+      );
+    }
+
+    const similarity = cosineSimilarity(qVec, chunkVec);
+    if (minSimilarity !== null && similarity < Number(minSimilarity)) {
+      continue;
+    }
+
+    scored.push({
+      ...chunk,
+      similarity
+    });
+  }
+
+  scored.sort((a, b) => {
+    if (b.similarity !== a.similarity) return b.similarity - a.similarity;
+    return (a.chunk_index ?? 0) - (b.chunk_index ?? 0);
+  });
+
+  const safeTopK = Math.max(1, Number(topK) || 5);
+  return scored.slice(0, safeTopK);
+}
+
 // ============================================================================
 // Profile & Config Hashing
 // ============================================================================
@@ -257,79 +384,53 @@ export async function upsertTenantEmbeddingProfile({
     `SELECT id, user_id, config_revision, config_hash FROM rag_embedding_profiles WHERE user_id = ?`,
     [userId]
   );
+  const oldHash = existing?.config_hash || null;
+  const configChanged = !existing || oldHash !== newConfigHash;
 
-  if (existing) {
-    const configChanged = existing.config_hash !== newConfigHash;
-    const nextRevision = configChanged ? Number(existing.config_revision) + 1 : Number(existing.config_revision);
-
-    await client.run(
-      `UPDATE rag_embedding_profiles
-       SET credential_id = ?,
-           model = ?,
-           dimensions = ?,
-           config_revision = ?,
-           config_hash = ?,
-           capability_status = ?,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = ? AND user_id = ?`,
-      [
-        credentialId,
-        safeModel,
-        safeDimensions,
-        nextRevision,
-        newConfigHash,
-        capabilityStatus,
-        existing.id,
-        userId
-      ]
-    );
-
-    if (configChanged) {
-      // Mark all tenant sources as needing re-embedding
-      await client.run(
-        `UPDATE rag_sources
-         SET embedding_status = 'PENDING',
-             updated_at = CURRENT_TIMESTAMP
-         WHERE user_id = ? AND is_active = 1`,
-        [userId]
-      );
-      // Invalidate cache for tenant
-      await client.run(
-        `DELETE FROM rag_response_cache WHERE user_id = ?`,
-        [userId]
-      );
-    }
-
-    return {
-      id: existing.id,
-      user_id: userId,
-      credential_id: credentialId,
-      model: safeModel,
-      dimensions: safeDimensions,
-      config_revision: nextRevision,
-      config_hash: newConfigHash,
-      capability_status: capabilityStatus,
-      configChanged
-    };
-  }
-
-  const result = await client.run(
+  await client.run(
     `INSERT INTO rag_embedding_profiles (
-       user_id, credential_id, model, dimensions, config_revision, config_hash, capability_status
-     ) VALUES (?, ?, ?, ?, 1, ?, ?)`,
+       user_id, credential_id, model, dimensions, config_revision, config_hash, capability_status, updated_at
+     ) VALUES (?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(user_id) DO UPDATE SET
+       credential_id = excluded.credential_id,
+       model = excluded.model,
+       dimensions = excluded.dimensions,
+       config_revision = CASE
+         WHEN rag_embedding_profiles.config_hash != excluded.config_hash
+         THEN rag_embedding_profiles.config_revision + 1
+         ELSE rag_embedding_profiles.config_revision
+       END,
+       config_hash = excluded.config_hash,
+       capability_status = excluded.capability_status,
+       updated_at = CURRENT_TIMESTAMP`,
     [userId, credentialId, safeModel, safeDimensions, newConfigHash, capabilityStatus]
   );
 
+  const profile = await client.get(
+    `SELECT id, user_id, credential_id, model, dimensions, config_revision, config_hash, capability_status
+     FROM rag_embedding_profiles WHERE user_id = ?`,
+    [userId]
+  );
+
+  if (configChanged) {
+    // Mark all tenant sources as needing re-embedding
+    await client.run(
+      `UPDATE rag_sources
+       SET embedding_status = 'PENDING',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = ? AND is_active = 1`,
+      [userId]
+    );
+    // Invalidate cache for tenant
+    await client.run(
+      `DELETE FROM rag_response_cache WHERE user_id = ?`,
+      [userId]
+    );
+  }
+
   return {
-    id: result.id,
-    user_id: userId,
-    credential_id: credentialId,
-    model: safeModel,
-    dimensions: safeDimensions,
-    config_revision: 1,
-    config_hash: newConfigHash,
-    capability_status: capabilityStatus,
-    configChanged: true
+    ...profile,
+    configChanged
   };
 }
 
@@ -490,21 +591,27 @@ export async function generateBatchChunkEmbeddings({
   requirePositiveInteger(userId, 'userId');
   const safeModel = requireNonEmptyString(model, 'model');
   const safeDimensions = requirePositiveInteger(Number(dimensions), 'dimensions');
+  const {
+    timeoutMs: safeTimeoutMs,
+    maxBatchSize: safeBatchSize,
+    maxAttempts: safeMaxAttempts,
+    retryDelayMs: safeRetryDelayMs
+  } = clampEmbeddingOptions({ timeoutMs, maxBatchSize, maxAttempts, retryDelayMs });
 
   const { openai, safeBaseUrl, provider } = openaiClient
     ? { openai: openaiClient, safeBaseUrl: baseUrl || 'https://ai.sumopod.com/v1', provider: 'test-provider' }
     : await createSafeEmbeddingOpenAIClient({
         baseUrl,
         apiKey,
-        timeoutMs
+        timeoutMs: safeTimeoutMs
       });
 
   const batchResults = [];
   let aggregateTokens = 0;
   const startedAt = Date.now();
 
-  for (let offset = 0; offset < chunks.length; offset += maxBatchSize) {
-    const slice = chunks.slice(offset, offset + maxBatchSize);
+  for (let offset = 0; offset < chunks.length; offset += safeBatchSize) {
+    const slice = chunks.slice(offset, offset + safeBatchSize);
     const inputs = slice.map((c) => String(c.chunk_text || ''));
 
     let context = createAIRequestContext({
@@ -515,7 +622,7 @@ export async function generateBatchChunkEmbeddings({
     let succeeded = false;
     let lastError = null;
 
-    while (context.attemptNo <= maxAttempts && !succeeded) {
+    while (context.attemptNo <= safeMaxAttempts && !succeeded) {
       const attemptStart = Date.now();
       try {
         const response = await openai.embeddings.create({
@@ -577,10 +684,10 @@ export async function generateBatchChunkEmbeddings({
           latencyMs: attemptLatency
         }, databaseClient);
 
-        if (context.attemptNo >= maxAttempts || !isRetryableEmbeddingError(err)) {
+        if (context.attemptNo >= safeMaxAttempts || !isRetryableEmbeddingError(err)) {
           break;
         }
-        if (retryDelayMs > 0) await sleep(retryDelayMs);
+        if (safeRetryDelayMs > 0) await sleep(safeRetryDelayMs);
         context = createAIRetryContext(context);
       }
     }
@@ -622,13 +729,18 @@ export async function generateQueryEmbedding({
   requirePositiveInteger(userId, 'userId');
   const safeModel = requireNonEmptyString(model, 'model');
   const safeDimensions = requirePositiveInteger(Number(dimensions), 'dimensions');
+  const {
+    timeoutMs: safeTimeoutMs,
+    maxAttempts: safeMaxAttempts,
+    retryDelayMs: safeRetryDelayMs
+  } = clampEmbeddingOptions({ timeoutMs, maxAttempts, retryDelayMs });
 
   const { openai, safeBaseUrl, provider } = openaiClient
     ? { openai: openaiClient, safeBaseUrl: baseUrl || 'https://ai.sumopod.com/v1', provider: 'test-provider' }
     : await createSafeEmbeddingOpenAIClient({
         baseUrl,
         apiKey,
-        timeoutMs
+        timeoutMs: safeTimeoutMs
       });
 
   let context = createAIRequestContext({
@@ -636,7 +748,7 @@ export async function generateQueryEmbedding({
     operation: 'query_embedding'
   });
 
-  while (context.attemptNo <= maxAttempts) {
+  while (context.attemptNo <= safeMaxAttempts) {
     const startedAt = Date.now();
     try {
       const response = await openai.embeddings.create({
@@ -686,10 +798,10 @@ export async function generateQueryEmbedding({
         latencyMs
       }, databaseClient);
 
-      if (context.attemptNo >= maxAttempts || !isRetryableEmbeddingError(err)) {
+      if (context.attemptNo >= safeMaxAttempts || !isRetryableEmbeddingError(err)) {
         throw err;
       }
-      if (retryDelayMs > 0) await sleep(retryDelayMs);
+      if (safeRetryDelayMs > 0) await sleep(safeRetryDelayMs);
       context = createAIRetryContext(context);
     }
   }
@@ -772,7 +884,45 @@ export function resolveEffectiveRagRetrievalMode({ ragMode, profile }) {
     if (!profile || profile.capability_status !== EMBEDDING_CAPABILITY_STATUSES.SUPPORTED) {
       return 'fts'; // Fallback to FTS-only if embedding is unavailable
     }
+    if (profile.credential_id === null && !profile.base_url) {
+      return 'fts';
+    }
     return 'hybrid';
   }
   return 'off';
+}
+
+export async function executeSemanticRetrievalWithFtsFallback({
+  semanticRetrievalFn,
+  ftsFallbackFn,
+  logContext = {}
+}) {
+  if (typeof semanticRetrievalFn !== 'function') {
+    throw createEmbeddingError('INVALID_INPUT', 'semanticRetrievalFn harus berupa fungsi async.');
+  }
+  if (typeof ftsFallbackFn !== 'function') {
+    throw createEmbeddingError('INVALID_INPUT', 'ftsFallbackFn harus berupa fungsi async.');
+  }
+
+  try {
+    const semanticResult = await semanticRetrievalFn();
+    const items = Array.isArray(semanticResult) ? semanticResult : (semanticResult?.results || []);
+    return {
+      results: items,
+      retrieval_mode: 'semantic',
+      fallback: false,
+      total_candidates: items.length
+    };
+  } catch (error) {
+    logError('executeSemanticRetrievalWithFtsFallback: semantic failed, falling back to FTS', error, logContext);
+    const ftsResult = await ftsFallbackFn();
+    const items = Array.isArray(ftsResult) ? ftsResult : (ftsResult?.results || []);
+    return {
+      results: items,
+      retrieval_mode: 'fts_fallback',
+      fallback: true,
+      fallback_reason: error?.code || error?.message || 'EMBEDDING_UNAVAILABLE',
+      total_candidates: items.length
+    };
+  }
 }
