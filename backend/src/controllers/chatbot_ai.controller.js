@@ -20,6 +20,7 @@ import {
   resolveAIProvider
 } from '../services/chatbot_ai_usage.service.js';
 import { executeInstrumentedChatCompletion } from '../services/chatbot_ai_provider.service.js';
+import { syncManualKnowledgeSourceSafely } from '../services/chatbot_ai_rag_index.service.js';
 
 export const maskAISettings = (settings) => ({
   ...settings,
@@ -319,6 +320,14 @@ export const saveAISettings = async (req, res) => {
           values
         );
       }
+
+      if (req.body.knowledge_base !== undefined) {
+        await syncManualKnowledgeSourceSafely({
+          userId: req.auth.userId,
+          sessionId: session_id,
+          knowledgeBase: req.body.knowledge_base
+        });
+      }
     } else {
       const is_active = req.body.is_active !== undefined ? (req.body.is_active ? 1 : 0) : 0;
       const base_url = req.body.base_url || 'https://ai.sumopod.com/v1';
@@ -353,6 +362,12 @@ export const saveAISettings = async (req, res) => {
           max_output_tokens
         ]
       );
+
+      await syncManualKnowledgeSourceSafely({
+        userId: req.auth.userId,
+        sessionId: session_id,
+        knowledgeBase: knowledge_base
+      });
     }
     return sendSuccess(res, null, 200, { message: 'Pengaturan Chatbot AI berhasil disimpan.' });
   } catch (error) {

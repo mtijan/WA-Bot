@@ -214,7 +214,7 @@ npm run logs:prune:apply
 
 ## Indeks Dokumentasi Lengkap
 
-Perencanaan terbaru mencakup dua workstream yang tetap **PLANNED**: Chatbot AI Token Optimization / Hybrid RAG (2026-09-05) dan WhatsApp Socket Lifecycle & AI Delivery Race Hardening (2026-09-07). Workstream socket menutup risiko balasan memakai socket lama setelah reconnect, timer reconnect tumpang tindih, dan klasifikasi salah antara error provider AI dengan transport WhatsApp. Belum ada implementasi/deploy runtime dari revisi dokumentasi ini.
+Chatbot AI Token Optimization / Hybrid RAG berstatus **IN_PROGRESS — LOCAL**: migrations 024–026, default/maksimum output 2.048, prompt/usage/budget/retry, schema RAG + FTS, extractor/chunker, durable enqueue, gated polling, state job eksplisit, bounded index retry, stale-revision guard, publikasi lexical atomik, serta trigger KB manual otomatis telah diimplementasikan lokal. Publisher mengganti chunks/FTS dan `indexed_revision` dalam satu transaksi, memverifikasi setiap row lewat FTS `MATCH`, serta `syncManualKnowledgeSource` menyinkronkan sumber/mapping dan mengantrekan job revision saat KB manual disimpan/diperbarui. Empat puluh satu dari 128 item DONE; RAG-0011 tetap parsial. Focused RAG 81/81 dan backend 208/208 lulus pada 2026-09-11. Poller dan budget moneter default nonaktif; database runtime belum dimigrasi, claim/processor/trigger Flow/retrieval belum dibuat, dan deploy/UAT belum dilakukan.
 
 - [Rencana optimasi dan baseline biaya](docs/CHATBOT_AI_TOKEN_OPTIMIZATION.md)
 - [Desain detail FR/RTM, ERD, diagram dan API target](docs/CHATBOT_AI_RAG_DESIGN.md)
