@@ -20,7 +20,10 @@ import {
   resolveAIProvider
 } from '../services/chatbot_ai_usage.service.js';
 import { executeInstrumentedChatCompletion } from '../services/chatbot_ai_provider.service.js';
-import { syncManualKnowledgeSourceSafely } from '../services/chatbot_ai_rag_index.service.js';
+import {
+  syncManualKnowledgeSourceSafely,
+  reindexSessionKnowledgeSources
+} from '../services/chatbot_ai_rag_index.service.js';
 
 export const maskAISettings = (settings) => ({
   ...settings,
@@ -559,3 +562,38 @@ export const testAISettings = async (req, res) => {
     return sendError(res, 500, 'TEST_AI_SETTINGS_ERROR', 'Uji coba koneksi gagal: ' + error.message);
   }
 };
+
+export const reindexAISession = async (req, res) => {
+  const { sessionId } = req.params;
+  const { source_id, force } = req.body || {};
+  const userId = req.auth.userId;
+
+  try {
+    const result = await reindexSessionKnowledgeSources({
+      sessionId,
+      userId,
+      sourceId: source_id,
+      force: Boolean(force)
+    }, req.dbClient || null);
+
+    return sendSuccess(res, result, 202, {
+      message: 'Permintaan reindex berhasil diterima.'
+    });
+  } catch (error) {
+    if (error?.code === 'SESSION_NOT_FOUND') {
+      return sendError(res, 404, 'SESSION_NOT_FOUND', error.message || 'Sesi tidak ditemukan.');
+    }
+    if (error?.code === 'RAG_SOURCE_NOT_FOUND') {
+      return sendError(res, 404, 'RAG_SOURCE_NOT_FOUND', error.message || 'Sumber RAG tidak ditemukan.');
+    }
+    if (error?.code === 'FORBIDDEN_ACCESS') {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', error.message || 'Anda tidak memiliki akses ke sumber ini.');
+    }
+    if (error?.code === 'RAG_SOURCE_NOT_MAPPED' || error?.code === 'RAG_SOURCE_INACTIVE' || error?.code === 'RAG_INDEX_INVALID_INPUT') {
+      return sendError(res, 400, error.code, error.message);
+    }
+    logError('reindexAISession', error, { sessionId, body: req.body });
+    return sendError(res, 500, 'REINDEX_AI_ERROR', 'Gagal memproses permintaan reindex.');
+  }
+};
+
