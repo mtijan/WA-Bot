@@ -8,7 +8,10 @@ import {
   updateCredential,
   deleteCredential,
   toggleCredentialActive,
-  reindexAISession
+  reindexAISession,
+  getEmbeddingProfile,
+  saveEmbeddingProfile,
+  testEmbeddingProfileCapability
 } from '../controllers/chatbot_ai.controller.js';
 import { validateBody } from '../utils/validator.js';
 import { validateMaxOutputTokens } from '../services/chatbot_ai_runtime.service.js';
@@ -41,6 +44,20 @@ router.delete('/credentials/:id', deleteCredential);
 router.patch('/credentials/:id/toggle', toggleCredentialActive);
 
 // RAG routes
+router.get('/rag/embedding-profile', getEmbeddingProfile);
+router.put('/rag/embedding-profile', validateBody({
+  credential_id: { type: 'number' },
+  model: { type: 'string', min: 1, max: 100 },
+  dimensions: { type: 'number' },
+  test_capability: { type: 'boolean' }
+}), saveEmbeddingProfile);
+router.post('/rag/embedding-profile/test', validateBody({
+  credential_id: { type: 'number' },
+  base_url: { type: 'string' },
+  api_key: { type: 'string' },
+  model: { type: 'string' },
+  dimensions: { type: 'number' }
+}), testEmbeddingProfileCapability);
 router.post('/rag/:sessionId/reindex', validateBody({
   source_id: { type: 'number' },
   force: { type: 'boolean' }
