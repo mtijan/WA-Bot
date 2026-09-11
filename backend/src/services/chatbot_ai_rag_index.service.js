@@ -1,5 +1,9 @@
 import sqlite3 from 'sqlite3';
 import {
+  extractManualKnowledgeSource,
+  resolveRagSourceRevision
+} from './chatbot_ai_rag_extractor.service.js';
+import {
   assertRagIndexJobTransition,
   RAG_EMBEDDING_STATES,
   RAG_INDEX_JOB_STATES
@@ -558,12 +562,189 @@ export async function publishRagLexicalIndexRevision({
       }
     }
 
-    return {
-      source_id: context.sourceId,
-      source_revision: context.requestedRevision,
-      chunk_count: preparedChunks.length,
-      lexical_status: 'READY',
-      embedding_status: nextEmbeddingStatus
-    };
+      return {
+        source_id: context.sourceId,
+        source_revision: context.requestedRevision,
+        chunk_count: preparedChunks.length,
+        lexical_status: 'READY',
+        embedding_status: nextEmbeddingStatus
+      };
+    });
+  }
+
+export async function syncManualKnowledgeSource({
+  userId,
+  sessionId,
+  knowledgeBase = ''
+}, databaseClient = null) {
+  requirePositiveInteger(userId, 'userId');
+  const safeSessionId = String(sessionId || '').trim();
+  if (!safeSessionId) {
+    throw createRagIndexError('RAG_INDEX_INVALID_INPUT', 'sessionId wajib diisi.');
+  }
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  const session = await client.get(
+    `SELECT session_id, user_id FROM sessions WHERE session_id = ? AND user_id = ?`,
+    [safeSessionId, userId]
+  );
+  if (!session) {
+    throw createRagIndexError('RAG_SESSION_NOT_FOUND', 'Sesi tidak ditemukan untuk pemilik ini.');
+  }
+
+  const extracted = extractManualKnowledgeSource({
+    userId,
+    sessionId: safeSessionId,
+    knowledgeBase
   });
+
+  const isActive = extracted.documents.length > 0 ? 1 : 0;
+
+  const existing = await client.get(
+    `SELECT id, user_id, current_revision, indexed_revision, content_hash,
+            lexical_status, embedding_status, is_active
+     FROM rag_sources
+     WHERE user_id = ?
+       AND manual_session_id = ?
+       AND source_type = 'manual'`,
+    [userId, safeSessionId]
+  );
+
+  if (!existing) {
+    const insertResult = await client.run(
+      `INSERT INTO rag_sources (
+         user_id, source_type, flow_id, manual_session_id, content_hash,
+         current_revision, indexed_revision, lexical_status, embedding_status, is_active
+       ) VALUES (?, 'manual', NULL, ?, ?, 1, 0, 'PENDING', 'DISABLED', ?)`,
+      [userId, safeSessionId, extracted.contentHash, isActive]
+    );
+
+    const sourceId = insertResult?.id || (await client.get(
+      `SELECT id FROM rag_sources WHERE user_id = ? AND manual_session_id = ?`,
+      [userId, safeSessionId]
+    ))?.id;
+
+    await client.run(
+      `INSERT OR IGNORE INTO rag_session_sources (session_id, source_id, user_id)
+       VALUES (?, ?, ?)`,
+      [safeSessionId, sourceId, userId]
+    );
+
+    let job = null;
+    if (isActive === 1) {
+      job = await enqueueRagIndexJob({
+        sourceId,
+        userId,
+        requestedRevision: 1,
+        embeddingConfigHash: ''
+      }, client);
+    }
+
+    return {
+      sourceId,
+      revision: 1,
+      action: 'created',
+      isActive: isActive === 1,
+      enqueued: Boolean(job && !job.idempotent),
+      job
+    };
+  }
+
+  const sourceId = existing.id;
+  const contentChanged = extracted.contentHash !== existing.content_hash;
+
+  if (contentChanged) {
+    const nextRevision = resolveRagSourceRevision({
+      previousContentHash: existing.content_hash,
+      previousRevision: existing.current_revision,
+      contentHash: extracted.contentHash
+    });
+
+    await client.run(
+      `UPDATE rag_sources
+       SET content_hash = ?,
+           current_revision = ?,
+           lexical_status = 'PENDING',
+           is_active = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`,
+      [extracted.contentHash, nextRevision, isActive, sourceId, userId]
+    );
+
+    await client.run(
+      `INSERT OR IGNORE INTO rag_session_sources (session_id, source_id, user_id)
+       VALUES (?, ?, ?)`,
+      [safeSessionId, sourceId, userId]
+    );
+
+    let job = null;
+    if (isActive === 1) {
+      job = await enqueueRagIndexJob({
+        sourceId,
+        userId,
+        requestedRevision: nextRevision,
+        embeddingConfigHash: ''
+      }, client);
+    }
+
+    return {
+      sourceId,
+      revision: nextRevision,
+      action: 'updated',
+      isActive: isActive === 1,
+      enqueued: Boolean(job && !job.idempotent),
+      job
+    };
+  }
+
+  const activeChanged = Number(existing.is_active) !== isActive;
+  if (activeChanged) {
+    await client.run(
+      `UPDATE rag_sources
+       SET is_active = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`,
+      [isActive, sourceId, userId]
+    );
+  }
+
+  await client.run(
+    `INSERT OR IGNORE INTO rag_session_sources (session_id, source_id, user_id)
+     VALUES (?, ?, ?)`,
+    [safeSessionId, sourceId, userId]
+  );
+
+  let job = null;
+  if (isActive === 1 && (existing.indexed_revision < existing.current_revision || existing.lexical_status !== 'READY')) {
+    job = await enqueueRagIndexJob({
+      sourceId,
+      userId,
+      requestedRevision: existing.current_revision,
+      embeddingConfigHash: ''
+    }, client);
+  }
+
+  return {
+    sourceId,
+    revision: existing.current_revision,
+    action: activeChanged ? 'status_updated' : 'noop',
+    isActive: isActive === 1,
+    enqueued: Boolean(job && !job.idempotent),
+    job
+  };
 }
+
+export async function syncManualKnowledgeSourceSafely(input, databaseClient = null) {
+  try {
+    return await syncManualKnowledgeSource(input, databaseClient);
+  } catch (error) {
+    try {
+      const { logger } = await import('../logger.js');
+      logger?.error?.({ err: error, input: { userId: input?.userId, sessionId: input?.sessionId } }, 'syncManualKnowledgeSourceSafely failed');
+    } catch {
+      // logger unavailable
+    }
+    return null;
+  }
+}
+

@@ -97,6 +97,7 @@ test('RAG worker SQL returns only due jobs for active current sources', async (t
   const db = new sqlite3.Database(':memory:');
   t.after(() => close(db));
   await runMigrations(db, { logger: { log() {} }, targetId: '025_chatbot_ai_rag_index' });
+  await run(db, 'DELETE FROM users');
   await run(
     db,
     `INSERT INTO users (id, username, password_hash, display_name, role, is_active)
