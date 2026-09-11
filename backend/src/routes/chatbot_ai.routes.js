@@ -7,7 +7,8 @@ import {
   createCredential,
   updateCredential,
   deleteCredential,
-  toggleCredentialActive
+  toggleCredentialActive,
+  reindexAISession
 } from '../controllers/chatbot_ai.controller.js';
 import { validateBody } from '../utils/validator.js';
 import { validateMaxOutputTokens } from '../services/chatbot_ai_runtime.service.js';
@@ -38,5 +39,11 @@ router.post('/credentials', validateBody({
 router.put('/credentials/:id', updateCredential);
 router.delete('/credentials/:id', deleteCredential);
 router.patch('/credentials/:id/toggle', toggleCredentialActive);
+
+// RAG routes
+router.post('/rag/:sessionId/reindex', validateBody({
+  source_id: { type: 'number' },
+  force: { type: 'boolean' }
+}), reindexAISession);
 
 export default router;

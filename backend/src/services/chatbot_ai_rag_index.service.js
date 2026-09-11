@@ -1053,4 +1053,286 @@ export async function deleteFlowKnowledgeSourceSafely(input, databaseClient = nu
   }
 }
 
+export async function reindexKnowledgeSource({
+  sourceId,
+  userId,
+  force = false,
+  embeddingConfigHash = ''
+}, databaseClient = null) {
+  requirePositiveInteger(sourceId, 'sourceId');
+  requirePositiveInteger(userId, 'userId');
+  const configHash = normalizeEmbeddingConfigHash(embeddingConfigHash);
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  const source = await client.get(
+    `SELECT id, user_id, source_type, flow_id, manual_session_id, content_hash,
+            current_revision, indexed_revision, lexical_status, embedding_status, is_active
+     FROM rag_sources
+     WHERE id = ?`,
+    [sourceId]
+  );
+  if (!source) {
+    throw createRagIndexError('RAG_SOURCE_NOT_FOUND', 'Sumber RAG tidak ditemukan.');
+  }
+  if (Number(source.user_id) !== userId) {
+    throw createRagIndexError('FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sumber RAG ini.');
+  }
+  if (Number(source.is_active) !== 1) {
+    throw createRagIndexError('RAG_SOURCE_INACTIVE', 'Sumber RAG sedang nonaktif.');
+  }
+
+  const existingJob = await client.get(
+    `SELECT id, source_id, user_id, requested_revision, embedding_config_hash,
+            status, attempts, next_attempt_at, created_at, updated_at
+     FROM rag_index_jobs
+     WHERE source_id = ?
+       AND user_id = ?
+       AND requested_revision = ?
+       AND embedding_config_hash = ?`,
+    [sourceId, userId, source.current_revision, configHash]
+  );
+
+  let job = null;
+  let isNewOrRestarted = false;
+
+  if (!existingJob) {
+    job = await enqueueRagIndexJob({
+      sourceId,
+      userId,
+      requestedRevision: source.current_revision,
+      embeddingConfigHash: configHash
+    }, client);
+    isNewOrRestarted = true;
+  } else if (existingJob.status === 'FAILED' || (existingJob.status === 'READY' && force)) {
+    await client.run(
+      `UPDATE rag_index_jobs
+       SET status = 'PENDING',
+           attempts = 0,
+           next_attempt_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [existingJob.id]
+    );
+    await client.run(
+      `UPDATE rag_sources
+       SET lexical_status = 'PENDING',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [sourceId]
+    );
+    const refreshedJob = await client.get(
+      `SELECT id, source_id, user_id, requested_revision, embedding_config_hash,
+              status, attempts, next_attempt_at, created_at, updated_at
+       FROM rag_index_jobs
+       WHERE id = ?`,
+      [existingJob.id]
+    );
+    job = mapIndexJob(refreshedJob, false);
+    isNewOrRestarted = true;
+  } else {
+    // Already PENDING, RUNNING, or READY without force
+    job = mapIndexJob(existingJob, true);
+    isNewOrRestarted = false;
+  }
+
+  return {
+    sourceId: source.id,
+    sourceType: source.source_type,
+    flowId: source.flow_id,
+    manualSessionId: source.manual_session_id,
+    revision: source.current_revision,
+    jobId: job.id,
+    status: job.status,
+    attempts: job.attempts,
+    enqueued: isNewOrRestarted,
+    idempotent: !isNewOrRestarted,
+    job
+  };
+}
+
+export async function reindexSessionKnowledgeSources({
+  sessionId,
+  userId,
+  sourceId = null,
+  force = false,
+  embeddingConfigHash = ''
+}, databaseClient = null) {
+  requirePositiveInteger(userId, 'userId');
+  const safeSessionId = String(sessionId || '').trim();
+  if (!safeSessionId) {
+    throw createRagIndexError('RAG_INDEX_INVALID_INPUT', 'sessionId wajib diisi.');
+  }
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  const session = await client.get(
+    `SELECT session_id, user_id FROM sessions WHERE session_id = ?`,
+    [safeSessionId]
+  );
+  if (!session) {
+    throw createRagIndexError('SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+  }
+  if (Number(session.user_id) !== userId) {
+    throw createRagIndexError('FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
+  }
+
+  if (sourceId !== null && sourceId !== undefined) {
+    requirePositiveInteger(Number(sourceId), 'sourceId');
+    const targetSourceId = Number(sourceId);
+
+    const source = await client.get(
+      `SELECT id, user_id, source_type, flow_id, manual_session_id, is_active
+       FROM rag_sources
+       WHERE id = ?`,
+      [targetSourceId]
+    );
+    if (!source) {
+      throw createRagIndexError('RAG_SOURCE_NOT_FOUND', 'Sumber RAG tidak ditemukan.');
+    }
+    if (Number(source.user_id) !== userId) {
+      throw createRagIndexError('FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sumber RAG ini.');
+    }
+    if (Number(source.is_active) !== 1) {
+      throw createRagIndexError('RAG_SOURCE_INACTIVE', 'Sumber RAG sedang nonaktif.');
+    }
+
+    const isMapped = await client.get(
+      `SELECT 1 FROM rag_session_sources
+       WHERE session_id = ? AND source_id = ? AND user_id = ?
+       LIMIT 1`,
+      [safeSessionId, targetSourceId, userId]
+    );
+    const isManualOwner = source.source_type === 'manual' && source.manual_session_id === safeSessionId;
+    if (!isMapped && !isManualOwner) {
+      throw createRagIndexError('RAG_SOURCE_NOT_MAPPED', 'Sumber RAG tidak terhubung dengan sesi ini.');
+    }
+
+    const reindexResult = await reindexKnowledgeSource({
+      sourceId: targetSourceId,
+      userId,
+      force,
+      embeddingConfigHash
+    }, client);
+
+    const mappedJobItem = {
+      job_id: reindexResult.jobId,
+      source_id: reindexResult.sourceId,
+      source_type: reindexResult.sourceType,
+      flow_id: reindexResult.flowId,
+      manual_session_id: reindexResult.manualSessionId,
+      requested_revision: reindexResult.revision,
+      status: reindexResult.status,
+      attempts: reindexResult.attempts,
+      enqueued: reindexResult.enqueued,
+      idempotent: reindexResult.idempotent
+    };
+
+    return {
+      session_id: safeSessionId,
+      sources_count: 1,
+      jobs: [mappedJobItem],
+      job_id: reindexResult.jobId,
+      status: reindexResult.status
+    };
+  }
+
+  let sessionSources = await client.all(
+    `SELECT DISTINCT s.id, s.user_id, s.source_type, s.flow_id, s.manual_session_id,
+            s.content_hash, s.current_revision, s.indexed_revision,
+            s.lexical_status, s.embedding_status, s.is_active
+     FROM rag_sources s
+     LEFT JOIN rag_session_sources rss ON rss.source_id = s.id AND rss.user_id = s.user_id
+     WHERE s.user_id = ?
+       AND (rss.session_id = ? OR s.manual_session_id = ?)
+       AND s.is_active = 1
+     ORDER BY s.id ASC`,
+    [userId, safeSessionId, safeSessionId]
+  );
+
+  if (!sessionSources || sessionSources.length === 0) {
+    const settings = await client.get(
+      `SELECT knowledge_base FROM chatbot_ai_settings WHERE session_id = ? AND user_id = ?`,
+      [safeSessionId, userId]
+    );
+    if (settings?.knowledge_base && String(settings.knowledge_base).trim().length > 0) {
+      await syncManualKnowledgeSource({
+        sessionId: safeSessionId,
+        userId,
+        knowledgeBase: settings.knowledge_base
+      }, client);
+    }
+
+    sessionSources = await client.all(
+      `SELECT DISTINCT s.id, s.user_id, s.source_type, s.flow_id, s.manual_session_id,
+              s.content_hash, s.current_revision, s.indexed_revision,
+              s.lexical_status, s.embedding_status, s.is_active
+       FROM rag_sources s
+       LEFT JOIN rag_session_sources rss ON rss.source_id = s.id AND rss.user_id = s.user_id
+       WHERE s.user_id = ?
+         AND (rss.session_id = ? OR s.manual_session_id = ?)
+         AND s.is_active = 1
+       ORDER BY s.id ASC`,
+      [userId, safeSessionId, safeSessionId]
+    );
+  }
+
+  if (!sessionSources || sessionSources.length === 0) {
+    return {
+      session_id: safeSessionId,
+      sources_count: 0,
+      jobs: [],
+      job_id: null,
+      status: 'READY'
+    };
+  }
+
+  const jobs = [];
+  for (const src of sessionSources) {
+    const reindexResult = await reindexKnowledgeSource({
+      sourceId: src.id,
+      userId,
+      force,
+      embeddingConfigHash
+    }, client);
+    jobs.push({
+      job_id: reindexResult.jobId,
+      source_id: reindexResult.sourceId,
+      source_type: reindexResult.sourceType,
+      flow_id: reindexResult.flowId,
+      manual_session_id: reindexResult.manualSessionId,
+      requested_revision: reindexResult.revision,
+      status: reindexResult.status,
+      attempts: reindexResult.attempts,
+      enqueued: reindexResult.enqueued,
+      idempotent: reindexResult.idempotent
+    });
+  }
+
+  const hasRunning = jobs.some((j) => j.status === 'RUNNING');
+  const hasPending = jobs.some((j) => j.status === 'PENDING');
+  const overallStatus = hasRunning ? 'RUNNING' : (hasPending ? 'PENDING' : (jobs[0]?.status || 'READY'));
+
+  return {
+    session_id: safeSessionId,
+    sources_count: jobs.length,
+    jobs,
+    job_id: jobs[0]?.job_id || null,
+    status: overallStatus
+  };
+}
+
+export async function reindexSessionKnowledgeSourcesSafely(input, databaseClient = null) {
+  try {
+    return await reindexSessionKnowledgeSources(input, databaseClient);
+  } catch (error) {
+    try {
+      const { logger } = await import('../logger.js');
+      logger?.error?.({ err: error, input: { userId: input?.userId, sessionId: input?.sessionId } }, 'reindexSessionKnowledgeSourcesSafely failed');
+    } catch {
+      // logger unavailable
+    }
+    return null;
+  }
+}
+
+
 
