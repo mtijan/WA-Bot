@@ -6,9 +6,23 @@ import {
 } from './chatbot_ai_rag_extractor.service.js';
 import {
   assertRagIndexJobTransition,
+  claimNextRagIndexJob,
+  claimRagIndexJob,
+  cleanupSupersededRagIndexJobs,
+  completeRagIndexJob,
+  normalizeLeaseOwner,
   RAG_EMBEDDING_STATES,
-  RAG_INDEX_JOB_STATES
+  RAG_INDEX_JOB_STATES,
+  recoverExpiredRagIndexJobLeases
 } from './chatbot_ai_rag_job_state.service.js';
+
+export {
+  claimNextRagIndexJob,
+  claimRagIndexJob,
+  cleanupSupersededRagIndexJobs,
+  completeRagIndexJob,
+  recoverExpiredRagIndexJobLeases
+};
 
 const LEXICAL_PUBLISH_EMBEDDING_STATES = new Set([
   RAG_EMBEDDING_STATES.DISABLED,
@@ -36,17 +50,6 @@ function normalizeEmbeddingConfigHash(value = '') {
     throw createRagIndexError(
       'RAG_INDEX_INVALID_INPUT',
       'embeddingConfigHash harus berupa identifier aman maksimal 128 karakter.'
-    );
-  }
-  return normalized;
-}
-
-function normalizeLeaseOwner(value) {
-  const normalized = String(value || '').trim();
-  if (!normalized || normalized.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(normalized)) {
-    throw createRagIndexError(
-      'RAG_INDEX_INVALID_INPUT',
-      'leaseOwner harus berupa identifier aman maksimal 128 karakter.'
     );
   }
   return normalized;
@@ -442,10 +445,11 @@ export async function runCurrentRagIndexRevisionTransaction({
        WHERE jobs.id = ? AND jobs.user_id = ?`,
       [jobId, userId]
     );
+    const isCompleted = postPublish?.status === RAG_INDEX_JOB_STATES.READY && postPublish?.lease_owner === null;
+    const isRunning = postPublish?.status === RAG_INDEX_JOB_STATES.RUNNING && postPublish?.lease_owner === safeLeaseOwner;
     if (
       !postPublish
-      || postPublish.status !== RAG_INDEX_JOB_STATES.RUNNING
-      || postPublish.lease_owner !== safeLeaseOwner
+      || (!isRunning && !isCompleted)
       || Number(postPublish.is_active) !== 1
       || Number(postPublish.current_revision) !== Number(job.requested_revision)
     ) {
@@ -458,7 +462,7 @@ export async function runCurrentRagIndexRevisionTransaction({
     return {
       executed: true,
       job_id: jobId,
-      status: RAG_INDEX_JOB_STATES.RUNNING,
+      status: postPublish.status,
       result
     };
   });
@@ -470,7 +474,8 @@ export async function publishRagLexicalIndexRevision({
   leaseOwner,
   chunks,
   embeddingStatus = RAG_EMBEDDING_STATES.DISABLED,
-  databasePath = null
+  databasePath = null,
+  finalizeJob = false
 }) {
   const preparedChunks = normalizeLexicalChunks(chunks);
   const nextEmbeddingStatus = normalizeLexicalPublishEmbeddingStatus(embeddingStatus);
@@ -564,15 +569,27 @@ export async function publishRagLexicalIndexRevision({
       }
     }
 
-      return {
-        source_id: context.sourceId,
-        source_revision: context.requestedRevision,
-        chunk_count: preparedChunks.length,
-        lexical_status: 'READY',
-        embedding_status: nextEmbeddingStatus
-      };
-    });
-  }
+    if (finalizeJob) {
+      await completeRagIndexJob({
+        jobId: context.jobId,
+        userId: context.userId,
+        leaseOwner: context.leaseOwner
+      }, client);
+    }
+
+    const output = {
+      source_id: context.sourceId,
+      source_revision: context.requestedRevision,
+      chunk_count: preparedChunks.length,
+      lexical_status: 'READY',
+      embedding_status: nextEmbeddingStatus
+    };
+    if (finalizeJob) {
+      output.job_status = 'READY';
+    }
+    return output;
+  });
+}
 
 export async function syncManualKnowledgeSource({
   userId,
@@ -688,6 +705,12 @@ export async function syncManualKnowledgeSource({
         embeddingConfigHash: ''
       }, client);
     }
+
+    await cleanupSupersededRagIndexJobs({
+      sourceId,
+      userId,
+      currentRevision: nextRevision
+    }, client);
 
     return {
       sourceId,
@@ -926,6 +949,12 @@ export async function syncFlowKnowledgeSource({
         embeddingConfigHash: ''
       }, client);
     }
+
+    await cleanupSupersededRagIndexJobs({
+      sourceId,
+      userId,
+      currentRevision: nextRevision
+    }, client);
 
     return {
       sourceId,

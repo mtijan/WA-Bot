@@ -66,7 +66,9 @@ const JOB_TRANSITIONS = Object.freeze({
     RAG_INDEX_JOB_STATES.PENDING,
     RAG_INDEX_JOB_STATES.SUPERSEDED
   ]),
-  [RAG_INDEX_JOB_STATES.READY]: new Set(),
+  [RAG_INDEX_JOB_STATES.READY]: new Set([
+    RAG_INDEX_JOB_STATES.PENDING
+  ]),
   [RAG_INDEX_JOB_STATES.SUPERSEDED]: new Set()
 });
 
@@ -279,3 +281,393 @@ export async function recordRagIndexJobFailure({
     retry_scheduled: retryScheduled
   };
 }
+
+export function normalizeLeaseOwner(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(normalized)) {
+    throw createRagIndexJobError(
+      'RAG_INDEX_JOB_INVALID_INPUT',
+      'leaseOwner harus berupa identifier aman maksimal 128 karakter.'
+    );
+  }
+  return normalized;
+}
+
+export async function claimRagIndexJob({
+  jobId,
+  userId,
+  leaseOwner,
+  leaseDurationSeconds = 300,
+  now = new Date()
+}, databaseClient = null) {
+  requirePositiveInteger(jobId, 'jobId');
+  requirePositiveInteger(userId, 'userId');
+  requirePositiveInteger(leaseDurationSeconds, 'leaseDurationSeconds');
+  if (leaseDurationSeconds > 86400) {
+    throw createRagIndexJobError(
+      'RAG_INDEX_JOB_INVALID_INPUT',
+      'leaseDurationSeconds melebihi batas aman 24 jam.'
+    );
+  }
+  const safeLeaseOwner = normalizeLeaseOwner(leaseOwner);
+  const nowTimestamp = toSqliteUtcTimestamp(now);
+  const leaseExpiresAt = toSqliteUtcTimestamp(
+    new Date(new Date(now).getTime() + (leaseDurationSeconds * 1000))
+  );
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  const job = await client.get(
+    `SELECT jobs.id, jobs.source_id, jobs.user_id, jobs.requested_revision,
+            jobs.embedding_config_hash, jobs.status, jobs.attempts,
+            sources.current_revision, sources.is_active
+     FROM rag_index_jobs AS jobs
+     JOIN rag_sources AS sources
+       ON sources.id = jobs.source_id AND sources.user_id = jobs.user_id
+     WHERE jobs.id = ? AND jobs.user_id = ?`,
+    [jobId, userId]
+  );
+
+  if (!job) {
+    throw createRagIndexJobError(
+      'RAG_INDEX_JOB_NOT_FOUND',
+      'Job index RAG tidak ditemukan untuk pemilik ini.'
+    );
+  }
+
+  if (job.status !== RAG_INDEX_JOB_STATES.PENDING) {
+    return {
+      claimed: false,
+      reason: 'not_pending',
+      status: job.status
+    };
+  }
+
+  const isStale = Number(job.is_active) !== 1
+    || Number(job.current_revision) !== Number(job.requested_revision);
+
+  if (isStale) {
+    assertRagIndexJobTransition(job.status, RAG_INDEX_JOB_STATES.SUPERSEDED);
+    await client.run(
+      `UPDATE rag_index_jobs
+       SET status = 'SUPERSEDED',
+           lease_owner = NULL,
+           lease_expires_at = NULL,
+           next_attempt_at = NULL,
+           last_error_code = NULL,
+           updated_at = ?
+       WHERE id = ? AND user_id = ? AND status = 'PENDING'`,
+      [nowTimestamp, jobId, userId]
+    );
+    return {
+      claimed: false,
+      reason: 'superseded',
+      status: RAG_INDEX_JOB_STATES.SUPERSEDED,
+      staleReason: Number(job.is_active) !== 1 ? 'source_inactive' : 'revision_stale'
+    };
+  }
+
+  assertRagIndexJobTransition(job.status, RAG_INDEX_JOB_STATES.RUNNING);
+
+  const updateResult = await client.run(
+    `UPDATE rag_index_jobs
+     SET status = 'RUNNING',
+         attempts = attempts + 1,
+         lease_owner = ?,
+         lease_expires_at = ?,
+         updated_at = ?
+     WHERE id = ?
+       AND user_id = ?
+       AND status = 'PENDING'
+       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
+    [safeLeaseOwner, leaseExpiresAt, nowTimestamp, jobId, userId, nowTimestamp]
+  );
+
+  if (updateResult.changes !== 1) {
+    return {
+      claimed: false,
+      reason: 'state_conflict'
+    };
+  }
+
+  const claimedJob = await client.get(
+    `SELECT id, source_id, user_id, requested_revision, embedding_config_hash,
+            status, attempts, lease_owner, lease_expires_at, next_attempt_at,
+            last_error_code, created_at, updated_at
+     FROM rag_index_jobs
+     WHERE id = ? AND user_id = ?`,
+    [jobId, userId]
+  );
+
+  return {
+    claimed: true,
+    job: claimedJob
+  };
+}
+
+export async function claimNextRagIndexJob({
+  leaseOwner,
+  leaseDurationSeconds = 300,
+  now = new Date()
+}, databaseClient = null) {
+  const safeLeaseOwner = normalizeLeaseOwner(leaseOwner);
+  const nowTimestamp = toSqliteUtcTimestamp(now);
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  const candidate = await client.get(
+    `SELECT jobs.id, jobs.user_id
+     FROM rag_index_jobs AS jobs
+     JOIN rag_sources AS sources
+       ON sources.id = jobs.source_id AND sources.user_id = jobs.user_id
+     WHERE jobs.status = 'PENDING'
+       AND (jobs.next_attempt_at IS NULL OR jobs.next_attempt_at <= ?)
+       AND sources.is_active = 1
+       AND sources.current_revision = jobs.requested_revision
+     ORDER BY COALESCE(jobs.next_attempt_at, jobs.created_at), jobs.id
+     LIMIT 1`,
+    [nowTimestamp]
+  );
+
+  if (!candidate) {
+    return { claimed: false, reason: 'no_due_jobs', job: null };
+  }
+
+  return claimRagIndexJob({
+    jobId: candidate.id,
+    userId: candidate.user_id,
+    leaseOwner: safeLeaseOwner,
+    leaseDurationSeconds,
+    now
+  }, client);
+}
+
+export async function completeRagIndexJob({
+  jobId,
+  userId,
+  leaseOwner,
+  now = new Date()
+}, databaseClient = null) {
+  requirePositiveInteger(jobId, 'jobId');
+  requirePositiveInteger(userId, 'userId');
+  const safeLeaseOwner = normalizeLeaseOwner(leaseOwner);
+  const nowTimestamp = toSqliteUtcTimestamp(now);
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  const job = await client.get(
+    `SELECT id, user_id, status, lease_owner, lease_expires_at
+     FROM rag_index_jobs
+     WHERE id = ? AND user_id = ?`,
+    [jobId, userId]
+  );
+
+  if (!job) {
+    throw createRagIndexJobError(
+      'RAG_INDEX_JOB_NOT_FOUND',
+      'Job index RAG tidak ditemukan untuk pemilik ini.'
+    );
+  }
+  if (job.status !== RAG_INDEX_JOB_STATES.RUNNING) {
+    throw createRagIndexJobError(
+      'RAG_INDEX_JOB_NOT_RUNNING',
+      'Hanya job RUNNING yang dapat diselesaikan.'
+    );
+  }
+  if (job.lease_owner !== safeLeaseOwner) {
+    throw createRagIndexJobError(
+      'RAG_INDEX_JOB_LEASE_MISMATCH',
+      'Lease job RAG bukan milik worker ini.'
+    );
+  }
+  if (!job.lease_expires_at || job.lease_expires_at <= nowTimestamp) {
+    throw createRagIndexJobError(
+      'RAG_INDEX_JOB_LEASE_EXPIRED',
+      'Lease job RAG telah kedaluwarsa.'
+    );
+  }
+
+  assertRagIndexJobTransition(job.status, RAG_INDEX_JOB_STATES.READY);
+
+  const updateResult = await client.run(
+    `UPDATE rag_index_jobs
+     SET status = 'READY',
+         lease_owner = NULL,
+         lease_expires_at = NULL,
+         next_attempt_at = NULL,
+         last_error_code = NULL,
+         updated_at = ?
+     WHERE id = ?
+       AND user_id = ?
+       AND status = 'RUNNING'
+       AND lease_owner = ?`,
+    [nowTimestamp, jobId, userId, safeLeaseOwner]
+  );
+
+  if (updateResult.changes !== 1) {
+    throw createRagIndexJobError(
+      'RAG_INDEX_JOB_STATE_CONFLICT',
+      'State job RAG berubah sebelum dapat diselesaikan.'
+    );
+  }
+
+  return {
+    id: jobId,
+    user_id: userId,
+    status: RAG_INDEX_JOB_STATES.READY,
+    completed_at: nowTimestamp
+  };
+}
+
+export async function recoverExpiredRagIndexJobLeases({
+  now = new Date(),
+  maxAttempts = RAG_INDEX_RETRY_DEFAULTS.MAX_ATTEMPTS,
+  baseDelayMs = RAG_INDEX_RETRY_DEFAULTS.BASE_DELAY_MS,
+  maxDelayMs = RAG_INDEX_RETRY_DEFAULTS.MAX_DELAY_MS
+} = {}, databaseClient = null) {
+  requirePositiveInteger(maxAttempts, 'maxAttempts');
+  const nowTimestamp = toSqliteUtcTimestamp(now);
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  if (typeof client.all !== 'function') {
+    throw createRagIndexJobError(
+      'RAG_INDEX_DATABASE_CLIENT_REQUIRED',
+      'Database client job RAG harus menyediakan fungsi all untuk pemulihan lease.'
+    );
+  }
+
+  const expiredJobs = await client.all(
+    `SELECT jobs.id, jobs.user_id, jobs.source_id, jobs.requested_revision,
+            jobs.attempts, jobs.lease_owner, jobs.lease_expires_at,
+            sources.current_revision, sources.is_active
+     FROM rag_index_jobs AS jobs
+     LEFT JOIN rag_sources AS sources
+       ON sources.id = jobs.source_id AND sources.user_id = jobs.user_id
+     WHERE jobs.status = 'RUNNING'
+       AND jobs.lease_expires_at IS NOT NULL
+       AND jobs.lease_expires_at <= ?
+     ORDER BY jobs.id ASC`,
+    [nowTimestamp]
+  );
+
+  const details = [];
+  let rescheduledCount = 0;
+  let failedCount = 0;
+  let supersededCount = 0;
+
+  for (const job of (expiredJobs || [])) {
+    const isStale = !job.current_revision
+      || Number(job.is_active) !== 1
+      || Number(job.current_revision) !== Number(job.requested_revision);
+
+    if (isStale) {
+      const updateResult = await client.run(
+        `UPDATE rag_index_jobs
+         SET status = 'SUPERSEDED',
+             lease_owner = NULL,
+             lease_expires_at = NULL,
+             next_attempt_at = NULL,
+             last_error_code = NULL,
+             updated_at = ?
+         WHERE id = ? AND status = 'RUNNING' AND lease_expires_at <= ?`,
+        [nowTimestamp, job.id, nowTimestamp]
+      );
+      if (updateResult.changes === 1) {
+        supersededCount += 1;
+        details.push({ id: job.id, action: 'superseded', reason: 'stale_or_inactive' });
+      }
+      continue;
+    }
+
+    const currentAttempts = Math.max(1, Number(job.attempts) || 1);
+    if (currentAttempts < maxAttempts) {
+      const delayMs = calculateRagIndexRetryDelayMs(currentAttempts, { baseDelayMs, maxDelayMs });
+      const nextAttemptAt = toSqliteUtcTimestamp(new Date(new Date(now).getTime() + delayMs));
+
+      const updateResult = await client.run(
+        `UPDATE rag_index_jobs
+         SET status = 'PENDING',
+             lease_owner = NULL,
+             lease_expires_at = NULL,
+             next_attempt_at = ?,
+             last_error_code = ?,
+             updated_at = ?
+         WHERE id = ? AND status = 'RUNNING' AND lease_expires_at <= ?`,
+        [nextAttemptAt, RAG_INDEX_SAFE_ERROR_CODES.TIMEOUT, nowTimestamp, job.id, nowTimestamp]
+      );
+      if (updateResult.changes === 1) {
+        rescheduledCount += 1;
+        details.push({
+          id: job.id,
+          action: 'rescheduled',
+          attempts: currentAttempts,
+          next_attempt_at: nextAttemptAt
+        });
+      }
+    } else {
+      const updateResult = await client.run(
+        `UPDATE rag_index_jobs
+         SET status = 'FAILED',
+             lease_owner = NULL,
+             lease_expires_at = NULL,
+             next_attempt_at = NULL,
+             last_error_code = ?,
+             updated_at = ?
+         WHERE id = ? AND status = 'RUNNING' AND lease_expires_at <= ?`,
+        [RAG_INDEX_SAFE_ERROR_CODES.TIMEOUT, nowTimestamp, job.id, nowTimestamp]
+      );
+      if (updateResult.changes === 1) {
+        failedCount += 1;
+        details.push({
+          id: job.id,
+          action: 'failed',
+          attempts: currentAttempts
+        });
+      }
+    }
+  }
+
+  return {
+    recoveredCount: rescheduledCount + failedCount + supersededCount,
+    rescheduledCount,
+    failedCount,
+    supersededCount,
+    details
+  };
+}
+
+export async function cleanupSupersededRagIndexJobs({
+  sourceId,
+  userId,
+  currentRevision,
+  now = new Date()
+}, databaseClient = null) {
+  requirePositiveInteger(sourceId, 'sourceId');
+  requirePositiveInteger(userId, 'userId');
+  requirePositiveInteger(currentRevision, 'currentRevision');
+  const nowTimestamp = toSqliteUtcTimestamp(now);
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  const result = await client.run(
+    `UPDATE rag_index_jobs
+     SET status = 'SUPERSEDED',
+         lease_owner = NULL,
+         lease_expires_at = NULL,
+         next_attempt_at = NULL,
+         last_error_code = NULL,
+         updated_at = ?
+     WHERE source_id = ?
+       AND user_id = ?
+       AND requested_revision < ?
+       AND (
+         status IN ('PENDING', 'FAILED')
+         OR (status = 'RUNNING' AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?)
+       )`,
+    [nowTimestamp, sourceId, userId, currentRevision, nowTimestamp]
+  );
+
+  return {
+    sourceId,
+    userId,
+    currentRevision,
+    supersededCount: result?.changes || 0
+  };
+}
+
