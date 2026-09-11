@@ -1,3 +1,9 @@
+import sqlite3 from 'sqlite3';
+import {
+  assertRagIndexJobTransition,
+  RAG_INDEX_JOB_STATES
+} from './chatbot_ai_rag_job_state.service.js';
+
 function createRagIndexError(code, message, details = {}) {
   const error = new Error(message);
   error.code = code;
@@ -23,6 +29,17 @@ function normalizeEmbeddingConfigHash(value = '') {
   return normalized;
 }
 
+function normalizeLeaseOwner(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(normalized)) {
+    throw createRagIndexError(
+      'RAG_INDEX_INVALID_INPUT',
+      'leaseOwner harus berupa identifier aman maksimal 128 karakter.'
+    );
+  }
+  return normalized;
+}
+
 function requireDatabaseClient(client) {
   if (!client || typeof client.run !== 'function' || typeof client.get !== 'function') {
     throw createRagIndexError(
@@ -43,6 +60,80 @@ async function getRuntimeDatabaseClient() {
     }));
   }
   return runtimeDatabaseClientPromise;
+}
+
+function openDatabase(path) {
+  return new Promise((resolve, reject) => {
+    const database = new sqlite3.Database(path, (error) => {
+      if (error) reject(error);
+      else resolve(database);
+    });
+  });
+}
+
+function run(database, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    database.run(sql, params, function onRun(error) {
+      if (error) reject(error);
+      else resolve({ id: this.lastID, changes: this.changes });
+    });
+  });
+}
+
+function get(database, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    database.get(sql, params, (error, row) => {
+      if (error) reject(error);
+      else resolve(row);
+    });
+  });
+}
+
+function all(database, sql, params = []) {
+  return new Promise((resolve, reject) => {
+    database.all(sql, params, (error, rows) => {
+      if (error) reject(error);
+      else resolve(rows);
+    });
+  });
+}
+
+function close(database) {
+  return new Promise((resolve, reject) => {
+    database.close((error) => error ? reject(error) : resolve());
+  });
+}
+
+async function resolveRuntimeDatabasePath(databasePath) {
+  if (databasePath !== null && databasePath !== undefined) {
+    const normalized = String(databasePath).trim();
+    if (!normalized) {
+      throw createRagIndexError('RAG_INDEX_INVALID_INPUT', 'databasePath tidak boleh kosong.');
+    }
+    return normalized;
+  }
+  const runtimeDatabase = await import('../database.js');
+  await runtimeDatabase.databaseReady;
+  return runtimeDatabase.dbPath;
+}
+
+async function withImmediateTransaction(databasePath, work) {
+  const database = await openDatabase(databasePath);
+  try {
+    await run(database, 'PRAGMA foreign_keys = ON');
+    await run(database, 'PRAGMA busy_timeout = 5000');
+    await run(database, 'BEGIN IMMEDIATE');
+    try {
+      const result = await work(database);
+      await run(database, 'COMMIT');
+      return result;
+    } catch (error) {
+      await run(database, 'ROLLBACK').catch(() => {});
+      throw error;
+    }
+  } finally {
+    await close(database);
+  }
 }
 
 function mapIndexJob(row, idempotent) {
@@ -131,4 +222,145 @@ export async function enqueueRagIndexJob({
     'RAG_INDEX_ENQUEUE_FAILED',
     'Job index tidak dapat dibuat atau dibaca kembali.'
   );
+}
+
+export async function runCurrentRagIndexRevisionTransaction({
+  jobId,
+  userId,
+  leaseOwner,
+  databasePath = null
+}, publishTransaction) {
+  requirePositiveInteger(jobId, 'jobId');
+  requirePositiveInteger(userId, 'userId');
+  const safeLeaseOwner = normalizeLeaseOwner(leaseOwner);
+  if (typeof publishTransaction !== 'function') {
+    throw createRagIndexError(
+      'RAG_INDEX_PUBLISH_CALLBACK_REQUIRED',
+      'Callback transaksi publikasi RAG wajib disediakan.'
+    );
+  }
+  const resolvedPath = await resolveRuntimeDatabasePath(databasePath);
+
+  return withImmediateTransaction(resolvedPath, async (database) => {
+    const job = await get(
+      database,
+      `SELECT jobs.id, jobs.source_id, jobs.user_id, jobs.requested_revision,
+              jobs.embedding_config_hash, jobs.status, jobs.attempts,
+              jobs.lease_owner, jobs.lease_expires_at,
+              CASE
+                WHEN jobs.lease_expires_at IS NOT NULL
+                 AND jobs.lease_expires_at > CURRENT_TIMESTAMP THEN 1
+                ELSE 0
+              END AS lease_valid,
+              sources.current_revision, sources.indexed_revision, sources.is_active
+       FROM rag_index_jobs AS jobs
+       JOIN rag_sources AS sources
+         ON sources.id = jobs.source_id AND sources.user_id = jobs.user_id
+       WHERE jobs.id = ? AND jobs.user_id = ?`,
+      [jobId, userId]
+    );
+
+    if (!job) {
+      throw createRagIndexError(
+        'RAG_INDEX_JOB_NOT_FOUND',
+        'Job index RAG tidak ditemukan untuk pemilik ini.'
+      );
+    }
+    if (job.status !== RAG_INDEX_JOB_STATES.RUNNING) {
+      throw createRagIndexError(
+        'RAG_INDEX_JOB_NOT_RUNNING',
+        'Hanya job RAG RUNNING yang dapat memasuki transaksi publikasi.'
+      );
+    }
+    if (job.lease_owner !== safeLeaseOwner) {
+      throw createRagIndexError(
+        'RAG_INDEX_JOB_LEASE_MISMATCH',
+        'Lease job RAG bukan milik worker ini.'
+      );
+    }
+    if (Number(job.lease_valid) !== 1) {
+      throw createRagIndexError(
+        'RAG_INDEX_JOB_LEASE_EXPIRED',
+        'Lease job RAG telah kedaluwarsa.'
+      );
+    }
+
+    const staleReason = Number(job.is_active) !== 1
+      ? 'source_inactive'
+      : Number(job.current_revision) !== Number(job.requested_revision)
+        || Number(job.indexed_revision) > Number(job.requested_revision)
+        ? 'revision_stale'
+        : null;
+
+    if (staleReason) {
+      assertRagIndexJobTransition(job.status, RAG_INDEX_JOB_STATES.SUPERSEDED);
+      const superseded = await run(
+        database,
+        `UPDATE rag_index_jobs
+         SET status = 'SUPERSEDED', lease_owner = NULL, lease_expires_at = NULL,
+             next_attempt_at = NULL, last_error_code = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ? AND status = 'RUNNING'
+           AND lease_owner = ? AND requested_revision = ?`,
+        [jobId, userId, safeLeaseOwner, job.requested_revision]
+      );
+      if (superseded.changes !== 1) {
+        throw createRagIndexError(
+          'RAG_INDEX_JOB_STATE_CONFLICT',
+          'State job RAG berubah sebelum dapat ditandai superseded.'
+        );
+      }
+      return {
+        executed: false,
+        job_id: jobId,
+        status: RAG_INDEX_JOB_STATES.SUPERSEDED,
+        reason: staleReason
+      };
+    }
+
+    const transactionClient = Object.freeze({
+      run: (sql, params) => run(database, sql, params),
+      get: (sql, params) => get(database, sql, params),
+      all: (sql, params) => all(database, sql, params)
+    });
+    const publishContext = Object.freeze({
+      jobId: job.id,
+      sourceId: job.source_id,
+      userId: job.user_id,
+      requestedRevision: job.requested_revision,
+      embeddingConfigHash: job.embedding_config_hash,
+      attempts: job.attempts,
+      leaseOwner: safeLeaseOwner
+    });
+    const result = await publishTransaction(transactionClient, publishContext);
+
+    const postPublish = await get(
+      database,
+      `SELECT jobs.status, jobs.lease_owner, sources.current_revision, sources.is_active
+       FROM rag_index_jobs AS jobs
+       JOIN rag_sources AS sources
+         ON sources.id = jobs.source_id AND sources.user_id = jobs.user_id
+       WHERE jobs.id = ? AND jobs.user_id = ?`,
+      [jobId, userId]
+    );
+    if (
+      !postPublish
+      || postPublish.status !== RAG_INDEX_JOB_STATES.RUNNING
+      || postPublish.lease_owner !== safeLeaseOwner
+      || Number(postPublish.is_active) !== 1
+      || Number(postPublish.current_revision) !== Number(job.requested_revision)
+    ) {
+      throw createRagIndexError(
+        'RAG_INDEX_REVISION_CHANGED',
+        'Revision atau lease job RAG berubah selama transaksi publikasi.'
+      );
+    }
+
+    return {
+      executed: true,
+      job_id: jobId,
+      status: RAG_INDEX_JOB_STATES.RUNNING,
+      result
+    };
+  });
 }
