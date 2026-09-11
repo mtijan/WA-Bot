@@ -11,7 +11,8 @@ import {
   reindexAISession,
   getEmbeddingProfile,
   saveEmbeddingProfile,
-  testEmbeddingProfileCapability
+  testEmbeddingProfileCapability,
+  getEmbeddingUsage
 } from '../controllers/chatbot_ai.controller.js';
 import { validateBody } from '../utils/validator.js';
 import { validateMaxOutputTokens } from '../services/chatbot_ai_runtime.service.js';
@@ -58,6 +59,7 @@ router.post('/rag/embedding-profile/test', validateBody({
   model: { type: 'string' },
   dimensions: { type: 'number' }
 }), testEmbeddingProfileCapability);
+router.get('/rag/embedding-usage', getEmbeddingUsage);
 router.post('/rag/:sessionId/reindex', validateBody({
   source_id: { type: 'number' },
   force: { type: 'boolean' }

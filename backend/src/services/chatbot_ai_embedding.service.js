@@ -52,6 +52,36 @@ export const EMBEDDING_BOUNDS = Object.freeze({
   MAX_RETRY_DELAY_MS: 5000
 });
 
+export const EMBEDDING_MODEL_PRICING = Object.freeze({
+  'text-embedding-3-small': Object.freeze({
+    usdPerMillionTokens: 0.02,
+    microusdPerToken: 0.02
+  }),
+  'text-embedding-3-large': Object.freeze({
+    usdPerMillionTokens: 0.13,
+    microusdPerToken: 0.13
+  }),
+  'text-embedding-ada-002': Object.freeze({
+    usdPerMillionTokens: 0.1,
+    microusdPerToken: 0.1
+  })
+});
+
+export function calculateEmbeddingCost({ model = EMBEDDING_DEFAULTS.MODEL, totalTokens = 0 } = {}) {
+  const safeTokens = Math.max(0, Number(totalTokens) || 0);
+  const normalizedModel = String(model || '').trim().toLowerCase();
+  const pricing = EMBEDDING_MODEL_PRICING[normalizedModel] || EMBEDDING_MODEL_PRICING[EMBEDDING_DEFAULTS.MODEL];
+  const costMicrousd = Math.round(safeTokens * pricing.microusdPerToken * 100) / 100;
+  const costUsd = Number((costMicrousd / 1000000).toFixed(8));
+  return {
+    model: normalizedModel,
+    totalTokens: safeTokens,
+    costMicrousd,
+    costUsd,
+    ratePerMillionUsd: pricing.usdPerMillionTokens
+  };
+}
+
 export function clampEmbeddingOptions({
   timeoutMs = EMBEDDING_DEFAULTS.TIMEOUT_MS,
   maxBatchSize = EMBEDDING_DEFAULTS.MAX_BATCH_SIZE,
@@ -138,6 +168,54 @@ async function resolveDatabaseClient(databaseClient = null) {
     return databaseClient;
   }
   return getRuntimeDatabaseClient();
+}
+
+export async function resolveEmbeddingCredential({
+  credentialId = null,
+  userId = null,
+  baseUrl = null,
+  apiKey = null,
+  databaseClient = null
+} = {}) {
+  if (apiKey) {
+    return {
+      baseUrl: baseUrl || 'https://ai.sumopod.com/v1',
+      apiKey,
+      credentialId: credentialId || null
+    };
+  }
+
+  if (!credentialId) {
+    throw createEmbeddingError('API_KEY_REQUIRED', 'API key atau credential_id harus disediakan.');
+  }
+
+  if (userId !== null && userId !== undefined) {
+    requirePositiveInteger(userId, 'userId');
+  }
+  requirePositiveInteger(Number(credentialId), 'credentialId');
+  const client = await resolveDatabaseClient(databaseClient);
+  const query = userId
+    ? 'SELECT id, base_url, api_key, is_active FROM chatbot_ai_credentials WHERE id = ? AND user_id = ?'
+    : 'SELECT id, base_url, api_key, is_active FROM chatbot_ai_credentials WHERE id = ?';
+  const params = userId ? [credentialId, userId] : [credentialId];
+  const cred = await client.get(query, params);
+  if (!cred) {
+    throw createEmbeddingError('CREDENTIAL_NOT_FOUND', 'Kredensial embedding tidak ditemukan atau bukan milik tenant.');
+  }
+
+  if (!cred.is_active) {
+    throw createEmbeddingError('CREDENTIAL_NOT_ACTIVE', 'Kredensial embedding tidak aktif.');
+  }
+
+  const decryptedKey = cred.api_key ? revealSecret(cred.api_key) : null;
+  if (!decryptedKey) {
+    throw createEmbeddingError('CREDENTIAL_INVALID', 'Kredensial embedding tidak memiliki API key yang valid.');
+  }
+  return {
+    baseUrl: baseUrl || cred.base_url || 'https://ai.sumopod.com/v1',
+    apiKey: decryptedKey,
+    credentialId: cred.id
+  };
 }
 
 // ============================================================================
@@ -484,29 +562,49 @@ export async function createSafeEmbeddingOpenAIClient({
 export async function testEmbeddingCapability({
   baseUrl,
   apiKey,
+  credentialId = null,
+  userId = null,
   model = EMBEDDING_DEFAULTS.MODEL,
   dimensions = EMBEDDING_DEFAULTS.DIMENSIONS,
   timeoutMs = EMBEDDING_DEFAULTS.TIMEOUT_MS,
-  openaiClient = null
+  openaiClient = null,
+  databaseClient = null
 }) {
   const safeModel = requireNonEmptyString(model, 'model');
   const safeDimensions = requirePositiveInteger(Number(dimensions), 'dimensions');
 
-  if (!openaiClient && (!apiKey || typeof apiKey !== 'string' || apiKey.trim() === '')) {
-    return {
-      capabilityStatus: EMBEDDING_CAPABILITY_STATUSES.FAILED,
-      error: 'API Key wajib disediakan untuk pengujian capability embedding.',
-      errorCode: 'API_KEY_REQUIRED'
-    };
+  let resolvedBaseUrl = baseUrl;
+  let resolvedKey = apiKey;
+
+  if (!openaiClient) {
+    if (!resolvedKey && credentialId) {
+      const resolvedCred = await resolveEmbeddingCredential({
+        credentialId,
+        userId,
+        baseUrl: resolvedBaseUrl,
+        apiKey: resolvedKey,
+        databaseClient
+      });
+      resolvedBaseUrl = resolvedCred.baseUrl;
+      resolvedKey = resolvedCred.apiKey;
+    }
+
+    if (!resolvedKey || typeof resolvedKey !== 'string' || resolvedKey.trim() === '') {
+      return {
+        capabilityStatus: EMBEDDING_CAPABILITY_STATUSES.FAILED,
+        error: 'API Key wajib disediakan untuk pengujian capability embedding.',
+        errorCode: 'API_KEY_REQUIRED'
+      };
+    }
   }
 
   const startedAt = Date.now();
   try {
     const { openai, safeBaseUrl, provider } = openaiClient
-      ? { openai: openaiClient, safeBaseUrl: baseUrl || 'https://ai.sumopod.com/v1', provider: 'test-provider' }
+      ? { openai: openaiClient, safeBaseUrl: resolvedBaseUrl || 'https://ai.sumopod.com/v1', provider: 'test-provider' }
       : await createSafeEmbeddingOpenAIClient({
-          baseUrl,
-          apiKey,
+          baseUrl: resolvedBaseUrl,
+          apiKey: resolvedKey,
           timeoutMs
         });
 
@@ -552,6 +650,7 @@ export async function testEmbeddingCapability({
   } catch (error) {
     const latencyMs = Date.now() - startedAt;
     const status = Number(error?.status);
+    const isTimeout = error?.code === 'ETIMEDOUT' || error?.name === 'TimeoutError' || String(error?.message || '').toLowerCase().includes('timeout');
     const isUnsupported = status === 404 || status === 400;
 
     return {
@@ -559,7 +658,7 @@ export async function testEmbeddingCapability({
         ? EMBEDDING_CAPABILITY_STATUSES.UNSUPPORTED
         : EMBEDDING_CAPABILITY_STATUSES.FAILED,
       error: error?.message || 'Gagal menghubungi endpoint embedding.',
-      errorCode: error?.code || (isUnsupported ? 'EMBEDDING_UNSUPPORTED' : 'EMBEDDING_CALL_FAILED'),
+      errorCode: error?.code || (isTimeout ? 'TIMEOUT' : isUnsupported ? 'EMBEDDING_UNSUPPORTED' : 'EMBEDDING_CALL_FAILED'),
       httpStatus: status || null,
       latencyMs
     };
@@ -576,6 +675,7 @@ export async function generateBatchChunkEmbeddings({
   dimensions = EMBEDDING_DEFAULTS.DIMENSIONS,
   baseUrl,
   apiKey,
+  credentialId = null,
   userId,
   maxBatchSize = EMBEDDING_DEFAULTS.MAX_BATCH_SIZE,
   timeoutMs = EMBEDDING_DEFAULTS.TIMEOUT_MS,
@@ -586,7 +686,7 @@ export async function generateBatchChunkEmbeddings({
   databaseClient = null
 }) {
   if (!Array.isArray(chunks) || chunks.length === 0) {
-    return { chunkEmbeddings: [], totalTokens: 0, latencyMs: 0 };
+    return { chunkEmbeddings: [], totalTokens: 0, costMicrousd: 0, costUsd: 0, latencyMs: 0 };
   }
   requirePositiveInteger(userId, 'userId');
   const safeModel = requireNonEmptyString(model, 'model');
@@ -598,11 +698,26 @@ export async function generateBatchChunkEmbeddings({
     retryDelayMs: safeRetryDelayMs
   } = clampEmbeddingOptions({ timeoutMs, maxBatchSize, maxAttempts, retryDelayMs });
 
+  let resolvedBaseUrl = baseUrl;
+  let resolvedKey = apiKey;
+
+  if (!openaiClient && !resolvedKey && credentialId) {
+    const cred = await resolveEmbeddingCredential({
+      credentialId,
+      userId,
+      baseUrl: resolvedBaseUrl,
+      apiKey: resolvedKey,
+      databaseClient
+    });
+    resolvedBaseUrl = cred.baseUrl;
+    resolvedKey = cred.apiKey;
+  }
+
   const { openai, safeBaseUrl, provider } = openaiClient
     ? { openai: openaiClient, safeBaseUrl: baseUrl || 'https://ai.sumopod.com/v1', provider: 'test-provider' }
     : await createSafeEmbeddingOpenAIClient({
-        baseUrl,
-        apiKey,
+        baseUrl: resolvedBaseUrl,
+        apiKey: resolvedKey,
         timeoutMs: safeTimeoutMs
       });
 
@@ -632,7 +747,34 @@ export async function generateBatchChunkEmbeddings({
 
         const attemptLatency = Date.now() - attemptStart;
         const promptTokens = response?.usage?.prompt_tokens ?? response?.usage?.total_tokens ?? 0;
+
+        const data = response?.data || [];
+        if (data.length !== slice.length) {
+          throw createEmbeddingError(
+            'EMBEDDING_BATCH_LENGTH_MISMATCH',
+            `Panjang embedding response (${data.length}) tidak sama dengan batch input (${slice.length}).`
+          );
+        }
+
+        const sliceResults = [];
+        for (let i = 0; i < slice.length; i += 1) {
+          const rawVector = data[i]?.embedding;
+          if (!Array.isArray(rawVector) || rawVector.length !== safeDimensions) {
+            throw createEmbeddingError(
+              'EMBEDDING_DIMENSION_MISMATCH',
+              `Dimensi vector item ${i} (${rawVector?.length}) tidak sesuai konfigurasi (${safeDimensions}).`
+            );
+          }
+          sliceResults.push({
+            chunk_index: slice[i].chunk_index,
+            embedding_blob: serializeEmbeddingVector(rawVector),
+            dimensions: safeDimensions,
+            model: safeModel
+          });
+        }
+
         aggregateTokens += promptTokens;
+        batchResults.push(...sliceResults);
 
         await recordChatbotAIUsageSafely({
           context,
@@ -644,30 +786,6 @@ export async function generateBatchChunkEmbeddings({
           deliveryStatus: 'NOT_APPLICABLE',
           latencyMs: attemptLatency
         }, databaseClient);
-
-        const data = response?.data || [];
-        if (data.length !== slice.length) {
-          throw createEmbeddingError(
-            'EMBEDDING_BATCH_LENGTH_MISMATCH',
-            `Panjang embedding response (${data.length}) tidak sama dengan batch input (${slice.length}).`
-          );
-        }
-
-        for (let i = 0; i < slice.length; i += 1) {
-          const rawVector = data[i]?.embedding;
-          if (!Array.isArray(rawVector) || rawVector.length !== safeDimensions) {
-            throw createEmbeddingError(
-              'EMBEDDING_DIMENSION_MISMATCH',
-              `Dimensi vector item ${i} (${rawVector?.length}) tidak sesuai konfigurasi (${safeDimensions}).`
-            );
-          }
-          batchResults.push({
-            chunk_index: slice[i].chunk_index,
-            embedding_blob: serializeEmbeddingVector(rawVector),
-            dimensions: safeDimensions,
-            model: safeModel
-          });
-        }
 
         succeeded = true;
       } catch (err) {
@@ -697,9 +815,12 @@ export async function generateBatchChunkEmbeddings({
     }
   }
 
+  const cost = calculateEmbeddingCost({ model: safeModel, totalTokens: aggregateTokens });
   return {
     chunkEmbeddings: batchResults,
     totalTokens: aggregateTokens,
+    costMicrousd: cost.costMicrousd,
+    costUsd: cost.costUsd,
     latencyMs: Date.now() - startedAt,
     provider,
     baseUrl: safeBaseUrl
@@ -716,6 +837,7 @@ export async function generateQueryEmbedding({
   dimensions = EMBEDDING_DEFAULTS.DIMENSIONS,
   baseUrl,
   apiKey,
+  credentialId = null,
   userId,
   sessionId = null,
   timeoutMs = EMBEDDING_DEFAULTS.TIMEOUT_MS,
@@ -735,11 +857,26 @@ export async function generateQueryEmbedding({
     retryDelayMs: safeRetryDelayMs
   } = clampEmbeddingOptions({ timeoutMs, maxAttempts, retryDelayMs });
 
+  let resolvedBaseUrl = baseUrl;
+  let resolvedKey = apiKey;
+
+  if (!openaiClient && !resolvedKey && credentialId) {
+    const cred = await resolveEmbeddingCredential({
+      credentialId,
+      userId,
+      baseUrl: resolvedBaseUrl,
+      apiKey: resolvedKey,
+      databaseClient
+    });
+    resolvedBaseUrl = cred.baseUrl;
+    resolvedKey = cred.apiKey;
+  }
+
   const { openai, safeBaseUrl, provider } = openaiClient
     ? { openai: openaiClient, safeBaseUrl: baseUrl || 'https://ai.sumopod.com/v1', provider: 'test-provider' }
     : await createSafeEmbeddingOpenAIClient({
-        baseUrl,
-        apiKey,
+        baseUrl: resolvedBaseUrl,
+        apiKey: resolvedKey,
         timeoutMs: safeTimeoutMs
       });
 
@@ -756,6 +893,14 @@ export async function generateQueryEmbedding({
         input: [safeQuery]
       });
 
+      const vector = response?.data?.[0]?.embedding;
+      if (!Array.isArray(vector) || vector.length !== safeDimensions) {
+        throw createEmbeddingError(
+          'EMBEDDING_DIMENSION_MISMATCH',
+          `Dimensi query embedding (${vector?.length}) tidak sesuai konfigurasi (${safeDimensions}).`
+        );
+      }
+
       const latencyMs = Date.now() - startedAt;
       await recordChatbotAIUsageSafely({
         context,
@@ -768,13 +913,8 @@ export async function generateQueryEmbedding({
         latencyMs
       }, databaseClient);
 
-      const vector = response?.data?.[0]?.embedding;
-      if (!Array.isArray(vector) || vector.length !== safeDimensions) {
-        throw createEmbeddingError(
-          'EMBEDDING_DIMENSION_MISMATCH',
-          `Dimensi query embedding (${vector?.length}) tidak sesuai konfigurasi (${safeDimensions}).`
-        );
-      }
+      const tokens = response?.usage?.prompt_tokens ?? response?.usage?.total_tokens ?? 0;
+      const cost = calculateEmbeddingCost({ model: safeModel, totalTokens: tokens });
 
       return {
         vector: new Float32Array(vector),
@@ -782,7 +922,9 @@ export async function generateQueryEmbedding({
         dimensions: safeDimensions,
         model: safeModel,
         provider,
-        tokens: response?.usage?.prompt_tokens ?? response?.usage?.total_tokens ?? 0,
+        tokens,
+        costMicrousd: cost.costMicrousd,
+        costUsd: cost.costUsd,
         latencyMs
       };
     } catch (err) {
@@ -925,4 +1067,116 @@ export async function executeSemanticRetrievalWithFtsFallback({
       total_candidates: items.length
     };
   }
+}
+
+// ============================================================================
+// Embedding Usage & Cost Telemetry Aggregation (RAG-0411)
+// ============================================================================
+
+export async function getTenantEmbeddingUsageSummary({
+  userId,
+  sessionId = null,
+  startDate = null,
+  endDate = null
+}, databaseClient = null) {
+  requirePositiveInteger(userId, 'userId');
+  const client = await resolveDatabaseClient(databaseClient);
+
+  const params = [userId];
+  let sessionFilter = '';
+  if (sessionId) {
+    sessionFilter = ' AND session_id = ?';
+    params.push(sessionId);
+  }
+  let dateFilter = '';
+  if (startDate) {
+    dateFilter += ' AND created_at >= ?';
+    params.push(startDate);
+  }
+  if (endDate) {
+    dateFilter += ' AND created_at <= ?';
+    params.push(endDate);
+  }
+
+  const rows = await client.all(
+    `SELECT
+       operation,
+       model,
+       COUNT(*) as request_count,
+       SUM(CASE WHEN request_status = 'SUCCEEDED' THEN 1 ELSE 0 END) as success_count,
+       SUM(CASE WHEN request_status = 'FAILED' THEN 1 ELSE 0 END) as failure_count,
+       COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+       COALESCE(SUM(total_tokens), 0) as total_tokens,
+       COALESCE(AVG(latency_ms), 0) as avg_latency_ms
+     FROM chatbot_ai_usage
+     WHERE user_id = ?
+       AND request_kind = 'embedding'
+       ${sessionFilter}
+       ${dateFilter}
+     GROUP BY operation, model`,
+    params
+  );
+
+  const byOperation = {
+    query_embedding: {
+      requestCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      inputTokens: 0,
+      totalTokens: 0,
+      costMicrousd: 0,
+      costUsd: 0,
+      avgLatencyMs: 0
+    },
+    source_embedding: {
+      requestCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      inputTokens: 0,
+      totalTokens: 0,
+      costMicrousd: 0,
+      costUsd: 0,
+      avgLatencyMs: 0
+    }
+  };
+
+  for (const row of rows || []) {
+    const op = row.operation;
+    if (!byOperation[op]) {
+      byOperation[op] = {
+        requestCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        inputTokens: 0,
+        totalTokens: 0,
+        costMicrousd: 0,
+        costUsd: 0,
+        avgLatencyMs: 0
+      };
+    }
+    const cost = calculateEmbeddingCost({ model: row.model, totalTokens: row.total_tokens });
+    byOperation[op].requestCount += Number(row.request_count || 0);
+    byOperation[op].successCount += Number(row.success_count || 0);
+    byOperation[op].failureCount += Number(row.failure_count || 0);
+    byOperation[op].inputTokens += Number(row.total_input_tokens || 0);
+    byOperation[op].totalTokens += Number(row.total_tokens || 0);
+    byOperation[op].costMicrousd = Math.round((byOperation[op].costMicrousd + cost.costMicrousd) * 100) / 100;
+    byOperation[op].costUsd = Number((byOperation[op].costUsd + cost.costUsd).toFixed(8));
+    byOperation[op].avgLatencyMs = Math.round(Number(row.avg_latency_ms || 0));
+  }
+
+  const totalRequests = byOperation.query_embedding.requestCount + byOperation.source_embedding.requestCount;
+  const totalTokens = byOperation.query_embedding.totalTokens + byOperation.source_embedding.totalTokens;
+  const totalCostMicrousd = Math.round((byOperation.query_embedding.costMicrousd + byOperation.source_embedding.costMicrousd) * 100) / 100;
+  const totalCostUsd = Number((byOperation.query_embedding.costUsd + byOperation.source_embedding.costUsd).toFixed(8));
+
+  return {
+    userId,
+    sessionId: sessionId || null,
+    totalRequests,
+    totalTokens,
+    totalCostMicrousd,
+    totalCostUsd,
+    byOperation
+  };
 }
