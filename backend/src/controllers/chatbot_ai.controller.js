@@ -28,6 +28,7 @@ import {
   getTenantEmbeddingProfile,
   upsertTenantEmbeddingProfile,
   testEmbeddingCapability,
+  getTenantEmbeddingUsageSummary,
   EMBEDDING_CAPABILITY_STATUSES
 } from '../services/chatbot_ai_embedding.service.js';
 
@@ -720,6 +721,25 @@ export const testEmbeddingProfileCapability = async (req, res) => {
     }
     logError('testEmbeddingProfileCapability', error, { userId, body: req.body });
     return sendError(res, 500, 'TEST_EMBEDDING_ERROR', 'Uji capability embedding gagal: ' + error.message);
+  }
+};
+
+export const getEmbeddingUsage = async (req, res) => {
+  const userId = req.auth?.userId || req.user?.id || 1;
+  const { session_id, start_date, end_date } = req.query || {};
+
+  try {
+    const summary = await getTenantEmbeddingUsageSummary({
+      userId,
+      sessionId: session_id || null,
+      startDate: start_date || null,
+      endDate: end_date || null
+    }, req.dbClient || null);
+
+    return sendSuccess(res, summary);
+  } catch (error) {
+    logError('getEmbeddingUsage', error, { userId, query: req.query });
+    return sendError(res, 500, 'GET_EMBEDDING_USAGE_ERROR', 'Gagal mengambil ringkasan pemakaian embedding: ' + error.message);
   }
 };
 

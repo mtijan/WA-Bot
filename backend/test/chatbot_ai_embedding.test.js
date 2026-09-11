@@ -13,19 +13,23 @@ import sqlite3 from 'sqlite3';
 import { runMigrations } from '../src/migrations/index.js';
 import {
   calculateEmbeddingConfigHash,
+  calculateEmbeddingCost,
   clampEmbeddingOptions,
   cosineSimilarity,
   deserializeEmbeddingVector,
   dotProduct,
   EMBEDDING_BOUNDS,
   EMBEDDING_CAPABILITY_STATUSES,
+  EMBEDDING_MODEL_PRICING,
   executeSemanticRetrievalWithFtsFallback,
   generateBatchChunkEmbeddings,
   generateQueryEmbedding,
   getTenantEmbeddingProfile,
+  getTenantEmbeddingUsageSummary,
   publishRagChunkEmbeddings,
   rankChunksByCosineSimilarity,
   resolveEffectiveRagRetrievalMode,
+  resolveEmbeddingCredential,
   serializeEmbeddingVector,
   testEmbeddingCapability,
   upsertTenantEmbeddingProfile,
@@ -453,7 +457,8 @@ test('resolveEffectiveRagRetrievalMode: falls back to fts when embedding is unav
 const {
   getEmbeddingProfile,
   saveEmbeddingProfile,
-  testEmbeddingProfileCapability
+  testEmbeddingProfileCapability,
+  getEmbeddingUsage
 } = await import('../src/controllers/chatbot_ai.controller.js');
 
 function createMockResponse() {
@@ -1191,4 +1196,267 @@ test('RAG-0410: resolveEffectiveRagRetrievalMode and executeSemanticRetrievalWit
   assert.equal(fallbackResult.fallback_reason, 'PROVIDER_UNAVAILABLE');
   assert.equal(fallbackResult.results.length, 1);
   assert.equal(fallbackResult.results[0].text, 'FTS hit');
+});
+
+test('RAG-0411: calculateEmbeddingCost computes pricing, and getTenantEmbeddingUsageSummary segments source vs query embedding usage & cost', async () => {
+  // 1. Pricing unit calculations
+  const smallCost = calculateEmbeddingCost({ model: 'text-embedding-3-small', totalTokens: 50000 });
+  assert.equal(smallCost.totalTokens, 50000);
+  assert.equal(smallCost.ratePerMillionUsd, 0.02);
+  assert.equal(smallCost.costMicrousd, 1000); // 50000 * 0.02
+  assert.equal(smallCost.costUsd, 0.001);
+
+  const largeCost = calculateEmbeddingCost({ model: 'text-embedding-3-large', totalTokens: 100000 });
+  assert.equal(largeCost.ratePerMillionUsd, 0.13);
+  assert.equal(largeCost.costMicrousd, 13000); // 100000 * 0.13
+  assert.equal(largeCost.costUsd, 0.013);
+
+  const defaultCost = calculateEmbeddingCost({ model: 'unknown-model', totalTokens: 1000000 });
+  assert.equal(defaultCost.ratePerMillionUsd, 0.02); // Fallback to DEFAULT (0.02)
+  assert.equal(defaultCost.costMicrousd, 20000);
+  assert.equal(defaultCost.costUsd, 0.02);
+
+  const zeroCost = calculateEmbeddingCost({ model: 'text-embedding-3-small', totalTokens: 0 });
+  assert.equal(zeroCost.costMicrousd, 0);
+  assert.equal(zeroCost.costUsd, 0);
+
+  // 2. Integration with fixture database & chatbot_ai_usage
+  await withEmbeddingFixture(async ({ client, db }) => {
+    // Insert usage rows for Tenant 1 (query_embedding and source_embedding)
+    await run(
+      db,
+      `INSERT INTO chatbot_ai_usage (
+         request_id, user_id, session_id, request_kind, operation, model, request_status,
+         input_tokens, output_tokens, total_tokens, latency_ms, created_at
+       ) VALUES
+       ('req-1', 1, 'session-tenant-1', 'embedding', 'source_embedding', 'text-embedding-3-small', 'SUCCEEDED', 500, 0, 500, 120, '2026-09-11T10:00:00Z'),
+       ('req-2', 1, 'session-tenant-1', 'embedding', 'source_embedding', 'text-embedding-3-small', 'SUCCEEDED', 1500, 0, 1500, 180, '2026-09-11T10:01:00Z'),
+       ('req-3', 1, 'session-tenant-1', 'embedding', 'source_embedding', 'text-embedding-3-small', 'FAILED', 200, 0, 0, 50, '2026-09-11T10:02:00Z'),
+       ('req-4', 1, 'session-tenant-1', 'embedding', 'query_embedding', 'text-embedding-3-small', 'SUCCEEDED', 50, 0, 50, 45, '2026-09-11T10:05:00Z'),
+       ('req-5', 1, 'session-tenant-1', 'production', 'chat', 'gpt-4o-mini', 'SUCCEEDED', 200, 100, 300, 500, '2026-09-11T10:06:00Z'),
+       ('req-6', 2, 'session-tenant-2', 'embedding', 'query_embedding', 'text-embedding-3-large', 'SUCCEEDED', 80, 0, 80, 60, '2026-09-11T10:07:00Z')`
+    );
+
+    // Fetch summary for Tenant 1
+    const summary1 = await getTenantEmbeddingUsageSummary({ userId: 1 }, client);
+    assert.equal(summary1.userId, 1);
+    assert.equal(summary1.totalRequests, 4); // 3 source_embedding + 1 query_embedding (excludes text_generation and tenant 2)
+    assert.equal(summary1.totalTokens, 2050); // 500 + 1500 + 0 + 50
+    assert.equal(summary1.totalCostMicrousd, 41); // (2000 * 0.02) + (50 * 0.02) = 40 + 1 = 41
+
+    // Check source_embedding breakdown
+    const sourceOp = summary1.byOperation.source_embedding;
+    assert.equal(sourceOp.requestCount, 3);
+    assert.equal(sourceOp.successCount, 2);
+    assert.equal(sourceOp.failureCount, 1);
+    assert.equal(sourceOp.inputTokens, 2200); // 500 + 1500 + 200
+    assert.equal(sourceOp.totalTokens, 2000); // 500 + 1500 + 0
+    assert.equal(sourceOp.costMicrousd, 40); // 2000 * 0.02 = 40 microUSD
+
+    // Check query_embedding breakdown
+    const queryOp = summary1.byOperation.query_embedding;
+    assert.equal(queryOp.requestCount, 1);
+    assert.equal(queryOp.successCount, 1);
+    assert.equal(queryOp.failureCount, 0);
+    assert.equal(queryOp.totalTokens, 50);
+    assert.equal(queryOp.costMicrousd, 1); // 50 * 0.02 = 1 microUSD
+
+    // Tenant isolation: Tenant 2 has 1 request
+    const summary2 = await getTenantEmbeddingUsageSummary({ userId: 2 }, client);
+    assert.equal(summary2.userId, 2);
+    assert.equal(summary2.totalRequests, 1);
+    assert.equal(summary2.totalTokens, 80);
+
+    // Test controller getEmbeddingUsage
+    const req = {
+      auth: { userId: 1 },
+      query: { session_id: 'session-tenant-1' },
+      dbClient: client
+    };
+    const res = createMockResponse();
+    await getEmbeddingUsage(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.status, 'success');
+    assert.equal(res.body.data.totalRequests, 4);
+    assert.equal(res.body.data.totalTokens, 2050);
+  });
+});
+
+test('RAG-0412: validates unsupported provider, timeouts, invalid dimensions, and decrypted credential resolution', async () => {
+  await withEmbeddingFixture(async ({ client, db }) => {
+    // 1. Unsupported provider (returns 404 -> classified as UNSUPPORTED)
+    const mockUnsupportedClient = {
+      embeddings: {
+        async create() {
+          const err = new Error('Model or endpoint not supported by this provider');
+          err.status = 404;
+          err.code = 'EMBEDDING_UNSUPPORTED';
+          throw err;
+        }
+      }
+    };
+
+    const capabilityUnsupported = await testEmbeddingCapability({
+      apiKey: 'sk-test',
+      model: 'custom-unsupported-model',
+      openaiClient: mockUnsupportedClient
+    });
+    assert.equal(capabilityUnsupported.capabilityStatus, EMBEDDING_CAPABILITY_STATUSES.UNSUPPORTED);
+    assert.equal(capabilityUnsupported.errorCode, 'EMBEDDING_UNSUPPORTED');
+    assert.equal(capabilityUnsupported.httpStatus, 404);
+
+    // 2. Timeout handling (ETIMEDOUT or AbortError -> classified safely as FAILED / TIMEOUT)
+    const mockTimeoutClient = {
+      embeddings: {
+        async create() {
+          const err = new Error('Connection timed out after 5000ms');
+          err.name = 'AbortError';
+          err.code = 'ETIMEDOUT';
+          throw err;
+        }
+      }
+    };
+
+    const capabilityTimeout = await testEmbeddingCapability({
+      apiKey: 'sk-test',
+      openaiClient: mockTimeoutClient
+    });
+    assert.equal(capabilityTimeout.capabilityStatus, EMBEDDING_CAPABILITY_STATUSES.FAILED);
+    assert.equal(capabilityTimeout.errorCode, 'ETIMEDOUT');
+
+    // Also test timeout without specific code (falls back to TIMEOUT)
+    const mockTimeoutNoCode = {
+      embeddings: {
+        async create() {
+          const err = new Error('Gateway Timeout');
+          err.name = 'TimeoutError';
+          throw err;
+        }
+      }
+    };
+    const capabilityNoCode = await testEmbeddingCapability({
+      apiKey: 'sk-test',
+      openaiClient: mockTimeoutNoCode
+    });
+    assert.equal(capabilityNoCode.capabilityStatus, EMBEDDING_CAPABILITY_STATUSES.FAILED);
+    assert.equal(capabilityNoCode.errorCode, 'TIMEOUT');
+
+    // Also verify generateQueryEmbedding throws cleanly on timeout
+    await assert.rejects(
+      async () => {
+        await generateQueryEmbedding({
+          query: 'test query',
+          userId: 1,
+          maxAttempts: 1,
+          openaiClient: mockTimeoutClient,
+          databaseClient: client
+        });
+      },
+      (err) => {
+        assert.equal(err.code, 'ETIMEDOUT');
+        return true;
+      }
+    );
+
+    // 3. Invalid dimensions handling
+    // Expected 1536, but provider returns 3 dimensions
+    const mockDimensionMismatchClient = {
+      embeddings: {
+        async create() {
+          return {
+            data: [{ embedding: [0.1, 0.2, 0.3] }],
+            usage: { total_tokens: 5 }
+          };
+        }
+      }
+    };
+
+    // testEmbeddingCapability detects mismatch
+    const capabilityMismatch = await testEmbeddingCapability({
+      apiKey: 'sk-test',
+      dimensions: 1536,
+      openaiClient: mockDimensionMismatchClient
+    });
+    assert.equal(capabilityMismatch.capabilityStatus, EMBEDDING_CAPABILITY_STATUSES.UNSUPPORTED);
+    assert.equal(capabilityMismatch.errorCode, 'DIMENSION_MISMATCH');
+    assert.ok(capabilityMismatch.error.includes('1536'));
+
+    // generateBatchChunkEmbeddings rejects dimension mismatch
+    await assert.rejects(
+      async () => {
+        await generateBatchChunkEmbeddings({
+          chunks: [{ chunk_index: 0, chunk_text: 'hello' }],
+          dimensions: 1536,
+          userId: 1,
+          openaiClient: mockDimensionMismatchClient,
+          databaseClient: client
+        });
+      },
+      { code: 'EMBEDDING_DIMENSION_MISMATCH' }
+    );
+
+    // generateQueryEmbedding rejects dimension mismatch
+    await assert.rejects(
+      async () => {
+        await generateQueryEmbedding({
+          query: 'hello query',
+          dimensions: 1536,
+          userId: 1,
+          openaiClient: mockDimensionMismatchClient,
+          databaseClient: client
+        });
+      },
+      { code: 'EMBEDDING_DIMENSION_MISMATCH' }
+    );
+
+    // 4. Encrypted credential resolution & tenant isolation
+    // Tenant 1 credential (id 10) belongs to user 1
+    const resolvedCred1 = await resolveEmbeddingCredential({
+      credentialId: 10,
+      userId: 1,
+      databaseClient: client
+    });
+    assert.equal(resolvedCred1.apiKey, 'sk-valid-test-key');
+    assert.equal(resolvedCred1.baseUrl, 'https://ai.sumopod.com/v1');
+    assert.equal(resolvedCred1.credentialId, 10);
+
+    // Cross-tenant access: User 2 attempting to resolve User 1's credential (id 10) -> 404
+    await assert.rejects(
+      async () => {
+        await resolveEmbeddingCredential({
+          credentialId: 10,
+          userId: 2,
+          databaseClient: client
+        });
+      },
+      { code: 'CREDENTIAL_NOT_FOUND' }
+    );
+
+    // Inactive credential rejection: deactivate credential 10 and test
+    await run(db, 'UPDATE chatbot_ai_credentials SET is_active = 0 WHERE id = 10');
+    await assert.rejects(
+      async () => {
+        await resolveEmbeddingCredential({
+          credentialId: 10,
+          userId: 1,
+          databaseClient: client
+        });
+      },
+      { code: 'CREDENTIAL_NOT_ACTIVE' }
+    );
+
+    // Missing credential_id and api_key -> API_KEY_REQUIRED
+    await assert.rejects(
+      async () => {
+        await resolveEmbeddingCredential({
+          credentialId: null,
+          apiKey: null,
+          userId: 1,
+          databaseClient: client
+        });
+      },
+      { code: 'API_KEY_REQUIRED' }
+    );
+  });
 });
