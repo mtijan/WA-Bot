@@ -1,8 +1,15 @@
 import sqlite3 from 'sqlite3';
 import {
   assertRagIndexJobTransition,
+  RAG_EMBEDDING_STATES,
   RAG_INDEX_JOB_STATES
 } from './chatbot_ai_rag_job_state.service.js';
+
+const LEXICAL_PUBLISH_EMBEDDING_STATES = new Set([
+  RAG_EMBEDDING_STATES.DISABLED,
+  RAG_EMBEDDING_STATES.PENDING,
+  RAG_EMBEDDING_STATES.FAILED
+]);
 
 function createRagIndexError(code, message, details = {}) {
   const error = new Error(message);
@@ -38,6 +45,92 @@ function normalizeLeaseOwner(value) {
     );
   }
   return normalized;
+}
+
+function normalizeLexicalPublishEmbeddingStatus(value) {
+  const normalized = String(value || RAG_EMBEDDING_STATES.DISABLED).trim().toUpperCase();
+  if (!LEXICAL_PUBLISH_EMBEDDING_STATES.has(normalized)) {
+    throw createRagIndexError(
+      'RAG_INDEX_INVALID_INPUT',
+      'embeddingStatus publikasi lexical harus DISABLED, PENDING, atau FAILED.'
+    );
+  }
+  return normalized;
+}
+
+function serializeChunkMetadata(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw createRagIndexError(
+      'RAG_INDEX_INVALID_CHUNK',
+      'Metadata chunk RAG harus berupa object JSON.'
+    );
+  }
+  try {
+    const serialized = JSON.stringify(value);
+    if (typeof serialized !== 'string') {
+      throw new TypeError('Metadata JSON tidak menghasilkan string.');
+    }
+    return serialized;
+  } catch {
+    throw createRagIndexError(
+      'RAG_INDEX_INVALID_CHUNK',
+      'Metadata chunk RAG harus dapat diserialisasi sebagai JSON.'
+    );
+  }
+}
+
+function normalizeLexicalChunks(chunks) {
+  if (!Array.isArray(chunks) || chunks.length === 0) {
+    throw createRagIndexError(
+      'RAG_INDEX_INVALID_CHUNK',
+      'Publikasi lexical RAG memerlukan minimal satu chunk.'
+    );
+  }
+
+  return chunks.map((chunk, position) => {
+    if (!chunk || typeof chunk !== 'object') {
+      throw createRagIndexError('RAG_INDEX_INVALID_CHUNK', 'Chunk RAG harus berupa object.');
+    }
+    if (!Number.isInteger(chunk.chunkIndex) || chunk.chunkIndex !== position) {
+      throw createRagIndexError(
+        'RAG_INDEX_INVALID_CHUNK',
+        'chunkIndex RAG harus berurutan dari nol tanpa duplikasi.'
+      );
+    }
+    const text = String(chunk.text || '').trim();
+    if (!text) {
+      throw createRagIndexError('RAG_INDEX_INVALID_CHUNK', 'Teks chunk RAG tidak boleh kosong.');
+    }
+    const lexicalProbe = text.match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}_-]*/u)?.[0];
+    if (!lexicalProbe) {
+      throw createRagIndexError(
+        'RAG_INDEX_INVALID_CHUNK',
+        'Teks chunk RAG harus memiliki minimal satu token lexical.'
+      );
+    }
+    if (!Number.isInteger(chunk.tokenCount) || chunk.tokenCount <= 0) {
+      throw createRagIndexError(
+        'RAG_INDEX_INVALID_CHUNK',
+        'tokenCount chunk RAG harus berupa integer positif.'
+      );
+    }
+    const contentHash = normalizeEmbeddingConfigHash(chunk.contentHash);
+    if (!contentHash) {
+      throw createRagIndexError(
+        'RAG_INDEX_INVALID_CHUNK',
+        'contentHash chunk RAG wajib diisi.'
+      );
+    }
+    return Object.freeze({
+      chunkIndex: chunk.chunkIndex,
+      text,
+      tokenCount: chunk.tokenCount,
+      metadataJson: serializeChunkMetadata(chunk.metadata),
+      contentHash,
+      lexicalMatchQuery: `"${lexicalProbe.replaceAll('"', '""')}"`
+    });
+  });
 }
 
 function requireDatabaseClient(client) {
@@ -361,6 +454,116 @@ export async function runCurrentRagIndexRevisionTransaction({
       job_id: jobId,
       status: RAG_INDEX_JOB_STATES.RUNNING,
       result
+    };
+  });
+}
+
+export async function publishRagLexicalIndexRevision({
+  jobId,
+  userId,
+  leaseOwner,
+  chunks,
+  embeddingStatus = RAG_EMBEDDING_STATES.DISABLED,
+  databasePath = null
+}) {
+  const preparedChunks = normalizeLexicalChunks(chunks);
+  const nextEmbeddingStatus = normalizeLexicalPublishEmbeddingStatus(embeddingStatus);
+
+  return runCurrentRagIndexRevisionTransaction({
+    jobId,
+    userId,
+    leaseOwner,
+    databasePath
+  }, async (client, context) => {
+    await client.run(
+      'DELETE FROM rag_chunks WHERE source_id = ? AND user_id = ?',
+      [context.sourceId, context.userId]
+    );
+
+    for (const chunk of preparedChunks) {
+      await client.run(
+        `INSERT INTO rag_chunks (
+           source_id, user_id, source_revision, chunk_index,
+           chunk_text, token_count, metadata_json, content_hash,
+           embedding, embedding_model, embedding_dimensions, embedding_config_hash
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
+        [
+          context.sourceId,
+          context.userId,
+          context.requestedRevision,
+          chunk.chunkIndex,
+          chunk.text,
+          chunk.tokenCount,
+          chunk.metadataJson,
+          chunk.contentHash,
+          context.embeddingConfigHash || null
+        ]
+      );
+    }
+
+    const sourceUpdate = await client.run(
+      `UPDATE rag_sources
+       SET indexed_revision = ?, lexical_status = 'READY', embedding_status = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ? AND current_revision = ? AND is_active = 1`,
+      [
+        context.requestedRevision,
+        nextEmbeddingStatus,
+        context.sourceId,
+        context.userId,
+        context.requestedRevision
+      ]
+    );
+    if (sourceUpdate.changes !== 1) {
+      throw createRagIndexError(
+        'RAG_INDEX_SOURCE_STATE_CONFLICT',
+        'Source RAG berubah sebelum revision lexical dapat dipublikasikan.'
+      );
+    }
+
+    const chunkCount = await client.get(
+      `SELECT COUNT(*) AS count FROM rag_chunks
+       WHERE source_id = ? AND user_id = ? AND source_revision = ?`,
+      [context.sourceId, context.userId, context.requestedRevision]
+    );
+    if (Number(chunkCount?.count) !== preparedChunks.length) {
+      throw createRagIndexError(
+        'RAG_INDEX_FTS_SYNC_FAILED',
+        'FTS RAG tidak sinkron dengan chunk revision yang dipublikasikan.'
+      );
+    }
+    for (const chunk of preparedChunks) {
+      const ftsMatch = await client.get(
+        `SELECT COUNT(*) AS count
+         FROM rag_chunks_fts
+         WHERE rowid = (
+           SELECT id FROM rag_chunks
+           WHERE source_id = ? AND user_id = ?
+             AND source_revision = ? AND chunk_index = ?
+         )
+           AND rag_chunks_fts MATCH ?`,
+        [
+          context.sourceId,
+          context.userId,
+          context.requestedRevision,
+          chunk.chunkIndex,
+          chunk.lexicalMatchQuery
+        ]
+      );
+      if (Number(ftsMatch?.count) !== 1) {
+        throw createRagIndexError(
+          'RAG_INDEX_FTS_SYNC_FAILED',
+          'FTS RAG tidak sinkron dengan chunk revision yang dipublikasikan.'
+        );
+      }
+    }
+
+    return {
+      source_id: context.sourceId,
+      source_revision: context.requestedRevision,
+      chunk_count: preparedChunks.length,
+      lexical_status: 'READY',
+      embedding_status: nextEmbeddingStatus
     };
   });
 }
