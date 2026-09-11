@@ -6,6 +6,10 @@ import {
   removeFlowSessionAssignments,
   syncFlowSessionAssignments
 } from '../services/chatbot_flow_sessions.service.js';
+import {
+  syncFlowKnowledgeSourceSafely,
+  deleteFlowKnowledgeSourceSafely
+} from '../services/chatbot_ai_rag_index.service.js';
 import { auditLog } from '../services/audit.service.js';
 
 export const getFlows = async (req, res) => {
@@ -90,6 +94,21 @@ export const createFlow = async (req, res) => {
       ]
     );
     await syncFlowSessionAssignments(result.id, sIds, req.auth.userId);
+    await syncFlowKnowledgeSourceSafely({
+      flowId: result.id,
+      userId: req.auth.userId,
+      flow: {
+        id: result.id,
+        flow_name,
+        description,
+        session_ids: sIds,
+        keywords,
+        nodes,
+        status: status || 'ACTIVE',
+        user_id: req.auth.userId
+      },
+      sessionIds: sIds
+    });
     auditLog(req, 'CHATBOT_FLOW_CREATE', 'chatbot_flow', String(result.id), 'success', { flow_name, status: status || 'ACTIVE' });
     return sendSuccess(res, { id: result.id }, 201, { message: 'Alur chatbot berhasil disimpan.' });
   } catch (error) {
@@ -138,6 +157,21 @@ export const updateFlow = async (req, res) => {
       ]
     );
     await syncFlowSessionAssignments(id, sIds, existing.user_id || req.auth.userId);
+    await syncFlowKnowledgeSourceSafely({
+      flowId: Number(id),
+      userId: req.auth.userId,
+      flow: {
+        id: Number(id),
+        flow_name,
+        description,
+        session_ids: sIds,
+        keywords,
+        nodes,
+        status,
+        user_id: req.auth.userId
+      },
+      sessionIds: sIds
+    });
     auditLog(req, 'CHATBOT_FLOW_UPDATE', 'chatbot_flow', String(id), 'success', { flow_name, status });
     return sendSuccess(res, null, 200, { message: 'Alur chatbot berhasil diperbarui.' });
   } catch (error) {
@@ -185,6 +219,21 @@ export const updateFlowSettings = async (req, res) => {
       ]
     );
     await syncFlowSessionAssignments(id, sIds, existing.user_id || req.auth.userId);
+    await syncFlowKnowledgeSourceSafely({
+      flowId: Number(id),
+      userId: req.auth.userId,
+      flow: {
+        id: Number(id),
+        flow_name,
+        description,
+        session_ids: sIds,
+        keywords,
+        nodes: existing.nodes,
+        status,
+        user_id: req.auth.userId
+      },
+      sessionIds: sIds
+    });
     auditLog(req, 'CHATBOT_FLOW_SETTINGS_UPDATE', 'chatbot_flow', String(id), 'success', { flow_name, status });
     return sendSuccess(res, null, 200, { message: 'Pengaturan alur chatbot berhasil diperbarui.' });
   } catch (error) {
@@ -205,6 +254,7 @@ export const deleteFlow = async (req, res) => {
       return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke alur chatbot ini.');
     }
 
+    await deleteFlowKnowledgeSourceSafely({ flowId: Number(id), userId: req.auth.userId });
     await removeFlowSessionAssignments(id);
     await dbRun('DELETE FROM chatbot_flows WHERE id = ?', [id]);
     auditLog(req, 'CHATBOT_FLOW_DELETE', 'chatbot_flow', String(id), 'success', { flow_name: existing.flow_name });
@@ -229,6 +279,14 @@ export const updateFlowStatus = async (req, res) => {
     }
 
     await dbRun('UPDATE chatbot_flows SET status = ? WHERE id = ?', [status, id]);
+    await syncFlowKnowledgeSourceSafely({
+      flowId: Number(id),
+      userId: req.auth.userId,
+      flow: {
+        ...existing,
+        status
+      }
+    });
     auditLog(req, 'CHATBOT_FLOW_STATUS_UPDATE', 'chatbot_flow', String(id), 'success', { status });
     return sendSuccess(res, null, 200, { message: 'Status alur chatbot berhasil diperbarui.' });
   } catch (error) {
@@ -424,6 +482,21 @@ export const importFlows = async (req, res) => {
         ]
       );
       await syncFlowSessionAssignments(result.id, validatedSessionIds, req.auth.userId);
+      await syncFlowKnowledgeSourceSafely({
+        flowId: result.id,
+        userId: req.auth.userId,
+        flow: {
+          id: result.id,
+          flow_name,
+          description,
+          session_ids: validatedSessionIds,
+          keywords,
+          nodes: mappedNodes,
+          status,
+          user_id: req.auth.userId
+        },
+        sessionIds: validatedSessionIds
+      });
       importCount++;
     }
 

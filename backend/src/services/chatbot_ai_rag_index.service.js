@@ -1,5 +1,6 @@
 import sqlite3 from 'sqlite3';
 import {
+  extractFlowKnowledgeSource,
   extractManualKnowledgeSource,
   resolveRagSourceRevision
 } from './chatbot_ai_rag_extractor.service.js';
@@ -151,9 +152,10 @@ let runtimeDatabaseClientPromise;
 
 async function getRuntimeDatabaseClient() {
   if (!runtimeDatabaseClientPromise) {
-    runtimeDatabaseClientPromise = import('../database.js').then(({ dbGet, dbRun }) => ({
+    runtimeDatabaseClientPromise = import('../database.js').then(({ dbGet, dbRun, dbAll }) => ({
       get: dbGet,
-      run: dbRun
+      run: dbRun,
+      all: dbAll
     }));
   }
   return runtimeDatabaseClientPromise;
@@ -747,4 +749,308 @@ export async function syncManualKnowledgeSourceSafely(input, databaseClient = nu
     return null;
   }
 }
+
+export async function syncFlowKnowledgeSource({
+  flowId,
+  userId,
+  flow = null,
+  sessionIds = null
+}, databaseClient = null) {
+  requirePositiveInteger(userId, 'userId');
+  requirePositiveInteger(flowId, 'flowId');
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  let flowRecord = flow;
+  if (!flowRecord || flowRecord.nodes === undefined) {
+    flowRecord = await client.get(
+      `SELECT * FROM chatbot_flows WHERE id = ? AND user_id = ?`,
+      [flowId, userId]
+    );
+  }
+  if (!flowRecord) {
+    throw createRagIndexError('RAG_FLOW_NOT_FOUND', 'Alur chatbot tidak ditemukan untuk pemilik ini.');
+  }
+  if (flowRecord.user_id && Number(flowRecord.user_id) !== userId) {
+    throw createRagIndexError('RAG_FLOW_FORBIDDEN', 'Anda tidak memiliki akses ke alur chatbot ini.');
+  }
+
+  const fullFlow = {
+    ...flowRecord,
+    id: flowId,
+    user_id: userId
+  };
+
+  let candidateSessionIds = sessionIds;
+  if (!candidateSessionIds) {
+    if (Array.isArray(fullFlow.session_ids)) {
+      candidateSessionIds = fullFlow.session_ids;
+    } else if (typeof fullFlow.session_ids === 'string') {
+      try {
+        candidateSessionIds = JSON.parse(fullFlow.session_ids || '[]');
+      } catch {
+        candidateSessionIds = [];
+      }
+    } else {
+      candidateSessionIds = [];
+    }
+  }
+
+  const normalizedSessionIds = [...new Set(
+    (Array.isArray(candidateSessionIds) ? candidateSessionIds : [])
+      .map((sid) => String(sid || '').trim())
+      .filter(Boolean)
+  )];
+
+  let validSessionIds = [];
+  if (normalizedSessionIds.length > 0) {
+    const placeholders = normalizedSessionIds.map(() => '?').join(',');
+    const ownedSessions = await client.all(
+      `SELECT session_id FROM sessions WHERE user_id = ? AND session_id IN (${placeholders})`,
+      [userId, ...normalizedSessionIds]
+    );
+    const ownedSet = new Set((ownedSessions || []).map((s) => s.session_id));
+    validSessionIds = normalizedSessionIds.filter((sid) => ownedSet.has(sid));
+  }
+
+  const extracted = extractFlowKnowledgeSource(fullFlow, { userId });
+  const flowStatus = String(fullFlow.status || 'ACTIVE').toUpperCase();
+  const isActive = (flowStatus === 'ACTIVE' && extracted.documents.length > 0) ? 1 : 0;
+
+  const existing = await client.get(
+    `SELECT id, user_id, current_revision, indexed_revision, content_hash,
+            lexical_status, embedding_status, is_active
+     FROM rag_sources
+     WHERE user_id = ?
+       AND flow_id = ?
+       AND source_type = 'flow'`,
+    [userId, flowId]
+  );
+
+  if (!existing) {
+    const insertResult = await client.run(
+      `INSERT INTO rag_sources (
+         user_id, source_type, flow_id, manual_session_id, content_hash,
+         current_revision, indexed_revision, lexical_status, embedding_status, is_active
+       ) VALUES (?, 'flow', ?, NULL, ?, 1, 0, 'PENDING', 'DISABLED', ?)`,
+      [userId, flowId, extracted.contentHash, isActive]
+    );
+
+    const sourceId = insertResult?.id || (await client.get(
+      `SELECT id FROM rag_sources WHERE user_id = ? AND flow_id = ?`,
+      [userId, flowId]
+    ))?.id;
+
+    for (const sid of validSessionIds) {
+      await client.run(
+        `INSERT OR IGNORE INTO rag_session_sources (session_id, source_id, user_id)
+         VALUES (?, ?, ?)`,
+        [sid, sourceId, userId]
+      );
+    }
+
+    let job = null;
+    if (isActive === 1) {
+      job = await enqueueRagIndexJob({
+        sourceId,
+        userId,
+        requestedRevision: 1,
+        embeddingConfigHash: ''
+      }, client);
+    }
+
+    return {
+      sourceId,
+      revision: 1,
+      action: 'created',
+      isActive: isActive === 1,
+      mappingChanged: validSessionIds.length > 0,
+      enqueued: Boolean(job && !job.idempotent),
+      validSessionIds,
+      job
+    };
+  }
+
+  const sourceId = existing.id;
+
+  const currentMappings = await client.all(
+    `SELECT session_id FROM rag_session_sources WHERE source_id = ? AND user_id = ?`,
+    [sourceId, userId]
+  );
+  const currentSet = new Set((currentMappings || []).map((m) => m.session_id));
+  const newSet = new Set(validSessionIds);
+
+  const toRemove = [...currentSet].filter((sid) => !newSet.has(sid));
+  for (const sid of toRemove) {
+    await client.run(
+      `DELETE FROM rag_session_sources WHERE session_id = ? AND source_id = ? AND user_id = ?`,
+      [sid, sourceId, userId]
+    );
+  }
+
+  const toAdd = validSessionIds.filter((sid) => !currentSet.has(sid));
+  for (const sid of toAdd) {
+    await client.run(
+      `INSERT OR IGNORE INTO rag_session_sources (session_id, source_id, user_id)
+       VALUES (?, ?, ?)`,
+      [sid, sourceId, userId]
+    );
+  }
+  const mappingChanged = toRemove.length > 0 || toAdd.length > 0;
+
+  const contentChanged = extracted.contentHash !== existing.content_hash;
+
+  if (contentChanged) {
+    const nextRevision = resolveRagSourceRevision({
+      previousContentHash: existing.content_hash,
+      previousRevision: existing.current_revision,
+      contentHash: extracted.contentHash
+    });
+
+    await client.run(
+      `UPDATE rag_sources
+       SET content_hash = ?,
+           current_revision = ?,
+           lexical_status = 'PENDING',
+           is_active = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`,
+      [extracted.contentHash, nextRevision, isActive, sourceId, userId]
+    );
+
+    let job = null;
+    if (isActive === 1) {
+      job = await enqueueRagIndexJob({
+        sourceId,
+        userId,
+        requestedRevision: nextRevision,
+        embeddingConfigHash: ''
+      }, client);
+    }
+
+    return {
+      sourceId,
+      revision: nextRevision,
+      action: 'updated',
+      isActive: isActive === 1,
+      mappingChanged,
+      enqueued: Boolean(job && !job.idempotent),
+      validSessionIds,
+      job
+    };
+  }
+
+  const activeChanged = Number(existing.is_active) !== isActive;
+  if (activeChanged) {
+    await client.run(
+      `UPDATE rag_sources
+       SET is_active = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`,
+      [isActive, sourceId, userId]
+    );
+  }
+
+  let job = null;
+  if (isActive === 1 && (existing.indexed_revision < existing.current_revision || existing.lexical_status !== 'READY')) {
+    job = await enqueueRagIndexJob({
+      sourceId,
+      userId,
+      requestedRevision: existing.current_revision,
+      embeddingConfigHash: ''
+    }, client);
+  }
+
+  let action = 'noop';
+  if (activeChanged) {
+    action = 'status_updated';
+  } else if (mappingChanged) {
+    action = 'mapping_updated';
+  }
+
+  return {
+    sourceId,
+    revision: existing.current_revision,
+    action,
+    isActive: isActive === 1,
+    mappingChanged,
+    enqueued: Boolean(job && !job.idempotent),
+    validSessionIds,
+    job
+  };
+}
+
+export async function syncFlowKnowledgeSourceSafely(input, databaseClient = null) {
+  try {
+    return await syncFlowKnowledgeSource(input, databaseClient);
+  } catch (error) {
+    try {
+      const { logger } = await import('../logger.js');
+      logger?.error?.({ err: error, input: { userId: input?.userId, flowId: input?.flowId } }, 'syncFlowKnowledgeSourceSafely failed');
+    } catch {
+      // logger unavailable
+    }
+    return null;
+  }
+}
+
+export async function deleteFlowKnowledgeSource({
+  flowId,
+  userId
+}, databaseClient = null) {
+  requirePositiveInteger(userId, 'userId');
+  requirePositiveInteger(flowId, 'flowId');
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  const existing = await client.get(
+    `SELECT id FROM rag_sources WHERE user_id = ? AND flow_id = ? AND source_type = 'flow'`,
+    [userId, flowId]
+  );
+
+  if (!existing) {
+    return { flowId, deleted: false };
+  }
+
+  const sourceId = existing.id;
+
+  await client.run(
+    `DELETE FROM rag_session_sources WHERE source_id = ? AND user_id = ?`,
+    [sourceId, userId]
+  );
+
+  await client.run(
+    `DELETE FROM rag_index_jobs WHERE source_id = ? AND user_id = ?`,
+    [sourceId, userId]
+  );
+
+  await client.run(
+    `DELETE FROM rag_chunks WHERE source_id = ? AND user_id = ?`,
+    [sourceId, userId]
+  );
+
+  await client.run(
+    `DELETE FROM rag_sources WHERE id = ? AND user_id = ?`,
+    [sourceId, userId]
+  );
+
+  return {
+    flowId,
+    sourceId,
+    deleted: true
+  };
+}
+
+export async function deleteFlowKnowledgeSourceSafely(input, databaseClient = null) {
+  try {
+    return await deleteFlowKnowledgeSource(input, databaseClient);
+  } catch (error) {
+    try {
+      const { logger } = await import('../logger.js');
+      logger?.error?.({ err: error, input: { userId: input?.userId, flowId: input?.flowId } }, 'deleteFlowKnowledgeSourceSafely failed');
+    } catch {
+      // logger unavailable
+    }
+    return null;
+  }
+}
+
 
