@@ -45,7 +45,8 @@ export const RAG_RETRIEVAL_DEFAULTS = Object.freeze({
   MAX_LEXICAL_CANDIDATES: 200,
   MAX_SEMANTIC_CANDIDATES: 5000,
   RRF_K: 60,
-  MMR_LAMBDA: 0.75
+  MMR_LAMBDA: 0.75,
+  RELEVANCE_CONSENSUS_BONUS: 0.05
 });
 
 export function createRagRetrievalError(code, message, details = {}) {
@@ -80,6 +81,12 @@ function clampInteger(value, fallback, minimum, maximum) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(minimum, Math.min(maximum, Math.trunc(parsed)));
+}
+
+function clampUnitInterval(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(1, parsed));
 }
 
 function normalizeIndonesianToken(token) {
@@ -267,13 +274,20 @@ export async function searchRagLexical({
     [normalizedQuery.ftsQuery, safeSessionId, userId, userId, ...safeSourceTypes, safeLimit]
   );
 
-  return rows.map((row, index) => ({
-    ...mapBaseChunk(row),
-    lexical_rank: index + 1,
-    lexical_score: -Number(row.bm25_score || 0),
-    score: -Number(row.bm25_score || 0),
-    retrieval_channel: 'lexical'
-  }));
+  return rows.map((row, index) => {
+    const chunkTokens = normalizedTextTokens(row.chunk_text);
+    const matchedTokens = normalizedQuery.tokens.filter((token) => chunkTokens.has(token));
+    const lexicalMatchRatio = matchedTokens.length / normalizedQuery.tokens.length;
+    return {
+      ...mapBaseChunk(row),
+      lexical_rank: index + 1,
+      lexical_score: -Number(row.bm25_score || 0),
+      lexical_match_ratio: lexicalMatchRatio,
+      matched_query_tokens: matchedTokens,
+      score: -Number(row.bm25_score || 0),
+      retrieval_channel: 'lexical'
+    };
+  });
 }
 
 async function resolveSessionEmbeddingProfile(client, userId, sessionId) {
@@ -453,7 +467,22 @@ export function reciprocalRankFusion({
       if (aBestRank !== bBestRank) return aBestRank - bBestRank;
       return Number(a.chunk_id) - Number(b.chunk_id);
     })
-    .map((item, index) => ({ ...item, fused_rank: index + 1, score: item.rrf_score }));
+    .map((item, index) => {
+      const lexicalConfidence = clampUnitInterval(item.lexical_match_ratio);
+      const semanticConfidence = clampUnitInterval(item.semantic_score);
+      const consensusBonus = item.lexical_rank && item.semantic_rank
+        ? RAG_RETRIEVAL_DEFAULTS.RELEVANCE_CONSENSUS_BONUS
+        : 0;
+      const relevanceScore = clampUnitInterval(
+        Math.max(lexicalConfidence, semanticConfidence) + consensusBonus
+      );
+      return {
+        ...item,
+        fused_rank: index + 1,
+        relevance_score: relevanceScore,
+        score: item.rrf_score
+      };
+    });
 }
 
 function normalizedTextTokens(text) {
