@@ -7,13 +7,13 @@ Updated: 2026-09-11
 | Branch | Purpose | Allowed content | Base/key commit |
 |---|---|---|---|
 | `main` | Current shared baseline | Only changes that passed the agreed merge and release gates | `63c93c6` at separation time |
-| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core implementation through RAG-0505; use the reviewed branch-tip SHA |
-| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | Experiment tooling plus core implementation through RAG-0505; use the reviewed branch-tip SHA |
+| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core implementation through RAG-0510 (Fase 5 complete); use the reviewed branch-tip SHA |
+| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | Experiment tooling plus core implementation through RAG-0510 (Fase 5 complete); use the reviewed branch-tip SHA |
 | `hotfix/urgent-fixes` | Urgent production/staging bug fixes | The smallest isolated fix and its focused regression test; no unfinished RAG or experiment files | Directly from `origin/main` at `63c93c6` |
 
 The three branches were published to `origin` on 2026-09-11 after explicit approval. Publishing the refs did not merge or deploy them, and `origin/main` remained at `63c93c6`. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
 
-Current local milestone on 2026-09-11: RAG-0501–RAG-0505 are complete and Fase 5 pauses at 5/10. Focused retriever 11/11, combined retriever/embedding/migration/publisher 44/44, full backend 272/272, frontend production build, and route/OpenAPI parity 120/120 passed. These are LOCAL/GIT candidate facts only; runtime migration, staging deploy, UAT, and merge to `main` have not occurred.
+Current local milestone on 2026-09-11: RAG-0501–RAG-0510 are complete and Fase 5 pauses complete at 10/10 before Fase 6. Fixed retrieval evaluation is 50/50 with Top-3 accuracy 100%, false-positive 0, and no cross-tenant/session source. Focused context/evaluation/retriever 18/18, all focused RAG 101/101, full backend 279/279, frontend production build, and route/OpenAPI parity 120/120 passed. These are LOCAL/GIT candidate facts only; runtime migration, LLM/WhatsApp integration, staging deploy, UAT, and merge to `main` have not occurred.
 
 ## Separation rules
 
