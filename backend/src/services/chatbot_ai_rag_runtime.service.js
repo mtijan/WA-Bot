@@ -24,6 +24,11 @@ import {
 } from './chatbot_ai_rag_context.service.js';
 import { estimateRagTokens } from './chatbot_ai_rag_extractor.service.js';
 import { recordRagRuntimeEvent } from './chatbot_ai_rag_telemetry.service.js';
+import {
+  lookupCachedResponse,
+  storeCachedResponse,
+  shouldCacheResult
+} from './chatbot_ai_rag_cache.service.js';
 
 export const CS_FALLBACK_MESSAGE =
   'Mohon maaf, saya belum bisa menjawab pertanyaan tersebut saat ini. ' +
@@ -303,13 +308,16 @@ function resolveDependencies(overrides = {}) {
     generateQueryEmbedding,
     getTenantEmbeddingProfile,
     isSessionRagRolloutEnabled,
+    lookupCachedResponse,
     recheckDeliveryAccess,
     recordUsage: recordChatbotAIUsageSafely,
     recordRuntimeEvent: recordRagRuntimeEvent,
     resolveAIProvider,
     resolveKnowledgeBase,
     retrieveRagContext,
+    shouldCacheResult,
     shouldUseRag,
+    storeCachedResponse,
     ...overrides
   };
 }
@@ -467,6 +475,63 @@ async function processInboundAIMessageCore({
   };
 
   try {
+    // RAG-0703 / RAG-0704: Response Cache Lookup
+    if (aiSettings?.cache_enabled === 1) {
+      try {
+        const cached = await dependencies.lookupCachedResponse({
+          userId,
+          sessionId: safeSessionId,
+          query: safeText,
+          promptVersion: aiSettings.prompt_version || 1,
+          configRevision: aiSettings.config_revision || 1,
+          model,
+          temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing'),
+          databaseClient
+        });
+        if (cached?.cacheHit) {
+          let delivered = false;
+          if (deliverReply) {
+            const accessCheck = await dependencies.recheckDeliveryAccess({
+              userId,
+              sessionId: safeSessionId,
+              databaseClient
+            });
+            if (!accessCheck.allowed) {
+              return {
+                status: RAG_RUNTIME_STATUSES.SKIPPED,
+                reply: null,
+                delivered: false,
+                ragMetadata: {
+                  ...ragMetadata,
+                  delivery_cancelled_reason: accessCheck.reason,
+                  cache_hit: true
+                },
+                usageContext: null,
+                error: `Delivery dibatalkan karena status akses berubah: ${accessCheck.reason}`
+              };
+            }
+            await deliverReply(cached.reply);
+            delivered = true;
+          }
+          return {
+            status: RAG_RUNTIME_STATUSES.REPLIED,
+            reply: cached.reply,
+            delivered,
+            fromCache: true,
+            ragMetadata: {
+              ...ragMetadata,
+              cache_hit: true,
+              effective_mode: 'cache'
+            },
+            usageContext: null,
+            error: null
+          };
+        }
+      } catch {
+        // Cache lookup failure must not block normal AI generation.
+      }
+    }
+
     let messages;
     if (ragEnabled) {
       const baseMessages = buildRagProductionMessages({
@@ -651,6 +716,32 @@ async function processInboundAIMessageCore({
       deliveryStatus: deliverReply ? 'SENT' : 'NOT_APPLICABLE',
       latencyMs: providerLatencyMs
     }, databaseClient);
+
+    // RAG-0703 / RAG-0705: Response Cache Store
+    if (aiSettings?.cache_enabled === 1 && dependencies.shouldCacheResult({
+      status: RAG_RUNTIME_STATUSES.REPLIED,
+      reply,
+      finishReason,
+      error: null
+    })) {
+      try {
+        await dependencies.storeCachedResponse({
+          userId,
+          sessionId: safeSessionId,
+          query: safeText,
+          promptVersion: aiSettings.prompt_version || 1,
+          configRevision: aiSettings.config_revision || 1,
+          model,
+          temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing'),
+          reply,
+          ttlSeconds: aiSettings.cache_ttl_seconds,
+          databaseClient
+        });
+      } catch {
+        // Cache store failure must not fail the reply delivery.
+      }
+    }
+
     return {
       status: RAG_RUNTIME_STATUSES.REPLIED,
       reply,

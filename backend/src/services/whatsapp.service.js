@@ -21,6 +21,10 @@ import {
   shouldProcessAIFallback
 } from './chatbot_ai_rag_runtime.service.js';
 import {
+  defaultInboundDebouncer,
+  defaultSenderSerializer
+} from './chatbot_ai_debounce.service.js';
+import {
   mapBaileysMessageStatus,
   mapBaileysReceipt,
   updateDeliveryReceipt
@@ -522,94 +526,122 @@ class WhatsAppService {
           continue;
         }
 
-        const credentials = await resolveAICredentials(aiSettings, tenantUserId);
-        if (!credentials) continue;
-
-        logger.info(`[Chatbot AI] Sesi ${sessionId} memproses fallback AI.`);
-        if (aiSettings.show_typing) {
-          try {
-            await sock.presenceSubscribe(senderId);
-            await sock.sendPresenceUpdate('composing', senderId);
-          } catch {
-            // Presence bukan gate pengiriman pesan.
-          }
-        }
-
-        let typingPaused = false;
-        const pauseTyping = async () => {
-          if (!aiSettings.show_typing || typingPaused) return;
-          typingPaused = true;
-          try {
-            await sock.sendPresenceUpdate('paused', senderId);
-          } catch {
-            // Presence bukan gate pengiriman pesan.
-          }
-        };
-        const deliverAIReply = async (reply) => {
-          const delay = aiSettings.delay_seconds || 2;
-          if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay * 1000));
-          await pauseTyping();
-          await sock.sendMessage(senderId, { text: reply });
-        };
-
-        const result = await processInboundAIMessage({
-          sessionId,
-          userId: tenantUserId,
-          cleanText,
-          aiSettings,
-          credentials,
-          deliverReply: deliverAIReply
-        });
-
-        if (result.ragMetadata) {
-          logger.debug(`[Chatbot AI RAG] sesi=${sessionId} mode=${result.ragMetadata.rag_mode} effective=${result.ragMetadata.effective_mode} reason=${result.ragMetadata.retrieval_reason || '-'} chunks=${result.ragMetadata.selected_count ?? '-'} ctxTokens=${result.ragMetadata.context_tokens ?? '-'}`);
-        }
-
-        if (result.status === RAG_RUNTIME_STATUSES.REPLIED) {
-          logger.info(`[Chatbot AI] Sesi ${sessionId} berhasil mengirim balasan provider.`);
-          try {
-            await dbRun(
-              'UPDATE chatbot_ai_settings SET last_error = NULL, last_error_at = NULL WHERE session_id = ? AND user_id = ?',
+        const runAIFallback = async (inboundText) => {
+          return defaultSenderSerializer.enqueue(sessionId, senderId, async () => {
+            const currentSettings = await dbGet(
+              'SELECT * FROM chatbot_ai_settings WHERE session_id = ? AND user_id = ?',
               [sessionId, tenantUserId]
-            );
-          } catch {
-            // Error badge bersifat best effort.
-          }
-        } else if (result.status === RAG_RUNTIME_STATUSES.CS_FALLBACK) {
-          logger.info(`[Chatbot AI] Sesi ${sessionId} mengirim fallback customer service.`);
-        } else if (result.status === RAG_RUNTIME_STATUSES.EMPTY_REPLY) {
-          await pauseTyping();
-          logger.warn(`[Chatbot AI Warning] Model mengembalikan respons kosong untuk sesi ${sessionId}.`);
-          try {
-            const cleanPhone = senderId.split('@')[0];
-            await dbRun(
-              `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
-               VALUES (?, ?, ?, ?, ?)`,
-              [sessionId, cleanPhone, cleanText, 'Chatbot AI', result.error || 'Respon kosong']
-            );
-          } catch (dbErr) {
-            logError('WhatsAppService.messages.upsert.chatbotAI.logFailed', dbErr, { sessionId, senderId });
-          }
-        } else if (result.status === RAG_RUNTIME_STATUSES.ERROR) {
-          await pauseTyping();
-          const runtimeError = result.error instanceof Error
-            ? result.error
-            : new Error(String(result.error || 'Unknown error'));
-          logError('WhatsAppService.messages.upsert.chatbotAI', runtimeError, { sessionId, senderId });
-          try {
-            await dbRun(
-              'UPDATE chatbot_ai_settings SET last_error = ?, last_error_at = CURRENT_TIMESTAMP WHERE session_id = ? AND user_id = ?',
-              [runtimeError.message, sessionId, tenantUserId]
-            );
-            const cleanPhone = senderId.split('@')[0];
-            await dbRun(
-              `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
-               VALUES (?, ?, ?, ?, ?)`,
-              [sessionId, cleanPhone, cleanText, 'Chatbot AI', runtimeError.message]
-            );
-          } catch (dbErr) {
-            logError('WhatsAppService.messages.upsert.chatbotAI.dbUpdate', dbErr, { sessionId, senderId });
-          }
+            ) || aiSettings;
+
+            if (currentSettings.is_active !== 1) return;
+
+            const credentials = await resolveAICredentials(currentSettings, tenantUserId);
+            if (!credentials) return;
+
+            logger.info(`[Chatbot AI] Sesi ${sessionId} memproses fallback AI untuk ${senderId}.`);
+            if (currentSettings.show_typing) {
+              try {
+                await sock.presenceSubscribe(senderId);
+                await sock.sendPresenceUpdate('composing', senderId);
+              } catch {
+                // Presence bukan gate pengiriman pesan.
+              }
+            }
+
+            let typingPaused = false;
+            const pauseTyping = async () => {
+              if (!currentSettings.show_typing || typingPaused) return;
+              typingPaused = true;
+              try {
+                await sock.sendPresenceUpdate('paused', senderId);
+              } catch {
+                // Presence bukan gate pengiriman pesan.
+              }
+            };
+            const deliverAIReply = async (reply) => {
+              const delay = currentSettings.delay_seconds || 2;
+              if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay * 1000));
+              await pauseTyping();
+              await sock.sendMessage(senderId, { text: reply });
+            };
+
+            const result = await processInboundAIMessage({
+              sessionId,
+              userId: tenantUserId,
+              cleanText: inboundText,
+              aiSettings: currentSettings,
+              credentials,
+              deliverReply: deliverAIReply
+            });
+
+            if (result.ragMetadata) {
+              logger.debug(`[Chatbot AI RAG] sesi=${sessionId} mode=${result.ragMetadata.rag_mode} effective=${result.ragMetadata.effective_mode} reason=${result.ragMetadata.retrieval_reason || '-'} chunks=${result.ragMetadata.selected_count ?? '-'} ctxTokens=${result.ragMetadata.context_tokens ?? '-'}`);
+            }
+
+            if (result.status === RAG_RUNTIME_STATUSES.REPLIED) {
+              logger.info(`[Chatbot AI] Sesi ${sessionId} berhasil mengirim balasan provider.`);
+              try {
+                await dbRun(
+                  'UPDATE chatbot_ai_settings SET last_error = NULL, last_error_at = NULL WHERE session_id = ? AND user_id = ?',
+                  [sessionId, tenantUserId]
+                );
+              } catch {
+                // Error badge bersifat best effort.
+              }
+            } else if (result.status === RAG_RUNTIME_STATUSES.CS_FALLBACK) {
+              logger.info(`[Chatbot AI] Sesi ${sessionId} mengirim fallback customer service.`);
+            } else if (result.status === RAG_RUNTIME_STATUSES.EMPTY_REPLY) {
+              await pauseTyping();
+              logger.warn(`[Chatbot AI Warning] Model mengembalikan respons kosong untuk sesi ${sessionId}.`);
+              try {
+                const cleanPhone = senderId.split('@')[0];
+                await dbRun(
+                  `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
+                   VALUES (?, ?, ?, ?, ?)`,
+                  [sessionId, cleanPhone, inboundText, 'Chatbot AI', result.error || 'Respon kosong']
+                );
+              } catch (dbErr) {
+                logError('WhatsAppService.messages.upsert.chatbotAI.logFailed', dbErr, { sessionId, senderId });
+              }
+            } else if (result.status === RAG_RUNTIME_STATUSES.ERROR) {
+              await pauseTyping();
+              const runtimeError = result.error instanceof Error
+                ? result.error
+                : new Error(String(result.error || 'Unknown error'));
+              logError('WhatsAppService.messages.upsert.chatbotAI', runtimeError, { sessionId, senderId });
+              try {
+                await dbRun(
+                  'UPDATE chatbot_ai_settings SET last_error = ?, last_error_at = CURRENT_TIMESTAMP WHERE session_id = ? AND user_id = ?',
+                  [runtimeError.message, sessionId, tenantUserId]
+                );
+                const cleanPhone = senderId.split('@')[0];
+                await dbRun(
+                  `INSERT INTO chatbot_failed_replies (session_id, phone_number, message_content, triggered_keyword, error_message)
+                   VALUES (?, ?, ?, ?, ?)`,
+                  [sessionId, cleanPhone, inboundText, 'Chatbot AI', runtimeError.message]
+                );
+              } catch (dbErr) {
+                logError('WhatsAppService.messages.upsert.chatbotAI.dbUpdate', dbErr, { sessionId, senderId });
+              }
+            }
+          });
+        };
+
+        const debounceMs = Number(aiSettings.debounce_ms) || 0;
+        if (debounceMs > 0) {
+          defaultInboundDebouncer.debounce({
+            sessionId,
+            senderJid: senderId,
+            text: cleanText,
+            debounceMs,
+            onFlush: (bufferedText) => {
+              runAIFallback(bufferedText).catch((err) => {
+                logError('WhatsAppService.messages.upsert.chatbotAI.debounced', err, { sessionId, senderId });
+              });
+            }
+          });
+        } else {
+          await runAIFallback(cleanText);
         }
         }
 
