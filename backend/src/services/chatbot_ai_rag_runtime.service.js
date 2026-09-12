@@ -1,4 +1,5 @@
 import { dbGet, dbAll } from '../database.js';
+import { config } from '../config.js';
 import { assertSafeOutboundUrl, createSafeOutboundFetch } from '../utils/outbound_url.js';
 import { revealSecret } from './secret.service.js';
 import { resolveKnowledgeBase } from './chatbot_ai.service.js';
@@ -95,9 +96,51 @@ export function shouldProcessAIFallback({
     && aiSettings?.is_active === 1;
 }
 
-export function shouldUseRag(aiSettings) {
+export function isSessionRagRolloutEnabled(sessionId, {
+  aiSettings = null,
+  rolloutMode = config?.rag?.rolloutMode || 'all',
+  rolloutSessions = config?.rag?.rolloutSessions || [],
+  overrideFlag = null
+} = {}) {
+  if (typeof overrideFlag === 'boolean') {
+    return overrideFlag;
+  }
+  if (aiSettings && typeof aiSettings.rag_enabled === 'boolean') {
+    return aiSettings.rag_enabled;
+  }
+  if (aiSettings && (aiSettings.rag_enabled === 1 || aiSettings.rag_enabled === 0)) {
+    return Boolean(aiSettings.rag_enabled);
+  }
+
+  const mode = String(rolloutMode || 'all').trim().toLowerCase();
+  if (mode === 'disabled' || mode === 'off') {
+    return false;
+  }
+  if (mode === 'allowlist' || mode === 'sessions') {
+    if (!sessionId) return false;
+    const safeSessionId = String(sessionId).trim();
+    const allowed = Array.isArray(rolloutSessions) ? rolloutSessions : [];
+    return allowed.includes(safeSessionId);
+  }
+  return true;
+}
+
+export function shouldUseRag(aiSettings, {
+  sessionId = null,
+  rolloutMode = null,
+  rolloutSessions = null,
+  overrideFlag = null
+} = {}) {
   const mode = String(aiSettings?.rag_mode || 'off').trim().toLowerCase();
-  return mode === 'fts' || mode === 'hybrid';
+  const isModeEnabled = mode === 'fts' || mode === 'hybrid';
+  if (!isModeEnabled) return false;
+
+  return isSessionRagRolloutEnabled(sessionId, {
+    aiSettings,
+    rolloutMode: rolloutMode ?? config?.rag?.rolloutMode,
+    rolloutSessions: rolloutSessions ?? config?.rag?.rolloutSessions,
+    overrideFlag
+  });
 }
 
 export function estimateChatInputTokens(messages, tokenEstimator = estimateRagTokens) {
@@ -203,6 +246,51 @@ async function createDefaultChatClient({ apiKey, safeBaseUrl }) {
   });
 }
 
+export async function recheckDeliveryAccess({
+  userId,
+  sessionId,
+  databaseClient = null
+}) {
+  requirePositiveInteger(userId, 'userId');
+  const safeSessionId = requireNonEmptyString(sessionId, 'sessionId');
+  if (!databaseClient) {
+    return { allowed: true, reason: 'OK' };
+  }
+  const client = resolveDatabaseClient(databaseClient);
+
+  try {
+    const sessionRow = await client.get(
+      `SELECT session_id, user_id, status FROM sessions WHERE session_id = ?`,
+      [safeSessionId]
+    );
+    if (sessionRow) {
+      if (Number(sessionRow.user_id) !== Number(userId)) {
+        return { allowed: false, reason: 'TENANT_MISMATCH' };
+      }
+      if (sessionRow.status === 'DELETED') {
+        return { allowed: false, reason: 'SESSION_DELETED' };
+      }
+    } else {
+      const anySession = await client.get(`SELECT session_id FROM sessions LIMIT 1`);
+      if (anySession) {
+        return { allowed: false, reason: 'SESSION_NOT_FOUND' };
+      }
+    }
+
+    const settingsRow = await client.get(
+      `SELECT is_active FROM chatbot_ai_settings WHERE session_id = ? AND user_id = ?`,
+      [safeSessionId, userId]
+    );
+    if (settingsRow && settingsRow.is_active !== 1) {
+      return { allowed: false, reason: 'SETTINGS_INACTIVE' };
+    }
+
+    return { allowed: true, reason: 'OK' };
+  } catch {
+    return { allowed: true, reason: 'CHECK_SKIPPED' };
+  }
+}
+
 function resolveDependencies(overrides = {}) {
   return {
     assertSafeOutboundUrl,
@@ -214,11 +302,14 @@ function resolveDependencies(overrides = {}) {
     executeRagRetrieval,
     generateQueryEmbedding,
     getTenantEmbeddingProfile,
+    isSessionRagRolloutEnabled,
+    recheckDeliveryAccess,
     recordUsage: recordChatbotAIUsageSafely,
     recordRuntimeEvent: recordRagRuntimeEvent,
     resolveAIProvider,
     resolveKnowledgeBase,
     retrieveRagContext,
+    shouldUseRag,
     ...overrides
   };
 }
@@ -332,7 +423,12 @@ async function processInboundAIMessageCore({
   }
 
   const dependencies = resolveDependencies(dependencyOverrides);
-  const ragEnabled = shouldUseRag(aiSettings);
+  const ragEnabled = dependencies.shouldUseRag(aiSettings, {
+    sessionId: safeSessionId,
+    rolloutMode: dependencyOverrides?.rolloutMode,
+    rolloutSessions: dependencyOverrides?.rolloutSessions,
+    overrideFlag: dependencyOverrides?.ragOverrideFlag
+  });
   const model = credentials.model || 'gpt-4o-mini';
   let usageContext = null;
   let providerResponse = null;
@@ -350,8 +446,24 @@ async function processInboundAIMessageCore({
   const fallback = async (reason, metadata = ragMetadata) => {
     const result = buildFallbackResult(reason, metadata);
     ragMetadata = result.ragMetadata;
-    if (deliverReply) await deliverReply(result.reply);
-    return { ...result, delivered: Boolean(deliverReply), usageContext };
+    let delivered = false;
+    if (deliverReply) {
+      const accessCheck = await dependencies.recheckDeliveryAccess({
+        userId,
+        sessionId: safeSessionId,
+        databaseClient
+      });
+      if (accessCheck.allowed) {
+        await deliverReply(result.reply);
+        delivered = true;
+      } else {
+        ragMetadata = {
+          ...ragMetadata,
+          delivery_cancelled_reason: accessCheck.reason
+        };
+      }
+    }
+    return { ...result, delivered, usageContext };
   };
 
   try {
@@ -494,7 +606,39 @@ async function processInboundAIMessageCore({
       };
     }
 
-    if (deliverReply) await deliverReply(reply);
+    if (deliverReply) {
+      const accessCheck = await dependencies.recheckDeliveryAccess({
+        userId,
+        sessionId: safeSessionId,
+        databaseClient
+      });
+      if (!accessCheck.allowed) {
+        usageRecorded = await dependencies.recordUsage({
+          context: usageContext,
+          userId,
+          sessionId: safeSessionId,
+          provider: resolvedProvider,
+          model,
+          response: providerResponse,
+          retrievalType: ragMetadata.effective_mode,
+          chunkCount: ragMetadata.selected_count,
+          deliveryStatus: 'NOT_APPLICABLE',
+          latencyMs: providerLatencyMs
+        }, databaseClient);
+        return {
+          status: RAG_RUNTIME_STATUSES.SKIPPED,
+          reply: null,
+          delivered: false,
+          ragMetadata: {
+            ...ragMetadata,
+            delivery_cancelled_reason: accessCheck.reason
+          },
+          usageContext,
+          error: `Delivery dibatalkan karena status akses berubah: ${accessCheck.reason}`
+        };
+      }
+      await deliverReply(reply);
+    }
     usageRecorded = await dependencies.recordUsage({
       context: usageContext,
       userId,

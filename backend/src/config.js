@@ -73,6 +73,10 @@ export const config = {
     ragIndexWorkerPollMs: parsePositiveInteger(process.env.WA_BOT_RAG_INDEX_WORKER_POLL_MS, 5_000),
     ragIndexWorkerBatchSize: parsePositiveInteger(process.env.WA_BOT_RAG_INDEX_WORKER_BATCH_SIZE, 10)
   },
+  rag: {
+    rolloutMode: (process.env.WA_BOT_RAG_ROLLOUT_MODE || 'all').trim().toLowerCase(),
+    rolloutSessions: splitCsv(process.env.WA_BOT_RAG_ROLLOUT_SESSIONS, [])
+  },
   internal: {
     token: process.env.WA_BOT_INTERNAL_TOKEN || '',
     port: parseOptionalPositiveInteger(process.env.WA_BOT_INTERNAL_PORT),

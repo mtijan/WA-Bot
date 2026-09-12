@@ -49,6 +49,36 @@ export function isRepairableSignalCacheFile(fileName) {
   return /^session-.+\.json$/.test(fileName) || /^sender-key-.+\.json$/.test(fileName);
 }
 
+const RECENT_MESSAGE_TTL_MS = 60_000;
+const MAX_RECENT_MESSAGES = 5_000;
+const recentInboundMessages = new Map();
+
+export function isDuplicateInboundMessage(sessionId, messageId, now = Date.now()) {
+  if (!sessionId || !messageId) return false;
+  const key = `${sessionId}:${messageId}`;
+
+  if (recentInboundMessages.size > MAX_RECENT_MESSAGES) {
+    const cutoff = now - RECENT_MESSAGE_TTL_MS;
+    for (const [k, timestamp] of recentInboundMessages.entries()) {
+      if (timestamp < cutoff) {
+        recentInboundMessages.delete(k);
+      }
+    }
+  }
+
+  const existing = recentInboundMessages.get(key);
+  if (existing && (now - existing) < RECENT_MESSAGE_TTL_MS) {
+    return true;
+  }
+
+  recentInboundMessages.set(key, now);
+  return false;
+}
+
+export function clearRecentInboundMessages() {
+  recentInboundMessages.clear();
+}
+
 // Pastikan folder sesi ada
 if (!fs.existsSync(SESSIONS_DIR)) {
   fs.mkdirSync(SESSIONS_DIR, { recursive: true });
@@ -376,6 +406,12 @@ class WhatsAppService {
         const senderId = msg.key.remoteJid;
         if (!senderId || senderId.endsWith('@newsletter') || senderId.endsWith('@broadcast') || senderId === 'status@broadcast') continue;
 
+        const messageId = msg.key?.id;
+        if (messageId && isDuplicateInboundMessage(sessionId, messageId)) {
+          logger.debug(`[Chatbot Debug] Mengabaikan event pesan duplikat: session=${sessionId}, messageId=${messageId}`);
+          continue;
+        }
+
         const isGroup = senderId.endsWith('@g.us');
 
         // Simpan push name (nama publik WA) dari pengirim pesan ke DB whatsapp_contacts
@@ -417,7 +453,7 @@ class WhatsAppService {
         // Extract text message
         const text = extractIncomingMessageText(messageType, innerMessage);
 
-        logger.debug(`[Chatbot Debug] Extracted text: "${text || '(kosong)'}"`);
+        logger.debug(`[Chatbot Debug] Pesan teks masuk untuk sesi ${sessionId}: hasText=${Boolean(text)}, textLength=${text ? text.length : 0}`);
         
         if (!text) continue;
 
