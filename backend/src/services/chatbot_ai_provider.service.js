@@ -38,6 +38,9 @@ export async function executeInstrumentedChatCompletion({
   sessionId = null,
   provider,
   model,
+  retrievalType = null,
+  chunkCount = null,
+  databaseClient = null,
   maxAttempts = 2,
   retryDelayMs = 250,
   sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs))
@@ -71,10 +74,12 @@ export async function executeInstrumentedChatCompletion({
           sessionId,
           provider,
           model,
+          retrievalType,
+          chunkCount,
           error,
           deliveryStatus: 'NOT_APPLICABLE',
           latencyMs: Date.now() - startedAtMs
-        });
+        }, databaseClient);
       }
 
       if (

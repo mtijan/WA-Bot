@@ -540,7 +540,6 @@ class WhatsAppService {
             // Error badge bersifat best effort.
           }
         } else if (result.status === RAG_RUNTIME_STATUSES.CS_FALLBACK) {
-          await deliverAIReply(result.reply);
           logger.info(`[Chatbot AI] Sesi ${sessionId} mengirim fallback customer service.`);
         } else if (result.status === RAG_RUNTIME_STATUSES.EMPTY_REPLY) {
           await pauseTyping();

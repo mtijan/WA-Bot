@@ -55,6 +55,7 @@ function close(db) {
 
 function createClient(db) {
   return {
+    run: (sql, params) => run(db, sql, params),
     get: (sql, params) => get(db, sql, params),
     all: (sql, params) => all(db, sql, params)
   };
@@ -150,7 +151,7 @@ function createSettings(overrides = {}) {
   };
 }
 
-function createControlledProvider({ reply, onPayload = null } = {}) {
+function createControlledProvider({ reply, onPayload = null, finishReason = 'stop' } = {}) {
   const calls = { client: 0, provider: 0, usage: [], deliveries: [] };
   const dependencies = {
     assertSafeOutboundUrl: async (url) => url,
@@ -165,7 +166,7 @@ function createControlledProvider({ reply, onPayload = null } = {}) {
         response: {
           choices: [{
             message: { content: reply },
-            finish_reason: 'stop'
+            finish_reason: finishReason
           }],
           usage: { prompt_tokens: 180, completion_tokens: 24, total_tokens: 204 }
         },
@@ -197,6 +198,246 @@ test('RAG-0601 mengekspor kontrak runtime yang stabil', () => {
     SKIPPED: 'SKIPPED'
   });
   assert.equal(typeof processInboundAIMessage, 'function');
+});
+
+function runtimeParams(client, settings = {}, extra = {}) {
+  return {
+    userId: 1, sessionId: 'session-a', cleanText: 'Berapa biaya pendaftaran?',
+    aiSettings: createSettings(settings), databaseClient: client,
+    credentials: { apiKey: 'fixture-key', baseUrl: 'https://provider.example/v1' },
+    ...extra
+  };
+}
+
+// These answers are scripted provider responses, never generative-quality evidence.
+for (const cap of [250, 512, 2048]) {
+  test(`RAG-0606 cap ${cap} and grounded temperature reach the provider`, async () => {
+    const { db, client } = await createRuntimeFixture();
+    try {
+      const { dependencies, calls } = createControlledProvider({
+        reply: 'Biaya pendaftaran Rp150.000.',
+        onPayload(payload) {
+          assert.equal(payload.max_tokens, cap);
+          assert.equal(payload.temperature, 0.3);
+        }
+      });
+      const result = await processInboundAIMessage(runtimeParams(client, { max_output_tokens: cap }), dependencies);
+      assert.equal(result.status, 'REPLIED');
+      assert.equal(calls.provider, 1);
+    } finally { await close(db); }
+  });
+}
+
+for (const finishReason of ['length', 'content_filter', 'tool_calls', null]) {
+  test(`RAG-0606 ${finishReason} suppresses incomplete response and sends CS once`, async () => {
+    const { db, client } = await createRuntimeFixture();
+    try {
+      const { dependencies, calls } = createControlledProvider({ reply: 'Biaya hanya Rp', finishReason });
+      const sent = [];
+      const result = await processInboundAIMessage(runtimeParams(client, {}, {
+        deliverReply: async (reply) => sent.push(reply)
+      }), dependencies);
+      assert.equal(result.status, 'CS_FALLBACK');
+      assert.equal(result.delivered, true);
+      assert.deepEqual(sent, [CS_FALLBACK_MESSAGE]);
+      assert.equal(calls.provider, 1);
+      assert.equal(calls.usage.length, 1);
+      assert.equal(calls.usage[0].deliveryStatus, 'NOT_APPLICABLE');
+      assert.equal(calls.usage[0].response.choices[0].finish_reason, finishReason);
+      assert.equal(result.ragMetadata.retrieval_reason,
+        finishReason === 'length' ? 'output_truncated' : 'output_rejected');
+    } finally { await close(db); }
+  });
+}
+
+const supportedProfile = {
+  model: 'fixture-embedding', dimensions: 3, capability_status: 'SUPPORTED',
+  credential_id: 1, base_url: 'https://provider.example/v1'
+};
+
+for (const failure of ['timeout', 'profile', 'invalid_vector', 'unsupported']) {
+  test(`RAG-0607 ${failure} falls back to actual SQLite FTS without full KB`, async () => {
+    const { db, client } = await createRuntimeFixture();
+    try {
+      const { dependencies, calls } = createControlledProvider({ reply: 'Biaya pendaftaran Rp150.000.' });
+      const result = await processInboundAIMessage(runtimeParams(client, { rag_mode: 'hybrid' }), {
+        ...dependencies,
+        resolveKnowledgeBase: async () => assert.fail('full KB must not be loaded'),
+        getTenantEmbeddingProfile: async () => {
+          if (failure === 'profile') throw new Error('private provider detail');
+          return failure === 'unsupported' ? null : supportedProfile;
+        },
+        generateQueryEmbedding: async () => {
+          if (failure === 'timeout') throw Object.assign(new Error('private error'), { code: 'ETIMEDOUT' });
+          return { vector: [NaN] };
+        }
+      });
+      assert.equal(result.status, 'REPLIED');
+      assert.equal(result.ragMetadata.effective_mode, 'fts');
+      assert.equal(result.ragMetadata.embedding_fallback, true);
+      assert.equal(calls.provider, 1);
+      assert.equal(calls.usage[0].retrievalType, 'fts');
+      assert.equal(calls.usage[0].chunkCount, 1);
+    } finally { await close(db); }
+  });
+}
+
+for (const condition of ['pending', 'stale', 'inactive', 'unassigned', 'irrelevant', 'fts_error']) {
+  test(`RAG-0608/0609 ${condition} sends CS once without chat provider/full KB`, async () => {
+    const { db, client } = await createRuntimeFixture();
+    try {
+      if (condition === 'pending') await run(db, "UPDATE rag_sources SET lexical_status='PENDING' WHERE id=601");
+      if (condition === 'stale') await run(db, 'UPDATE rag_sources SET current_revision=2 WHERE id=601');
+      if (condition === 'inactive') await run(db, 'UPDATE rag_sources SET is_active=0 WHERE id=601');
+      if (condition === 'unassigned') await run(db, 'DELETE FROM rag_session_sources WHERE source_id=601');
+      if (condition === 'fts_error') await run(db, 'DROP TABLE rag_chunks_fts');
+      const sent = [];
+      const events = [];
+      const result = await processInboundAIMessage(runtimeParams(client, {}, {
+        cleanText: condition === 'irrelevant' ? 'bagaimana cuaca besok' : 'Berapa biaya pendaftaran?',
+        deliverReply: async (reply) => sent.push(reply)
+      }), {
+        createChatClient: async () => assert.fail('chat provider must not run'),
+        resolveKnowledgeBase: async () => assert.fail('full KB must not be loaded'),
+        recordUsage: async () => assert.fail('no invented paid attempt'),
+        recordRuntimeEvent: async (event) => events.push(event)
+      });
+      assert.equal(result.status, 'CS_FALLBACK');
+      assert.deepEqual(sent, [CS_FALLBACK_MESSAGE]);
+      assert.equal(events.length, 1);
+      assert.equal(events[0].result.delivered, true);
+      assert.equal(result.ragMetadata.retrieval_reason, condition === 'fts_error'
+        ? 'retrieval_failed' : condition === 'irrelevant' ? 'no_relevant_chunks' : 'index_not_ready');
+    } finally { await close(db); }
+  });
+}
+
+test('RAG-0608 failed CS delivery is ERROR and never sends twice', async () => {
+  let sends = 0;
+  const result = await processInboundAIMessage(runtimeParams(null, {}, {
+    deliverReply: async () => { sends++; throw new Error('delivery failed'); }
+  }), {
+    checkSessionIndexReadiness: async () => ({ ready: false }),
+    resolveKnowledgeBase: async () => assert.fail('no full KB')
+  });
+  assert.equal(result.status, 'ERROR');
+  assert.equal(result.delivered, false);
+  assert.equal(sends, 1);
+});
+
+test('RAG-0610 persists actual usage with retrieval fields and allowlisted outcome', async () => {
+  const { recordChatbotAIUsageSafely } = await import('../src/services/chatbot_ai_usage.service.js');
+  const { buildRagRuntimeEvent } = await import('../src/services/chatbot_ai_rag_telemetry.service.js');
+  const { db, client } = await createRuntimeFixture();
+  try {
+    const events = [];
+    const { dependencies } = createControlledProvider({ reply: 'Biaya pendaftaran Rp150.000.' });
+    const result = await processInboundAIMessage(runtimeParams(client, {}, {
+      deliverReply: async () => {}
+    }), {
+      ...dependencies,
+      recordUsage: recordChatbotAIUsageSafely,
+      recordRuntimeEvent: async (input) => events.push(buildRagRuntimeEvent(input))
+    });
+    assert.equal(result.status, 'REPLIED');
+    const rows = await all(db, 'SELECT * FROM chatbot_ai_usage');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].retrieval_type, 'fts');
+    assert.equal(rows[0].chunk_count, 1);
+    assert.equal(rows[0].input_tokens, 180);
+    assert.equal(rows[0].output_tokens, 24);
+    assert.equal(rows[0].finish_reason, 'stop');
+    assert.equal(rows[0].latency_ms, 3);
+    assert.equal(rows[0].delivery_status, 'SENT');
+    assert.equal(events.length, 1);
+    assert.ok(events[0].retrieval_latency_ms >= 0);
+    assert.equal(events[0].provider_latency_ms, 3);
+    assert.ok(events[0].total_latency_ms >= events[0].retrieval_latency_ms);
+    assert.ok(!JSON.stringify(events).includes('Rp150.000'));
+    assert.ok(!JSON.stringify(events).includes('session-a'));
+    const poisoned = buildRagRuntimeEvent({ userId: 1, totalLatencyMs: -1,
+      result: { status: 'SECRET', reply: 'SECRET', error: 'SECRET',
+        ragMetadata: { effective_mode: 'SECRET', retrieval_reason: 'SECRET', selected_count: 'SECRET' } } });
+    assert.ok(!JSON.stringify(poisoned).includes('SECRET'));
+    assert.equal(poisoned.total_latency_ms, null);
+  } finally { await close(db); }
+});
+
+test('RAG-0610 telemetry failure never resends a successful answer', async () => {
+  const { dependencies, calls } = createControlledProvider({ reply: 'Jawaban lama.' });
+  let sends = 0;
+  const result = await processInboundAIMessage(runtimeParams(null, { rag_mode: 'off' }, {
+    deliverReply: async () => { sends++; }
+  }), {
+    ...dependencies, resolveKnowledgeBase: async () => '',
+    recordRuntimeEvent: async () => { throw new Error('logger unavailable'); }
+  });
+  assert.equal(result.status, 'REPLIED');
+  assert.equal(calls.provider, 1);
+  assert.equal(sends, 1);
+});
+
+for (const semanticFailure of [false, true]) {
+  test(`RAG-0607 hybrid vector wiring with semantic failure=${semanticFailure}`, async () => {
+    const { db, client } = await createRuntimeFixture();
+    try {
+      const { serializeEmbeddingVector } = await import('../src/services/chatbot_ai_embedding.service.js');
+      await run(db, `INSERT INTO rag_embedding_profiles
+        (id, user_id, model, dimensions, config_hash, capability_status)
+        VALUES (1, 1, 'fixture-embedding', 3, 'fixture-hash', 'SUPPORTED')`);
+      await run(db, `INSERT INTO chatbot_ai_settings
+        (session_id, user_id, rag_mode, embedding_profile_id)
+        VALUES ('session-a', 1, 'hybrid', 1)`);
+      await run(db, `UPDATE rag_sources SET embedding_profile_id=1, embedding_status='READY' WHERE id=601`);
+      await run(db, `UPDATE rag_chunks SET embedding=?, embedding_model='fixture-embedding',
+        embedding_dimensions=3, embedding_config_hash='fixture-hash' WHERE source_id=601`,
+      [serializeEmbeddingVector([1, 0, 0])]);
+      const { retrieveRagContext } = await import('../src/services/chatbot_ai_rag_context.service.js');
+      const { dependencies } = createControlledProvider({ reply: 'Biaya pendaftaran Rp150.000.' });
+      const modes = [];
+      const result = await processInboundAIMessage(runtimeParams(client, { rag_mode: 'hybrid' }), {
+        ...dependencies,
+        getTenantEmbeddingProfile: async () => supportedProfile,
+        generateQueryEmbedding: async (params) => {
+          assert.equal(params.model, supportedProfile.model);
+          assert.equal(params.userId, 1);
+          assert.equal(params.sessionId, 'session-a');
+          assert.equal(params.databaseClient, client);
+          return { vector: [1, 0, 0] };
+        },
+        retrieveRagContext: async (params, databaseClient) => {
+          modes.push(params.mode);
+          if (params.mode === 'hybrid' && semanticFailure) throw new Error('semantic unavailable');
+          return retrieveRagContext(params, databaseClient);
+        },
+        resolveKnowledgeBase: async () => assert.fail('no full KB')
+      });
+      assert.equal(result.status, 'REPLIED');
+      assert.deepEqual(modes, semanticFailure ? ['hybrid', 'fts'] : ['hybrid']);
+      assert.equal(result.ragMetadata.effective_mode, semanticFailure ? 'fts' : 'hybrid');
+    } finally { await close(db); }
+  });
+}
+
+test('RAG-0606/0610 truncated usage is persisted while partial answer is withheld', async () => {
+  const { recordChatbotAIUsageSafely } = await import('../src/services/chatbot_ai_usage.service.js');
+  const { db, client } = await createRuntimeFixture();
+  try {
+    const { dependencies } = createControlledProvider({ reply: 'Biaya Rp', finishReason: 'length' });
+    const sent = [];
+    const result = await processInboundAIMessage(runtimeParams(client, {}, {
+      deliverReply: async (reply) => sent.push(reply)
+    }), { ...dependencies, recordUsage: recordChatbotAIUsageSafely });
+    const rows = await all(db, 'SELECT * FROM chatbot_ai_usage');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].finish_reason, 'length');
+    assert.equal(rows[0].request_status, 'SUCCEEDED');
+    assert.equal(rows[0].delivery_status, 'NOT_APPLICABLE');
+    assert.equal(rows[0].retrieval_type, 'fts');
+    assert.equal(rows[0].chunk_count, 1);
+    assert.equal(result.status, 'CS_FALLBACK');
+    assert.deepEqual(sent, [CS_FALLBACK_MESSAGE]);
+  } finally { await close(db); }
 });
 
 test('RAG-0602 menormalisasi mode off, flow, ai, dan both', () => {

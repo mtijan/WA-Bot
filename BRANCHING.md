@@ -1,21 +1,23 @@
 # WA-Bot Branch Strategy
 
-Updated: 2026-09-11
+Updated: 2026-09-12
 
 ## Branch responsibilities
 
 | Branch | Purpose | Allowed content | Base/key commit |
 |---|---|---|---|
 | `main` | Current shared baseline | Only changes that passed the agreed merge and release gates | `63c93c6` at separation time |
-| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core implementation through RAG-0605 (Fase 6 paused at 5/13); use the reviewed branch-tip SHA |
-| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | Experiment tooling plus core implementation through RAG-0605 (Fase 6 paused at 5/13); use the reviewed branch-tip SHA |
+| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core implementation through RAG-0610 (Fase 6 paused at 10/13); use the reviewed branch-tip SHA |
+| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | Experiment tooling plus core implementation through RAG-0610 (Fase 6 paused at 10/13); use the reviewed branch-tip SHA |
 | `hotfix/urgent-fixes` | Urgent production/staging bug fixes | The smallest isolated fix and its focused regression test; no unfinished RAG or experiment files | Directly from `origin/main` at `63c93c6` |
 
 The three branches were published to `origin` on 2026-09-11 after explicit approval. Publishing the refs did not merge or deploy them, and `origin/main` remained at `63c93c6`. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
 
-Current local milestone on 2026-09-11: RAG-0601–RAG-0605 are complete and Fase 6 pauses at 5/13 before RAG-0606. The runtime service preserves Flow-first modes, calls retrieval only for AI fallback, builds a grounded prompt, and enforces the total input budget. A controlled-provider fixture used the correct session chunk and excluded another session; it is not generative-model or external WhatsApp evidence. Runtime tests 12/12, all focused RAG 113/113, full backend 291/291, frontend production build, and route/OpenAPI parity 120/120 passed. These are LOCAL/GIT candidate facts only; runtime migration, real provider/WhatsApp delivery, staging deploy, UAT, and merge to `main` have not occurred.
+Current local milestone on 2026-09-12: RAG-0601–RAG-0610 are complete and Fase 6 pauses at 10/13 before RAG-0611. The runtime service preserves Flow-first modes, calls retrieval only for AI fallback, builds a grounded prompt, and enforces the total input budget. A controlled-provider fixture used the correct session chunk and excluded another session; it is not generative-model or external WhatsApp evidence. Runtime/provider/usage 41/41, full backend 314/314, frontend production build, and route/OpenAPI parity 120/120 passed. These are LOCAL/GIT candidate facts only; runtime migration, real provider/WhatsApp delivery, staging deploy, UAT, and merge to `main` have not occurred.
 
 ## Separation rules
+
+RAG-0606–RAG-0610 adds grounded temperature/output finish handling, FTS/CS fallback with one delivery callback, and per-attempt retrieval metadata plus safe runtime outcome events. Real provider and WhatsApp requests remain zero in the local fixture evaluation. No schema migration was added.
 
 ### Release candidate
 
@@ -27,7 +29,7 @@ Current local milestone on 2026-09-11: RAG-0601–RAG-0605 are complete and Fase
 - `apiDevelopment.txt`, `ChatBot-Flow (2).json`, or `PersonaChatBot.txt`;
 - raw experiment transcripts, credentials, runtime databases, sessions, uploads, backups, or exports.
 
-The current release candidate passed local backend, frontend, route/OpenAPI, and documentation validation. It is ready for code review and merge consideration, but it is **not yet approved for staging or production deployment**. Migrations 024/025 still require protected-copy preflight, backup/restore evidence, an approved rollout, staging smoke, and UAT as applicable.
+The current release candidate passed local backend, frontend, route/OpenAPI, and documentation validation. It is ready for code review and merge consideration, but it is **not yet approved for staging or production deployment**. Migrations 024–026 still require protected-copy preflight, backup/restore evidence, an approved rollout, staging smoke, and UAT as applicable.
 
 ### Development and experiments
 

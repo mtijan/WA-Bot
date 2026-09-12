@@ -12,6 +12,7 @@ async function getRuntimeDbRun() {
 const REQUEST_KINDS = new Set(['production', 'sandbox', 'test', 'embedding']);
 const OPERATIONS = new Set(['chat', 'query_embedding', 'source_embedding']);
 const DELIVERY_STATUSES = new Set(['NOT_APPLICABLE', 'PENDING', 'SENT', 'FAILED', 'UNKNOWN']);
+const RETRIEVAL_TYPES = new Set(['legacy', 'fts', 'hybrid']);
 
 function nonNegativeIntegerOrNull(value) {
   if (value === undefined || value === null) return null;
@@ -91,6 +92,8 @@ export function buildAIUsageRecord({
   model,
   response = null,
   error = null,
+  retrievalType = null,
+  chunkCount = null,
   deliveryStatus = 'NOT_APPLICABLE',
   latencyMs = Date.now() - context.startedAtMs
 }) {
@@ -119,6 +122,8 @@ export function buildAIUsageRecord({
     httpStatus: nonNegativeIntegerOrNull(error?.status),
     errorCode: boundedText(error?.code),
     finishReason: boundedText(finishReason),
+    retrievalType: RETRIEVAL_TYPES.has(retrievalType) ? retrievalType : null,
+    chunkCount: nonNegativeIntegerOrNull(chunkCount),
     requestStatus: error ? 'FAILED' : 'SUCCEEDED',
     deliveryStatus
   };
@@ -132,8 +137,9 @@ export async function recordChatbotAIUsage(input, databaseClient = null) {
        user_id, session_id, request_id, attempt_no, request_kind, operation,
        provider, model, provider_response_id, input_tokens, output_tokens,
        total_tokens, cached_tokens, reasoning_tokens, latency_ms, http_status,
-       error_code, finish_reason, request_status, delivery_status, usage_status
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       error_code, finish_reason, request_status, delivery_status, usage_status,
+       retrieval_type, chunk_count
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       record.userId,
       record.sessionId,
@@ -155,7 +161,9 @@ export async function recordChatbotAIUsage(input, databaseClient = null) {
       record.finishReason,
       record.requestStatus,
       record.deliveryStatus,
-      record.usageStatus
+      record.usageStatus,
+      record.retrievalType,
+      record.chunkCount
     ]
   );
   return record;

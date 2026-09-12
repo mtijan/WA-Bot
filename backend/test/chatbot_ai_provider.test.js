@@ -51,6 +51,8 @@ describe('Chatbot AI explicit provider retry', () => {
       userId: 1,
       provider,
       model: 'retry-model',
+      retrievalType: 'fts',
+      chunkCount: 2,
       retryDelayMs: 0
     });
 
@@ -66,7 +68,7 @@ describe('Chatbot AI explicit provider retry', () => {
     });
 
     const rows = await dbAll(
-      `SELECT request_id, attempt_no, request_status
+      `SELECT request_id, attempt_no, request_status, retrieval_type, chunk_count
        FROM chatbot_ai_usage WHERE provider = ? ORDER BY attempt_no`,
       [provider]
     );
@@ -75,6 +77,8 @@ describe('Chatbot AI explicit provider retry', () => {
       [2, 'SUCCEEDED']
     ]);
     assert.equal(rows[0].request_id, rows[1].request_id);
+    assert.equal(rows[0].retrieval_type, 'fts');
+    assert.equal(rows[0].chunk_count, 2);
   });
 
   it('does not retry a clear client error', async () => {

@@ -1,4 +1,3 @@
-import { logError } from '../logger.js';
 import { dbGet, dbAll } from '../database.js';
 import { assertSafeOutboundUrl, createSafeOutboundFetch } from '../utils/outbound_url.js';
 import { revealSecret } from './secret.service.js';
@@ -23,6 +22,7 @@ import {
   retrieveRagContext
 } from './chatbot_ai_rag_context.service.js';
 import { estimateRagTokens } from './chatbot_ai_rag_extractor.service.js';
+import { recordRagRuntimeEvent } from './chatbot_ai_rag_telemetry.service.js';
 
 export const CS_FALLBACK_MESSAGE =
   'Mohon maaf, saya belum bisa menjawab pertanyaan tersebut saat ini. ' +
@@ -215,6 +215,7 @@ function resolveDependencies(overrides = {}) {
     generateQueryEmbedding,
     getTenantEmbeddingProfile,
     recordUsage: recordChatbotAIUsageSafely,
+    recordRuntimeEvent: recordRagRuntimeEvent,
     resolveAIProvider,
     resolveKnowledgeBase,
     retrieveRagContext,
@@ -240,34 +241,41 @@ export async function executeRagRetrieval({
     return { ragResult: null, effectiveMode: 'fts', reason: 'index_not_ready' };
   }
 
-  const profile = await dependencies.getTenantEmbeddingProfile(userId, databaseClient);
-  let effectiveMode = resolveEffectiveRagRetrievalMode({
-    ragMode: aiSettings.rag_mode,
-    profile
-  });
+  let effectiveMode = 'fts';
+  let embeddingFallback = false;
   let queryVector = null;
 
-  if (effectiveMode === 'hybrid' && profile) {
+  if (String(aiSettings.rag_mode).trim().toLowerCase() === 'hybrid') {
     try {
-      const embedding = await dependencies.generateQueryEmbedding({
-        query: cleanText,
-        model: profile.model,
-        dimensions: profile.dimensions,
-        baseUrl: profile.base_url,
-        credentialId: profile.credential_id,
-        userId,
-        sessionId,
-        databaseClient
-      });
-      queryVector = embedding.vector;
-    } catch (error) {
-      logError('chatbot_ai_rag_runtime.queryEmbedding', error, { sessionId });
+      const profile = await dependencies.getTenantEmbeddingProfile(userId, databaseClient);
+      effectiveMode = resolveEffectiveRagRetrievalMode({ ragMode: 'hybrid', profile });
+      embeddingFallback = effectiveMode !== 'hybrid';
+      if (effectiveMode === 'hybrid') {
+        const embedding = await dependencies.generateQueryEmbedding({
+          query: cleanText,
+          model: profile.model,
+          dimensions: profile.dimensions,
+          baseUrl: profile.base_url,
+          credentialId: profile.credential_id,
+          userId,
+          sessionId,
+          databaseClient
+        });
+        queryVector = embedding.vector;
+        if (!queryVector || queryVector.length !== Number(profile.dimensions)
+          || !Array.from(queryVector).every(Number.isFinite)) {
+          throw createRuntimeError('INVALID_QUERY_VECTOR', 'Invalid query vector.');
+        }
+      }
+    } catch {
       effectiveMode = 'fts';
+      queryVector = null;
+      embeddingFallback = true;
     }
   }
 
   const hardInputBudget = resolveHardInputBudget(aiSettings);
-  const ragResult = await dependencies.retrieveRagContext({
+  const retrievalOptions = {
     userId,
     sessionId,
     query: cleanText,
@@ -280,16 +288,28 @@ export async function executeRagRetrieval({
     baseInputTokens,
     targetTotalInputTokens: RAG_CONTEXT_DEFAULTS.TARGET_TOTAL_INPUT_TOKENS,
     hardTotalInputTokens: hardInputBudget
-  }, databaseClient);
+  };
+  let ragResult;
+  try {
+    ragResult = await dependencies.retrieveRagContext(retrievalOptions, databaseClient);
+  } catch (error) {
+    if (effectiveMode !== 'hybrid') throw error;
+    effectiveMode = 'fts';
+    embeddingFallback = true;
+    ragResult = await dependencies.retrieveRagContext({
+      ...retrievalOptions, mode: 'fts', queryVector: null
+    }, databaseClient);
+  }
 
   return {
     ragResult,
     effectiveMode,
+    embeddingFallback,
     reason: ragResult.selected_count > 0 ? 'ready' : 'no_relevant_chunks'
   };
 }
 
-export async function processInboundAIMessage({
+async function processInboundAIMessageCore({
   sessionId,
   userId,
   cleanText,
@@ -321,7 +341,17 @@ export async function processInboundAIMessage({
   let resolvedProvider = 'unknown';
   let ragMetadata = {
     rag_mode: ragEnabled ? String(aiSettings.rag_mode).toLowerCase() : 'off',
-    effective_mode: ragEnabled ? null : 'legacy'
+    effective_mode: ragEnabled ? null : 'legacy',
+    selected_count: 0,
+    retrieval_latency_ms: 0,
+    provider_latency_ms: null
+  };
+
+  const fallback = async (reason, metadata = ragMetadata) => {
+    const result = buildFallbackResult(reason, metadata);
+    ragMetadata = result.ragMetadata;
+    if (deliverReply) await deliverReply(result.reply);
+    return { ...result, delivered: Boolean(deliverReply), usageContext };
   };
 
   try {
@@ -335,28 +365,37 @@ export async function processInboundAIMessage({
       const baseInputTokens = dependencies.estimateChatInputTokens(baseMessages);
       const hardInputBudget = resolveHardInputBudget(aiSettings);
       if (baseInputTokens > hardInputBudget) {
-        return buildFallbackResult('input_budget_exceeded', {
+        return await fallback('input_budget_exceeded', {
           ...ragMetadata,
           base_input_tokens: baseInputTokens,
           hard_input_budget_tokens: hardInputBudget
         });
       }
 
-      const retrieval = await dependencies.executeRagRetrieval({
-        userId,
-        sessionId: safeSessionId,
-        cleanText: safeText,
-        aiSettings,
-        baseInputTokens,
-        databaseClient
-      }, dependencies);
+      const retrievalStartedAt = performance.now();
+      let retrieval;
+      try {
+        retrieval = await dependencies.executeRagRetrieval({
+          userId,
+          sessionId: safeSessionId,
+          cleanText: safeText,
+          aiSettings,
+          baseInputTokens,
+          databaseClient
+        }, dependencies);
+      } catch {
+        ragMetadata.retrieval_latency_ms = performance.now() - retrievalStartedAt;
+        return await fallback('retrieval_failed');
+      }
       ragMetadata = {
         ...ragMetadata,
         effective_mode: retrieval.effectiveMode,
+        embedding_fallback: retrieval.embeddingFallback === true,
+        retrieval_latency_ms: performance.now() - retrievalStartedAt,
         retrieval_reason: retrieval.reason
       };
       if (retrieval.reason !== 'ready' || !retrieval.ragResult) {
-        return buildFallbackResult(retrieval.reason, ragMetadata);
+        return await fallback(retrieval.reason);
       }
 
       messages = buildRagProductionMessages({
@@ -366,7 +405,7 @@ export async function processInboundAIMessage({
       });
       const estimatedInputTokens = dependencies.estimateChatInputTokens(messages);
       if (estimatedInputTokens > hardInputBudget) {
-        return buildFallbackResult('final_input_budget_exceeded', {
+        return await fallback('final_input_budget_exceeded', {
           ...ragMetadata,
           estimated_total_input_tokens: estimatedInputTokens,
           hard_input_budget_tokens: hardInputBudget
@@ -401,19 +440,36 @@ export async function processInboundAIMessage({
         model,
         messages,
         maxOutputTokens: aiSettings.max_output_tokens,
-        temperature: resolveChatTemperature('existing')
+        temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing')
       }),
       requestKind: 'production',
       userId,
       sessionId: safeSessionId,
       provider: resolvedProvider,
       model,
+      retrievalType: ragMetadata.effective_mode,
+      chunkCount: ragMetadata.selected_count,
+      databaseClient,
       maxAttempts: 2
     });
     usageContext = completion.context;
     providerResponse = completion.response;
     providerLatencyMs = completion.latencyMs;
+    ragMetadata.provider_latency_ms = providerLatencyMs;
     const reply = String(providerResponse?.choices?.[0]?.message?.content || '').trim();
+
+    // A partial/refused/tool response must never be presented as a complete grounded answer.
+    const finishReason = providerResponse?.choices?.[0]?.finish_reason;
+    if (ragEnabled && finishReason !== 'stop') {
+      usageRecorded = await dependencies.recordUsage({
+        context: usageContext, userId, sessionId: safeSessionId,
+        provider: resolvedProvider, model, response: providerResponse,
+        retrievalType: ragMetadata.effective_mode,
+        chunkCount: ragMetadata.selected_count,
+        deliveryStatus: 'NOT_APPLICABLE', latencyMs: providerLatencyMs
+      }, databaseClient);
+      return await fallback(finishReason === 'length' ? 'output_truncated' : 'output_rejected');
+    }
 
     if (!reply) {
       usageRecorded = await dependencies.recordUsage({
@@ -423,6 +479,8 @@ export async function processInboundAIMessage({
         provider: resolvedProvider,
         model,
         response: providerResponse,
+        retrievalType: ragMetadata.effective_mode,
+        chunkCount: ragMetadata.selected_count,
         deliveryStatus: 'FAILED',
         latencyMs: providerLatencyMs
       }, databaseClient);
@@ -444,6 +502,8 @@ export async function processInboundAIMessage({
       provider: resolvedProvider,
       model,
       response: providerResponse,
+      retrievalType: ragMetadata.effective_mode,
+      chunkCount: ragMetadata.selected_count,
       deliveryStatus: deliverReply ? 'SENT' : 'NOT_APPLICABLE',
       latencyMs: providerLatencyMs
     }, databaseClient);
@@ -464,12 +524,14 @@ export async function processInboundAIMessage({
         provider: resolvedProvider,
         model,
         response: providerResponse,
+        retrievalType: ragMetadata.effective_mode,
+        chunkCount: ragMetadata.selected_count,
         error: providerResponse ? null : error,
         deliveryStatus: providerResponse ? 'UNKNOWN' : 'NOT_APPLICABLE',
         latencyMs: providerLatencyMs ?? (Date.now() - usageContext.startedAtMs)
       }, databaseClient);
     }
-    logError('chatbot_ai_rag_runtime.processInboundAIMessage', error, { sessionId: safeSessionId });
+    // Detailed inbound error handling remains with the caller; new telemetry uses closed fields.
     return {
       status: RAG_RUNTIME_STATUSES.ERROR,
       reply: null,
@@ -479,4 +541,18 @@ export async function processInboundAIMessage({
       error
     };
   }
+}
+
+export async function processInboundAIMessage(params, dependencyOverrides = {}) {
+  const dependencies = resolveDependencies(dependencyOverrides);
+  const startedAt = performance.now();
+  const result = await processInboundAIMessageCore(params, dependencies);
+  try {
+    await dependencies.recordRuntimeEvent({
+      userId: params.userId, result, totalLatencyMs: performance.now() - startedAt
+    });
+  } catch {
+    // Observability failure must not retry a provider call or a delivered message.
+  }
+  return result;
 }
