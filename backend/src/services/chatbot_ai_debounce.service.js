@@ -38,19 +38,21 @@ export class InboundDebouncer {
     const delay = Math.max(0, Math.min(Number(debounceMs) || 0, 60_000));
 
     if (delay === 0) {
-      onFlush(safeText);
+      onFlush(safeText, { debounced: false, debouncedCount: 0 });
       return;
     }
 
     const existing = this.pending.get(key);
     if (existing) {
       clearTimeout(existing.timer);
+      existing.count = (existing.count || 1) + 1;
       const combinedText = `${existing.text}\n${safeText}`;
       existing.text = combinedText;
       existing.timer = setTimeout(() => {
+        const count = existing.count;
         this.pending.delete(key);
         try {
-          onFlush(combinedText);
+          onFlush(combinedText, { debounced: true, debouncedCount: count - 1 });
         } catch (err) {
           logger.error({ err, sessionId, senderJid }, 'Error executing debounced flush callback');
         }
@@ -58,10 +60,11 @@ export class InboundDebouncer {
     } else {
       const entry = {
         text: safeText,
+        count: 1,
         timer: setTimeout(() => {
           this.pending.delete(key);
           try {
-            onFlush(safeText);
+            onFlush(safeText, { debounced: false, debouncedCount: 0 });
           } catch (err) {
             logger.error({ err, sessionId, senderJid }, 'Error executing debounced flush callback');
           }
