@@ -526,14 +526,17 @@ class WhatsAppService {
           continue;
         }
 
-        const runAIFallback = async (inboundText) => {
+        const runAIFallback = async (inboundText, debounceMeta = {}) => {
           return defaultSenderSerializer.enqueue(sessionId, senderId, async () => {
             const currentSettings = await dbGet(
               'SELECT * FROM chatbot_ai_settings WHERE session_id = ? AND user_id = ?',
               [sessionId, tenantUserId]
             ) || aiSettings;
 
-            if (currentSettings.is_active !== 1) return;
+            if (currentSettings.is_active !== 1) {
+              logger.info(`[Chatbot AI] Sesi ${sessionId} nonaktif saat giliran antrean tiba. Lewati.`);
+              return;
+            }
 
             const credentials = await resolveAICredentials(currentSettings, tenantUserId);
             if (!credentials) return;
@@ -571,7 +574,9 @@ class WhatsAppService {
               cleanText: inboundText,
               aiSettings: currentSettings,
               credentials,
-              deliverReply: deliverAIReply
+              deliverReply: deliverAIReply,
+              debounced: debounceMeta.debounced === true,
+              debouncedCount: debounceMeta.debouncedCount || 0
             });
 
             if (result.ragMetadata) {
@@ -634,8 +639,8 @@ class WhatsAppService {
             senderJid: senderId,
             text: cleanText,
             debounceMs,
-            onFlush: (bufferedText) => {
-              runAIFallback(bufferedText).catch((err) => {
+            onFlush: (bufferedText, meta) => {
+              runAIFallback(bufferedText, meta).catch((err) => {
                 logError('WhatsAppService.messages.upsert.chatbotAI.debounced', err, { sessionId, senderId });
               });
             }

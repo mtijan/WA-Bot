@@ -27,7 +27,8 @@ import { recordRagRuntimeEvent } from './chatbot_ai_rag_telemetry.service.js';
 import {
   lookupCachedResponse,
   storeCachedResponse,
-  shouldCacheResult
+  shouldCacheResult,
+  resolveDirectAnswerCandidate
 } from './chatbot_ai_rag_cache.service.js';
 
 export const CS_FALLBACK_MESSAGE =
@@ -313,6 +314,7 @@ function resolveDependencies(overrides = {}) {
     recordUsage: recordChatbotAIUsageSafely,
     recordRuntimeEvent: recordRagRuntimeEvent,
     resolveAIProvider,
+    resolveDirectAnswerCandidate,
     resolveKnowledgeBase,
     retrieveRagContext,
     shouldCacheResult,
@@ -415,7 +417,9 @@ async function processInboundAIMessageCore({
   aiSettings,
   credentials,
   databaseClient = null,
-  deliverReply = null
+  deliverReply = null,
+  debounced = false,
+  debouncedCount = 0
 }, dependencyOverrides = {}) {
   const safeSessionId = requireNonEmptyString(sessionId, 'sessionId');
   const safeText = requireNonEmptyString(cleanText, 'cleanText');
@@ -448,7 +452,9 @@ async function processInboundAIMessageCore({
     effective_mode: ragEnabled ? null : 'legacy',
     selected_count: 0,
     retrieval_latency_ms: 0,
-    provider_latency_ms: null
+    provider_latency_ms: null,
+    debounced: debounced === true,
+    debounced_count: Number(debouncedCount) || 0
   };
 
   const fallback = async (reason, metadata = ragMetadata) => {
@@ -504,7 +510,8 @@ async function processInboundAIMessageCore({
                 ragMetadata: {
                   ...ragMetadata,
                   delivery_cancelled_reason: accessCheck.reason,
-                  cache_hit: true
+                  cache_hit: true,
+                  ai_call_avoided: true
                 },
                 usageContext: null,
                 error: `Delivery dibatalkan karena status akses berubah: ${accessCheck.reason}`
@@ -521,6 +528,7 @@ async function processInboundAIMessageCore({
             ragMetadata: {
               ...ragMetadata,
               cache_hit: true,
+              ai_call_avoided: true,
               effective_mode: 'cache'
             },
             usageContext: null,
@@ -573,6 +581,81 @@ async function processInboundAIMessageCore({
       };
       if (retrieval.reason !== 'ready' || !retrieval.ragResult) {
         return await fallback(retrieval.reason);
+      }
+
+      // RAG-0707: Canonical Direct Answer check
+      if (aiSettings?.direct_answer_enabled === 1 && retrieval.ragResult?.results?.length > 0) {
+        const directCandidate = dependencies.resolveDirectAnswerCandidate(retrieval.ragResult, {
+          threshold: aiSettings.direct_answer_threshold
+        });
+        if (directCandidate?.isDirectAnswer) {
+          let delivered = false;
+          if (deliverReply) {
+            const accessCheck = await dependencies.recheckDeliveryAccess({
+              userId,
+              sessionId: safeSessionId,
+              databaseClient
+            });
+            if (!accessCheck.allowed) {
+              return {
+                status: RAG_RUNTIME_STATUSES.SKIPPED,
+                reply: null,
+                delivered: false,
+                ragMetadata: {
+                  ...ragMetadata,
+                  delivery_cancelled_reason: accessCheck.reason,
+                  direct_answer: true,
+                  ai_call_avoided: true
+                },
+                usageContext: null,
+                error: `Delivery dibatalkan karena status akses berubah: ${accessCheck.reason}`
+              };
+            }
+            await deliverReply(directCandidate.directReply);
+            delivered = true;
+          }
+
+          if (aiSettings?.cache_enabled === 1 && dependencies.shouldCacheResult({
+            status: RAG_RUNTIME_STATUSES.REPLIED,
+            reply: directCandidate.directReply,
+            finishReason: 'stop',
+            error: null
+          }, { query: safeText })) {
+            try {
+              await dependencies.storeCachedResponse({
+                userId,
+                sessionId: safeSessionId,
+                query: safeText,
+                promptVersion: aiSettings.prompt_version || 1,
+                configRevision: aiSettings.config_revision || 1,
+                model,
+                temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing'),
+                reply: directCandidate.directReply,
+                ttlSeconds: aiSettings.cache_ttl_seconds,
+                databaseClient
+              });
+            } catch {
+              // Cache store failure must not fail the reply delivery.
+            }
+          }
+
+          return {
+            status: RAG_RUNTIME_STATUSES.REPLIED,
+            reply: directCandidate.directReply,
+            delivered,
+            fromDirectAnswer: true,
+            ragMetadata: {
+              ...ragMetadata,
+              direct_answer: true,
+              ai_call_avoided: true,
+              effective_mode: 'direct_answer',
+              confidence: directCandidate.confidence,
+              selected_count: retrieval.ragResult.selected_count
+            },
+            usageContext: null,
+            error: null
+          };
+        }
       }
 
       messages = buildRagProductionMessages({
@@ -717,13 +800,13 @@ async function processInboundAIMessageCore({
       latencyMs: providerLatencyMs
     }, databaseClient);
 
-    // RAG-0703 / RAG-0705: Response Cache Store
+    // RAG-0703 / RAG-0705 / RAG-0710: Response Cache Store
     if (aiSettings?.cache_enabled === 1 && dependencies.shouldCacheResult({
       status: RAG_RUNTIME_STATUSES.REPLIED,
       reply,
       finishReason,
       error: null
-    })) {
+    }, { query: safeText })) {
       try {
         await dependencies.storeCachedResponse({
           userId,

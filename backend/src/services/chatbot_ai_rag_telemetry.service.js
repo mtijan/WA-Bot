@@ -1,6 +1,6 @@
 import { logger } from '../logger.js';
 
-const MODES = new Set(['off', 'fts', 'hybrid', 'legacy']);
+const MODES = new Set(['off', 'fts', 'hybrid', 'legacy', 'cache', 'direct_answer']);
 const STATUSES = new Set(['REPLIED', 'EMPTY_REPLY', 'CS_FALLBACK', 'ERROR', 'SKIPPED']);
 const REASONS = new Set([
   'ready', 'index_not_ready', 'no_relevant_chunks', 'retrieval_failed',
@@ -26,6 +26,12 @@ export function buildRagRuntimeEvent({ userId, result, totalLatencyMs }) {
     retrieval_type: MODES.has(metadata.effective_mode) ? metadata.effective_mode : null,
     retrieval_reason: REASONS.has(metadata.retrieval_reason) ? metadata.retrieval_reason : null,
     embedding_fallback: metadata.embedding_fallback === true,
+    cache_hit: metadata.cache_hit === true,
+    direct_answer: metadata.direct_answer === true,
+    debounced: metadata.debounced === true,
+    debounced_count: Number.isInteger(metadata.debounced_count) && metadata.debounced_count >= 0
+      ? metadata.debounced_count : 0,
+    ai_call_avoided: metadata.cache_hit === true || metadata.direct_answer === true || metadata.ai_call_avoided === true,
     chunk_count: Number.isInteger(metadata.selected_count) && metadata.selected_count >= 0
       ? metadata.selected_count : 0,
     retrieval_latency_ms: duration(metadata.retrieval_latency_ms),
