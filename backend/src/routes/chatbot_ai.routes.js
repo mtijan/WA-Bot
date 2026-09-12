@@ -9,6 +9,8 @@ import {
   deleteCredential,
   toggleCredentialActive,
   reindexAISession,
+  getAISessionRagStatus,
+  testAISessionRetrieval,
   getEmbeddingProfile,
   saveEmbeddingProfile,
   testEmbeddingProfileCapability,
@@ -23,7 +25,14 @@ const router = Router();
 router.get('/settings/:sessionId', getAISettings);
 router.post('/settings', validateBody({
   session_id: { required: true, type: 'string', min: 1 },
-  max_output_tokens: { type: 'number', custom: validateMaxOutputTokens }
+  max_output_tokens: { type: 'number', custom: validateMaxOutputTokens },
+  rag_mode: { type: 'string', allowedValues: ['off', 'fts', 'hybrid'] },
+  rag_top_k: { type: 'number', min: 1, max: 5 },
+  rag_context_tokens: { type: 'number', min: 100, max: 2200 },
+  rag_input_budget_tokens: { type: 'number', min: 256, max: 8192 },
+  cache_ttl_seconds: { type: 'number', min: 60, max: 86400 },
+  debounce_ms: { type: 'number', min: 0, max: 60000 },
+  temperature: { type: 'number', min: 0, max: 2 }
 }), saveAISettings);
 router.post('/test', validateBody({
   session_id: { type: 'string', min: 1 },
@@ -60,6 +69,13 @@ router.post('/rag/embedding-profile/test', validateBody({
   dimensions: { type: 'number' }
 }), testEmbeddingProfileCapability);
 router.get('/rag/embedding-usage', getEmbeddingUsage);
+router.get('/rag/:sessionId/status', getAISessionRagStatus);
+router.post('/rag/:sessionId/test-retrieval', validateBody({
+  query: { required: true, type: 'string', min: 1, max: 1000 },
+  mode: { type: 'string', allowedValues: ['fts', 'hybrid'] },
+  top_k: { type: 'number', min: 1, max: 20 },
+  relevance_threshold: { type: 'number', min: 0, max: 1 }
+}), testAISessionRetrieval);
 router.post('/rag/:sessionId/reindex', validateBody({
   source_id: { type: 'number' },
   force: { type: 'boolean' }

@@ -1363,5 +1363,105 @@ export async function reindexSessionKnowledgeSourcesSafely(input, databaseClient
   }
 }
 
+export async function getSessionRagStatus({ sessionId, userId }, databaseClient = null) {
+  requirePositiveInteger(userId, 'userId');
+  const safeSessionId = String(sessionId || '').trim();
+  if (!safeSessionId) {
+    throw createRagIndexError('RAG_INDEX_INVALID_INPUT', 'sessionId wajib diisi.');
+  }
+  const client = requireDatabaseClient(databaseClient || await getRuntimeDatabaseClient());
+
+  const session = await client.get(
+    `SELECT session_id, user_id FROM sessions WHERE session_id = ?`,
+    [safeSessionId]
+  );
+  if (!session) {
+    throw createRagIndexError('SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+  }
+  if (Number(session.user_id) !== userId) {
+    throw createRagIndexError('FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
+  }
+
+  const settings = await client.get(
+    `SELECT is_active, rag_mode, rag_top_k, rag_context_tokens, rag_input_budget_tokens,
+            cache_enabled, cache_ttl_seconds, direct_answer_enabled, debounce_ms,
+            max_output_tokens, temperature, last_error, last_error_at, config_revision
+     FROM chatbot_ai_settings
+     WHERE session_id = ?`,
+    [safeSessionId]
+  ) || {};
+
+  const sources = typeof client.all === 'function'
+    ? await client.all(
+      `SELECT rs.id, rs.source_type, rs.current_revision, rs.indexed_revision,
+              rs.lexical_status, rs.embedding_status, rs.is_active
+       FROM rag_session_sources rss
+       JOIN rag_sources rs ON rs.id = rss.source_id
+       WHERE rss.session_id = ? AND rss.user_id = ? AND rs.is_active = 1`,
+      [safeSessionId, userId]
+    )
+    : [];
+
+  let totalChunks = 0;
+  if (sources.length > 0) {
+    const chunkRow = await client.get(
+      `SELECT COUNT(*) as count
+       FROM rag_chunks rc
+       JOIN rag_session_sources rss ON rss.source_id = rc.source_id
+       WHERE rss.session_id = ? AND rss.user_id = ?`,
+      [safeSessionId, userId]
+    );
+    totalChunks = Number(chunkRow?.count) || 0;
+  }
+
+  let activeJob = null;
+  if (typeof client.get === 'function' && sources.length > 0) {
+    activeJob = await client.get(
+      `SELECT id, status, attempts, last_error_code, updated_at
+       FROM rag_index_jobs
+       WHERE user_id = ? AND source_id IN (
+         SELECT source_id FROM rag_session_sources WHERE session_id = ? AND user_id = ?
+       )
+       ORDER BY id DESC LIMIT 1`,
+      [userId, safeSessionId, userId]
+    );
+  }
+
+  const isLexicalReady = sources.length > 0 && sources.every((s) => s.lexical_status === 'READY');
+  const isEmbeddingReady = sources.length > 0 && sources.every((s) => s.embedding_status === 'READY');
+  const ragMode = settings.rag_mode || 'off';
+  const isIndexReady = ragMode === 'hybrid'
+    ? (isLexicalReady && isEmbeddingReady)
+    : (ragMode === 'fts' ? isLexicalReady : false);
+
+  const currentRevision = sources.reduce(
+    (max, s) => Math.max(max, Number(s.current_revision) || 0),
+    0
+  );
+
+  return {
+    session_id: safeSessionId,
+    rag_mode: ragMode,
+    index_ready: isIndexReady,
+    lexical_ready: isLexicalReady,
+    embedding_ready: isEmbeddingReady,
+    sources_count: sources.length,
+    source_count: sources.length,
+    chunks_count: totalChunks,
+    chunk_count: totalChunks,
+    current_revision: currentRevision,
+    config_revision: Number(settings.config_revision) || 1,
+    active_job: activeJob ? {
+      id: activeJob.id,
+      status: activeJob.status,
+      attempts: activeJob.attempts,
+      last_error_code: activeJob.last_error_code,
+      updated_at: activeJob.updated_at
+    } : null,
+    last_error: settings.last_error || activeJob?.last_error_code || null,
+    last_error_at: settings.last_error_at || activeJob?.updated_at || null
+  };
+}
+
 
 
