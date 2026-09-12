@@ -13,7 +13,15 @@ import {
   Loader2, 
   Save, 
   Clock,
-  MessageSquare
+  MessageSquare,
+  RefreshCw,
+  Sliders,
+  Search,
+  CheckCircle2,
+  Layers,
+  Zap,
+  HelpCircle,
+  Activity
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
@@ -21,6 +29,9 @@ function ChatbotAI() {
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState('');
   
+  // Navigation Tab State
+  const [activeTab, setActiveTab] = useState('general'); // 'general' | 'rag'
+
   // AI Settings State
   const [isActive, setIsActive] = useState(false);
   const [baseUrl, setBaseUrl] = useState('https://ai.sumopod.com/v1');
@@ -34,6 +45,31 @@ function ChatbotAI() {
   const [delaySeconds, setDelaySeconds] = useState(2);
   const [showTyping, setShowTyping] = useState(true);
   const [chatbotMode, setChatbotMode] = useState('both');
+
+  // RAG Configuration State
+  const [ragMode, setRagMode] = useState('off');
+  const [ragTopK, setRagTopK] = useState(4);
+  const [ragContextTokens, setRagContextTokens] = useState(1200);
+  const [ragInputBudgetTokens, setRagInputBudgetTokens] = useState(3000);
+  const [maxOutputTokens, setMaxOutputTokens] = useState(512);
+  const [temperature, setTemperature] = useState(0.3);
+  const [cacheEnabled, setCacheEnabled] = useState(false);
+  const [cacheTtlSeconds, setCacheTtlSeconds] = useState(86400);
+  const [directAnswerEnabled, setDirectAnswerEnabled] = useState(true);
+  const [debounceMs, setDebounceMs] = useState(3000);
+
+  // RAG Index Status State
+  const [ragStatus, setRagStatus] = useState(null);
+  const [loadingRagStatus, setLoadingRagStatus] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+
+  // RAG Test Retrieval State
+  const [retrievalQuery, setRetrievalQuery] = useState('');
+  const [retrievalMode, setRetrievalMode] = useState('hybrid');
+  const [retrievalTopK, setRetrievalTopK] = useState(4);
+  const [retrievalThreshold, setRetrievalThreshold] = useState(0.4);
+  const [retrievalResult, setRetrievalResult] = useState(null);
+  const [testingRetrieval, setTestingRetrieval] = useState(false);
 
   // AI Credentials List & Modal State
   const [credentials, setCredentials] = useState([]);
@@ -96,6 +132,7 @@ function ChatbotAI() {
   useEffect(() => {
     if (selectedSession) {
       fetchAISettings(selectedSession);
+      fetchRagStatus(selectedSession);
     } else {
       resetForm();
     }
@@ -142,12 +179,101 @@ function ChatbotAI() {
         setShowTyping(d.show_typing === 1);
         setSelectedCredentialId(d.credential_id || '');
         setChatbotMode(d.chatbot_mode || 'both');
+
+        // RAG Settings
+        setRagMode(d.rag_mode || 'off');
+        setRagTopK(d.rag_top_k !== undefined ? Number(d.rag_top_k) : 4);
+        setRagContextTokens(d.rag_context_tokens !== undefined ? Number(d.rag_context_tokens) : 1200);
+        setRagInputBudgetTokens(d.rag_input_budget_tokens !== undefined ? Number(d.rag_input_budget_tokens) : 3000);
+        setMaxOutputTokens(d.max_output_tokens !== undefined ? Number(d.max_output_tokens) : 512);
+        setTemperature(d.temperature !== undefined ? Number(d.temperature) : 0.3);
+        setCacheEnabled(d.cache_enabled === 1 || d.cache_enabled === true);
+        setCacheTtlSeconds(d.cache_ttl_seconds !== undefined ? Number(d.cache_ttl_seconds) : 86400);
+        setDirectAnswerEnabled(d.direct_answer_enabled === 1 || d.direct_answer_enabled === true || d.direct_answer_enabled === undefined);
+        setDebounceMs(d.debounce_ms !== undefined ? Number(d.debounce_ms) : 3000);
       }
     } catch (err) {
       console.error(err);
       setError('Gagal memuat pengaturan Chatbot AI.');
     } finally {
       setLoadingSettings(false);
+    }
+  };
+
+  const fetchRagStatus = async (sessionId) => {
+    if (!sessionId) return;
+    setLoadingRagStatus(true);
+    try {
+      const result = await apiRequest(`/chatbot-ai/rag/${sessionId}/status`);
+      if (result.status === 'success' && result.data) {
+        setRagStatus(result.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch RAG status:', err);
+    } finally {
+      setLoadingRagStatus(false);
+    }
+  };
+
+  const handleReindex = async () => {
+    if (!selectedSession) {
+      window.showWarning('Pilih sesi WhatsApp terlebih dahulu.');
+      return;
+    }
+    setReindexing(true);
+    try {
+      const result = await apiRequest(`/chatbot-ai/rag/${selectedSession}/reindex`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true })
+      });
+      if (result.status === 'success') {
+        window.showSuccess('Job reindex berhasil dijadwalkan ke antrean sistem.');
+        fetchRagStatus(selectedSession);
+      } else {
+        window.showError(result.message || 'Gagal memicu proses reindex.');
+      }
+    } catch (err) {
+      console.error(err);
+      window.showError('Kesalahan jaringan saat memicu proses reindex.');
+    } finally {
+      setReindexing(false);
+    }
+  };
+
+  const handleTestRetrieval = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedSession) {
+      window.showWarning('Pilih sesi WhatsApp terlebih dahulu.');
+      return;
+    }
+    if (!retrievalQuery.trim()) {
+      window.showWarning('Ketik query pencarian uji coba terlebih dahulu.');
+      return;
+    }
+    setTestingRetrieval(true);
+    try {
+      const result = await apiRequest(`/chatbot-ai/rag/${selectedSession}/test-retrieval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: retrievalQuery.trim(),
+          mode: retrievalMode,
+          top_k: Number(retrievalTopK),
+          relevance_threshold: Number(retrievalThreshold)
+        })
+      });
+      if (result.status === 'success' && result.data) {
+        setRetrievalResult(result.data);
+        window.showSuccess(`Uji retrieval selesai dalam ${result.data.retrieval_latency_ms || 0}ms (${result.data.selected_count || 0} chunk terpilih).`);
+      } else {
+        window.showError(result.message || 'Gagal menjalankan uji retrieval.');
+      }
+    } catch (err) {
+      console.error(err);
+      window.showError('Kesalahan jaringan saat menjalankan uji retrieval.');
+    } finally {
+      setTestingRetrieval(false);
     }
   };
 
@@ -165,6 +291,18 @@ function ChatbotAI() {
     setShowTyping(true);
     setSelectedCredentialId('');
     setChatbotMode('both');
+    setRagMode('off');
+    setRagTopK(4);
+    setRagContextTokens(1200);
+    setRagInputBudgetTokens(3000);
+    setMaxOutputTokens(512);
+    setTemperature(0.3);
+    setCacheEnabled(false);
+    setCacheTtlSeconds(86400);
+    setDirectAnswerEnabled(true);
+    setDebounceMs(3000);
+    setRagStatus(null);
+    setRetrievalResult(null);
   };
 
   const fetchCredentials = async () => {
@@ -363,12 +501,23 @@ function ChatbotAI() {
           knowledge_source: knowledgeSource,
           delay_seconds: parseInt(delaySeconds),
           show_typing: showTyping ? 1 : 0,
-          chatbot_mode: chatbotMode
+          chatbot_mode: chatbotMode,
+          rag_mode: ragMode,
+          rag_top_k: Number(ragTopK),
+          rag_context_tokens: Number(ragContextTokens),
+          rag_input_budget_tokens: Number(ragInputBudgetTokens),
+          max_output_tokens: Number(maxOutputTokens),
+          temperature: Number(temperature),
+          cache_enabled: cacheEnabled ? 1 : 0,
+          cache_ttl_seconds: Number(cacheTtlSeconds),
+          direct_answer_enabled: directAnswerEnabled ? 1 : 0,
+          debounce_ms: Number(debounceMs)
         })
       });
       if (result.status === 'success') {
-        window.showSuccess('Pengaturan Chatbot AI berhasil disimpan.');
+        window.showSuccess('Pengaturan Chatbot AI & RAG berhasil disimpan.');
         fetchAISettings(selectedSession);
+        fetchRagStatus(selectedSession);
       } else {
         window.showError(result.message || 'Gagal menyimpan pengaturan.');
       }
@@ -666,12 +815,80 @@ function ChatbotAI() {
         </div>
       </div>
 
+      {/* Navigation Tabs */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1.2fr 1fr',
-        gap: '24px',
-        alignItems: 'stretch'
+        display: 'flex',
+        gap: '8px',
+        marginBottom: '24px',
+        borderBottom: '1px solid var(--border-color)',
+        paddingBottom: '8px'
       }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab('general')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            borderRadius: '10px',
+            border: 'none',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            background: activeTab === 'general' ? 'var(--primary-color)' : 'transparent',
+            color: activeTab === 'general' ? 'white' : 'var(--text-muted)'
+          }}
+        >
+          <Bot size={18} />
+          Asisten &amp; Model AI
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('rag');
+            if (selectedSession) fetchRagStatus(selectedSession);
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            borderRadius: '10px',
+            border: 'none',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            background: activeTab === 'rag' ? 'var(--primary-color)' : 'transparent',
+            color: activeTab === 'rag' ? 'white' : 'var(--text-muted)'
+          }}
+        >
+          <Database size={18} />
+          Optimasi Hybrid RAG &amp; Indeks
+          {ragStatus && (
+            <span style={{
+              fontSize: '0.6875rem',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              backgroundColor: ragStatus.index_ready ? '#10b981' : (ragStatus.rag_mode === 'off' ? 'rgba(255,255,255,0.1)' : '#f59e0b'),
+              color: 'white',
+              fontWeight: 700
+            }}>
+              {ragStatus.rag_mode === 'off' ? 'OFF' : (ragStatus.index_ready ? 'READY' : 'INDEXING')}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'general' && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1.2fr 1fr',
+          gap: '24px',
+          alignItems: 'stretch'
+        }}>
         {/* Panel Kiri: Form Setelan AI */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           
@@ -1328,6 +1545,590 @@ function ChatbotAI() {
           </div>
         </div>
       </div>
+      )}
+
+      {/* Tab 2: Optimasi Hybrid RAG & Indeks */}
+      {activeTab === 'rag' && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1.2fr 1fr',
+          gap: '24px',
+          alignItems: 'start'
+        }}>
+          {/* Panel Kiri RAG: Status & Konfigurasi */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            
+            {/* Card Status Sinkronisasi & Indeks RAG (RAG-0808) */}
+            <div className="card" style={{
+              backdropFilter: 'blur(16px)',
+              background: 'var(--bg-card-glass)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Database size={18} className="text-primary" /> Status Sinkronisasi &amp; Indeks RAG
+                </h3>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleReindex}
+                  disabled={reindexing || !selectedSession}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    fontSize: '0.8125rem',
+                    margin: 0
+                  }}
+                >
+                  <RefreshCw size={14} className={reindexing ? 'animate-spin' : ''} />
+                  {reindexing ? 'Memproses Indexing...' : 'Reindex Basis Pengetahuan'}
+                </button>
+              </div>
+
+              {loadingRagStatus ? (
+                <div style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', color: 'var(--text-muted)' }}>
+                  <Loader2 size={24} className="animate-spin" />
+                  <span style={{ fontSize: '0.875rem' }}>Memeriksa status kesiapan indeks...</span>
+                </div>
+              ) : !selectedSession ? (
+                <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                  Pilih sesi WhatsApp aktif di atas untuk melihat status indeks RAG.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Grid 4 Kartu Status */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+                    <div style={{ padding: '12px', borderRadius: 'var(--border-radius-md)', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Status Kesiapan</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          background: ragStatus?.rag_mode === 'off' ? '#94a3b8' : (ragStatus?.index_ready ? '#10b981' : '#f59e0b')
+                        }} />
+                        <span style={{ fontSize: '0.875rem', fontWeight: 700, color: ragStatus?.rag_mode === 'off' ? 'var(--text-muted)' : (ragStatus?.index_ready ? '#10b981' : '#f59e0b') }}>
+                          {ragStatus?.rag_mode === 'off' ? 'NONAKTIF' : (ragStatus?.index_ready ? 'SIAP PAKAI' : 'INDEXING')}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>Mode: {ragStatus?.rag_mode?.toUpperCase() || 'OFF'}</div>
+                    </div>
+
+                    <div style={{ padding: '12px', borderRadius: 'var(--border-radius-md)', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Leksikal (FTS5)</div>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 700, color: ragStatus?.lexical_ready ? '#10b981' : 'var(--text-muted)' }}>
+                        {ragStatus?.lexical_ready ? 'READY' : (ragStatus?.sources_count === 0 ? 'KOSONG' : 'PENDING')}
+                      </div>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>Pencarian Kata Kunci</div>
+                    </div>
+
+                    <div style={{ padding: '12px', borderRadius: 'var(--border-radius-md)', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Vektor (Embedding)</div>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 700, color: ragStatus?.embedding_ready ? '#10b981' : (ragMode === 'fts' ? 'var(--text-muted)' : '#f59e0b') }}>
+                        {ragStatus?.embedding_ready ? 'READY' : (ragMode === 'fts' ? 'DILEWATI (FTS)' : (ragStatus?.sources_count === 0 ? 'KOSONG' : 'PENDING'))}
+                      </div>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>Semantik Vektor</div>
+                    </div>
+
+                    <div style={{ padding: '12px', borderRadius: 'var(--border-radius-md)', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Indeks Tersimpan</div>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                        {ragStatus?.sources_count || 0} Sumber / {ragStatus?.chunks_count || 0} Chunks
+                      </div>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>Revisi #{ragStatus?.current_revision || 0} (Config #{ragStatus?.config_revision || 1})</div>
+                    </div>
+                  </div>
+
+                  {/* Active Job Alert */}
+                  {ragStatus?.active_job && (
+                    <div style={{
+                      padding: '10px 14px',
+                      borderRadius: 'var(--border-radius-md)',
+                      background: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px dashed rgba(59, 130, 246, 0.3)',
+                      fontSize: '0.8125rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px'
+                    }}>
+                      <Loader2 size={16} className="animate-spin text-primary" />
+                      <div>
+                        <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>Antrean Index Aktif: </span>
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          Job #{ragStatus.active_job.id} (Status: {ragStatus.active_job.status}, Percobaan: {ragStatus.active_job.attempts}).
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Last Error Alert */}
+                  {ragStatus?.last_error && (
+                    <div style={{
+                      padding: '10px 14px',
+                      borderRadius: 'var(--border-radius-md)',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      fontSize: '0.8125rem',
+                      color: '#ef4444',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px'
+                    }}>
+                      <AlertCircle size={16} />
+                      <div>
+                        <span style={{ fontWeight: 600 }}>Error Terakhir: </span>
+                        <span>{ragStatus.last_error}</span>
+                        {ragStatus.last_error_at && (
+                          <span style={{ fontSize: '0.75rem', marginLeft: '6px', opacity: 0.8 }}>({new Date(ragStatus.last_error_at).toLocaleString()})</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Card Form Konfigurasi Mesin RAG & Batas Token (RAG-0806, RAG-0807, RAG-0805) */}
+            <div className="card" style={{
+              backdropFilter: 'blur(16px)',
+              background: 'var(--bg-card-glass)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Sliders size={18} className="text-primary" /> Pengaturan Mesin RAG &amp; Batas Token
+                </h3>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* RAG Mode */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>
+                    Strategi Mode RAG
+                  </label>
+                  <select
+                    className="form-control"
+                    value={ragMode}
+                    onChange={(e) => setRagMode(e.target.value)}
+                    disabled={!selectedSession}
+                    style={{ fontSize: '0.85rem' }}
+                  >
+                    <option value="off">Nonaktif (Off - Kirim Seluruh Teks Pengetahuan Standar)</option>
+                    <option value="fts">Leksikal FTS5 Only (Pencarian Kata Kunci Cepat &amp; Hemat Biaya)</option>
+                    <option value="hybrid">Hybrid (FTS5 + Vektor Embedding RRF - Rekomendasi Akurasi Terbaik)</option>
+                  </select>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', marginBottom: 0 }}>
+                    Mode Hybrid menggabungkan kecocokan kata kunci eksak dengan pemahaman makna semantik dokumen.
+                  </p>
+                </div>
+
+                {/* Top-K Chunks Slider */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                      Top-K Chunks Terpilih
+                    </label>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--primary-color)' }}>{ragTopK} Chunks</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    value={ragTopK}
+                    onChange={(e) => setRagTopK(Number(e.target.value))}
+                    disabled={!selectedSession}
+                    style={{ width: '100%', accentColor: 'var(--primary-color)' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                    <span>1 (Sangat Hemat)</span>
+                    <span>3 (Seimbang)</span>
+                    <span>5 (Maksimal)</span>
+                  </div>
+                </div>
+
+                {/* Context Budget Slider */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                      Kapasitas Konteks Dokumen (Tokens)
+                    </label>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--primary-color)' }}>{ragContextTokens} Tokens</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="100"
+                    max="2200"
+                    step="50"
+                    value={ragContextTokens}
+                    onChange={(e) => setRagContextTokens(Number(e.target.value))}
+                    disabled={!selectedSession}
+                    style={{ width: '100%', accentColor: 'var(--primary-color)' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                    <span>100 Tokens</span>
+                    <span>1.200 Tokens (Default)</span>
+                    <span>2.200 Tokens</span>
+                  </div>
+                </div>
+
+                {/* Max Output Tokens Slider (RAG-0805) */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                      Batas Output Respon AI (Tokens)
+                    </label>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--primary-color)' }}>{maxOutputTokens} Tokens</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="64"
+                    max="2048"
+                    step="32"
+                    value={maxOutputTokens}
+                    onChange={(e) => setMaxOutputTokens(Number(e.target.value))}
+                    disabled={!selectedSession}
+                    style={{ width: '100%', accentColor: 'var(--primary-color)' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                    <span>64 Tokens (Ringkas)</span>
+                    <span>512 Tokens (Default)</span>
+                    <span>2.048 Tokens (Maksimum)</span>
+                  </div>
+                </div>
+
+                {/* Temperature Slider */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                      Kreativitas / Temperature AI
+                    </label>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--primary-color)' }}>{temperature}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={temperature}
+                    onChange={(e) => setTemperature(Number(e.target.value))}
+                    disabled={!selectedSession}
+                    style={{ width: '100%', accentColor: 'var(--primary-color)' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                    <span>0.0 (Faktual &amp; Tegas)</span>
+                    <span>0.3 (Rekomendasi CS)</span>
+                    <span>2.0 (Kreatif)</span>
+                  </div>
+                </div>
+
+                {/* Debounce Setting */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>
+                    Jendela Debounce Pesan Masuk (Milidetik)
+                  </label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    min="0"
+                    max="60000"
+                    step="500"
+                    value={debounceMs}
+                    onChange={(e) => setDebounceMs(Number(e.target.value))}
+                    disabled={!selectedSession}
+                    style={{ fontSize: '0.85rem' }}
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', marginBottom: 0 }}>
+                    Menggabungkan pesan beruntun dalam {debounceMs} ms ({Number(debounceMs / 1000).toFixed(1)} detik) dari pelanggan yang sama ke satu panggilan AI.
+                  </p>
+                </div>
+
+                {/* Cache & Direct Answer Options */}
+                <div style={{ padding: '12px', borderRadius: 'var(--border-radius-md)', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <input
+                      type="checkbox"
+                      id="cacheEnabled"
+                      checked={cacheEnabled}
+                      onChange={(e) => setCacheEnabled(e.target.checked)}
+                      disabled={!selectedSession}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                    <label htmlFor="cacheEnabled" style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)', cursor: 'pointer' }}>
+                      Aktifkan SQLite Encrypted Response Cache
+                    </label>
+                  </div>
+
+                  {cacheEnabled && (
+                    <div style={{ paddingLeft: '26px' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                        TTL Cache (Detik, Max 86.400 / 24 Jam)
+                      </label>
+                      <input
+                        type="number"
+                        className="form-control"
+                        min="60"
+                        max="86400"
+                        step="3600"
+                        value={cacheTtlSeconds}
+                        onChange={(e) => setCacheTtlSeconds(Number(e.target.value))}
+                        disabled={!selectedSession}
+                        style={{ fontSize: '0.8125rem', width: '160px' }}
+                      />
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <input
+                      type="checkbox"
+                      id="directAnswerEnabled"
+                      checked={directAnswerEnabled}
+                      onChange={(e) => setDirectAnswerEnabled(e.target.checked)}
+                      disabled={!selectedSession}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                    <label htmlFor="directAnswerEnabled" style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)', cursor: 'pointer' }}>
+                      Aktifkan Canonical Direct Answer (Bypass LLM untuk Pertanyaan Eksak)
+                    </label>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleSaveSettings}
+                  disabled={savingSettings || !selectedSession}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', marginTop: '6px' }}
+                >
+                  {savingSettings ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  Simpan Pengaturan Mesin RAG
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Panel Kanan RAG: Sandbox Uji Coba Retrieval (RAG-0809) */}
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="card" style={{
+              backdropFilter: 'blur(16px)',
+              background: 'var(--bg-card-glass)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Search size={18} className="text-secondary" /> Uji Coba Retrieval Dokumen (Live Sandbox)
+                </h3>
+                <p style={{ margin: '4px 0 0 0', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                  Simulasikan pencarian dokumen pengetahuan sesi ini tanpa memanggil LLM (0 token LLM, 0 biaya).
+                </p>
+              </div>
+
+              {/* Form Input Query Test */}
+              <form onSubmit={handleTestRetrieval} style={{ display: 'flex', flexDirection: 'column', gap: '12px', margin: 0 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>
+                    Query Pertanyaan Uji Coba
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Contoh: Jam operasional kantor, harga paket premium, cara refund..."
+                    value={retrievalQuery}
+                    onChange={(e) => setRetrievalQuery(e.target.value)}
+                    disabled={testingRetrieval || !selectedSession}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Mode Uji
+                    </label>
+                    <select
+                      className="form-control"
+                      value={retrievalMode}
+                      onChange={(e) => setRetrievalMode(e.target.value)}
+                      disabled={testingRetrieval || !selectedSession}
+                      style={{ fontSize: '0.8125rem' }}
+                    >
+                      <option value="hybrid">Hybrid (FTS + Vektor)</option>
+                      <option value="fts">FTS Only (Leksikal)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Top-K Chunks
+                    </label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min="1"
+                      max="20"
+                      value={retrievalTopK}
+                      onChange={(e) => setRetrievalTopK(Number(e.target.value))}
+                      disabled={testingRetrieval || !selectedSession}
+                      style={{ fontSize: '0.8125rem' }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={testingRetrieval || !selectedSession || !retrievalQuery.trim()}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '4px' }}
+                >
+                  {testingRetrieval ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                  Jalankan Uji Retrieval
+                </button>
+              </form>
+
+              {/* Area Hasil Uji Retrieval */}
+              <div style={{
+                marginTop: '8px',
+                borderTop: '1px solid var(--border-color)',
+                paddingTop: '16px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                    Hasil Ekstraksi Dokumen
+                  </span>
+                  {retrievalResult && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Latency: <strong style={{ color: 'var(--primary-color)' }}>{retrievalResult.retrieval_latency_ms || 0} ms</strong> ({retrievalResult.selected_count || 0} chunk terpilih)
+                    </span>
+                  )}
+                </div>
+
+                {testingRetrieval ? (
+                  <div style={{ padding: '30px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', color: 'var(--text-muted)' }}>
+                    <Loader2 size={24} className="animate-spin" />
+                    <span style={{ fontSize: '0.8125rem' }}>Mencari potongan dokumen paling relevan...</span>
+                  </div>
+                ) : !retrievalResult ? (
+                  <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                    Masukkan query pertanyaan di atas dan klik tombol untuk melihat hasil ekstraksi chunk secara instan.
+                  </div>
+                ) : retrievalResult.selected_count === 0 ? (
+                  <div style={{
+                    padding: '16px',
+                    borderRadius: 'var(--border-radius-md)',
+                    background: 'rgba(245, 158, 11, 0.08)',
+                    border: '1px dashed rgba(245, 158, 11, 0.3)',
+                    fontSize: '0.8125rem',
+                    color: 'var(--text-muted)'
+                  }}>
+                    <strong style={{ color: '#f59e0b' }}>Tidak ada chunk dokumen relevan:</strong> Tidak ada potongan pengetahuan yang melampaui ambang batas skor untuk query ini. Pada runtime chat, AI akan mengarahkan pelanggan ke Customer Service atau fallback yang telah ditentukan.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '560px', overflowY: 'auto' }}>
+                    {retrievalResult.chunks.map((chunk, idx) => (
+                      <div
+                        key={chunk.id || idx}
+                        style={{
+                          padding: '12px',
+                          borderRadius: 'var(--border-radius-md)',
+                          background: 'rgba(255,255,255,0.02)',
+                          border: '1px solid var(--border-color)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              width: '20px',
+                              height: '20px',
+                              borderRadius: '50%',
+                              background: 'var(--primary-color)',
+                              color: 'white',
+                              fontSize: '0.6875rem',
+                              fontWeight: 700,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}>
+                              {idx + 1}
+                            </span>
+                            <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                              {chunk.source_title}
+                            </span>
+                            <span style={{
+                              fontSize: '0.6875rem',
+                              padding: '2px 6px',
+                              borderRadius: '6px',
+                              background: 'rgba(255,255,255,0.06)',
+                              color: 'var(--text-muted)'
+                            }}>
+                              {chunk.source_type}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {chunk.is_canonical && (
+                              <span style={{
+                                fontSize: '0.6875rem',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                background: 'rgba(234, 179, 8, 0.15)',
+                                color: '#eab308',
+                                fontWeight: 700
+                              }}>
+                                Kanonis (Direct Answer)
+                              </span>
+                            )}
+                            <span style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '8px',
+                              background: 'rgba(16, 185, 129, 0.12)',
+                              color: '#10b981'
+                            }}>
+                              Score: {chunk.score}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{
+                          fontFamily: 'monospace',
+                          fontSize: '0.75rem',
+                          lineHeight: '1.45',
+                          padding: '10px',
+                          borderRadius: '6px',
+                          background: 'rgba(0, 0, 0, 0.15)',
+                          color: 'var(--text-main)',
+                          whiteSpace: 'pre-wrap',
+                          maxHeight: '160px',
+                          overflowY: 'auto',
+                          border: '1px solid rgba(255,255,255,0.04)'
+                        }}>
+                          {chunk.content}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                          Estimasi: {chunk.token_count} Tokens
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Dialog Kredensial */}
       {showCredModal && (
