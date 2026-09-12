@@ -7,17 +7,17 @@ Updated: 2026-09-12
 | Branch | Purpose | Allowed content | Base/key commit |
 |---|---|---|---|
 | `main` | Current shared baseline | Only changes that passed the agreed merge and release gates | `63c93c6` at separation time |
-| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core implementation through RAG-0613 (Fase 6 Runtime AI Integration complete 13/13); use the reviewed branch-tip SHA |
-| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | Experiment tooling plus core implementation through RAG-0613 (Fase 6 complete 13/13); use the reviewed branch-tip SHA |
+| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core implementation through RAG-0705 (Fase 7 Debounce & Response Cache items 1–5); use the reviewed branch-tip SHA |
+| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | Experiment tooling plus core implementation through RAG-0705 (Fase 7 items 1–5); use the reviewed branch-tip SHA |
 | `hotfix/urgent-fixes` | Urgent production/staging bug fixes | The smallest isolated fix and its focused regression test; no unfinished RAG or experiment files | Directly from `origin/main` at `63c93c6` |
 
 The three branches were published to `origin` on 2026-09-11 after explicit approval. Publishing the refs did not merge or deploy them, and `origin/main` remained at `63c93c6`. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
 
-Current local milestone on 2026-09-12: RAG-0611–RAG-0613 are complete and Fase 6 Runtime AI Integration is finished at 13/13. Milestones include per-session rollout gating (all/allowlist/disabled), zero-AI flow match regression verification, pre-send delivery access recheck against tenant/session lifecycle, bounded inbound message deduplication (60s TTL / 5k entries), and sensitive debug log redaction. Runtime/provider/usage 44/44, full backend 323/323, frontend production build, and route/OpenAPI parity 120/120 passed. These are LOCAL/GIT candidate facts only; runtime migration, real provider/WhatsApp delivery, staging deploy, UAT, and merge to `main` have not occurred.
+Current local milestone on 2026-09-12: RAG-0701–RAG-0705 are complete and Fase 7 is 5/10 (batch 1 completed). Milestones include inbound debouncing per `(sessionId, senderJid)` with configurable delay, request serialization FIFO per sender via Promise chaining, SQLite encrypted response cache (`rag_response_cache`) with deterministic keying and AES-256-GCM payload encryption, automatic invalidation on source revision digest or TTL shift, and strict non-cacheable policy enforcement for CS fallbacks, errors, whitespace, or truncated responses. Cache/debounce 13/13, runtime 44/44, full backend 336/336, frontend production build, and route/OpenAPI parity 120/120 passed. These are LOCAL/GIT candidate facts only; runtime migration, real provider/WhatsApp delivery, staging deploy, UAT, and merge to `main` have not occurred.
 
 ## Separation rules
 
-RAG-0611–RAG-0613 completes Fase 6 with session rollout control, delivery access guards, bounded deduplication, and inbound log sanitization. Real provider and WhatsApp requests remain zero in the local fixture evaluation. No schema migration was added.
+RAG-0701–RAG-0705 completes 5 steps of Fase 7 with inbound debouncing, request serialization, encrypted response cache, and invalidation rules. Real provider and WhatsApp requests remain zero in the local fixture evaluation. No schema migration was added.
 
 ### Release candidate
 
