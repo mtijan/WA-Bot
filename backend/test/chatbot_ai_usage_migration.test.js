@@ -56,7 +56,7 @@ async function createSchema023Fixture() {
 
 test('migration registry reserves 024 for Chatbot AI usage and limits', () => {
   const migrations = listMigrations();
-  assert.equal(migrations.length, 26);
+  assert.equal(migrations.length, 28);
   assert.equal(migrations[23].id, '024_chatbot_ai_usage_and_limits');
 });
 
@@ -86,7 +86,7 @@ test('migration 024 upgrades a schema-023 fixture additively and enforces owners
     targetId: '024_chatbot_ai_usage_and_limits'
   });
   assert.equal(result.applied, 1);
-  assert.equal(result.total, 26);
+  assert.equal(result.total, 28);
 
   const maxOutputColumn = (await all(db, 'PRAGMA table_info(chatbot_ai_settings)'))
     .find((column) => column.name === 'max_output_tokens');

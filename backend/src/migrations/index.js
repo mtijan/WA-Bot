@@ -1185,6 +1185,176 @@ const migrations = [
         'CREATE INDEX idx_rag_index_jobs_user_source ON rag_index_jobs (user_id, source_id)'
       ]);
     }
+  },
+  {
+    id: '027_expand_rag_input_budget_limit',
+    description: 'Expand rag_input_budget_tokens check constraint limit up to 32768 tokens.',
+    up: async (db) => {
+      await exec(db, [
+        `CREATE TABLE chatbot_ai_settings_v027 (
+          session_id TEXT PRIMARY KEY,
+          user_id INTEGER,
+          is_active INTEGER DEFAULT 0,
+          base_url TEXT DEFAULT 'https://openrouter.ai/api/v1',
+          api_key TEXT,
+          model_name TEXT DEFAULT 'glm-5-turbo',
+          system_instruction TEXT,
+          knowledge_base TEXT,
+          delay_seconds INTEGER DEFAULT 2,
+          show_typing INTEGER DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          credential_id INTEGER,
+          knowledge_source TEXT DEFAULT 'manual',
+          chatbot_mode TEXT DEFAULT 'both',
+          last_error TEXT,
+          last_error_at DATETIME,
+          max_output_tokens INTEGER NOT NULL DEFAULT 2048
+            CHECK (max_output_tokens BETWEEN 64 AND 2048),
+          temperature REAL NOT NULL DEFAULT 0.3 CHECK (temperature BETWEEN 0 AND 2),
+          rag_mode TEXT NOT NULL DEFAULT 'off' CHECK (rag_mode IN ('off', 'fts', 'hybrid')),
+          rag_top_k INTEGER NOT NULL DEFAULT 4 CHECK (rag_top_k BETWEEN 1 AND 5),
+          rag_context_tokens INTEGER NOT NULL DEFAULT 1000
+            CHECK (rag_context_tokens BETWEEN 100 AND 2200),
+          rag_input_budget_tokens INTEGER NOT NULL DEFAULT 2200
+            CHECK (rag_input_budget_tokens BETWEEN 256 AND 32768),
+          embedding_profile_id INTEGER,
+          cache_enabled INTEGER NOT NULL DEFAULT 0 CHECK (cache_enabled IN (0, 1)),
+          cache_ttl_seconds INTEGER NOT NULL DEFAULT 86400
+            CHECK (cache_ttl_seconds BETWEEN 60 AND 86400),
+          direct_answer_enabled INTEGER NOT NULL DEFAULT 0
+            CHECK (direct_answer_enabled IN (0, 1)),
+          debounce_ms INTEGER NOT NULL DEFAULT 0 CHECK (debounce_ms BETWEEN 0 AND 60000),
+          prompt_version INTEGER NOT NULL DEFAULT 1 CHECK (prompt_version >= 1),
+          config_revision INTEGER NOT NULL DEFAULT 1 CHECK (config_revision >= 1),
+          FOREIGN KEY (session_id, user_id)
+            REFERENCES sessions (session_id, user_id) ON DELETE CASCADE,
+          FOREIGN KEY (embedding_profile_id, user_id)
+            REFERENCES rag_embedding_profiles (id, user_id) ON DELETE RESTRICT
+        )`,
+        `INSERT INTO chatbot_ai_settings_v027 (
+           session_id, user_id, is_active, base_url, api_key, model_name,
+           system_instruction, knowledge_base, delay_seconds, show_typing, created_at,
+           credential_id, knowledge_source, chatbot_mode, last_error, last_error_at,
+           max_output_tokens, temperature, rag_mode, rag_top_k, rag_context_tokens,
+           rag_input_budget_tokens, embedding_profile_id, cache_enabled,
+           cache_ttl_seconds, direct_answer_enabled, debounce_ms, prompt_version,
+           config_revision
+         )
+         SELECT session_id, user_id, is_active, base_url, api_key, model_name,
+                system_instruction, knowledge_base, delay_seconds, show_typing, created_at,
+                credential_id, knowledge_source, chatbot_mode, last_error, last_error_at,
+                max_output_tokens, temperature, rag_mode, rag_top_k, rag_context_tokens,
+                rag_input_budget_tokens, embedding_profile_id, cache_enabled,
+                cache_ttl_seconds, direct_answer_enabled, debounce_ms, prompt_version,
+                config_revision
+         FROM chatbot_ai_settings`,
+        'DROP TABLE chatbot_ai_settings',
+        'ALTER TABLE chatbot_ai_settings_v027 RENAME TO chatbot_ai_settings',
+        `CREATE TRIGGER trg_chatbot_ai_settings_owner_insert
+         AFTER INSERT ON chatbot_ai_settings
+         WHEN NEW.user_id IS NULL
+         BEGIN
+           UPDATE chatbot_ai_settings
+           SET user_id = (SELECT user_id FROM sessions WHERE session_id = NEW.session_id)
+           WHERE session_id = NEW.session_id;
+         END`,
+        `CREATE TRIGGER trg_chatbot_ai_settings_owner_update
+         AFTER UPDATE OF session_id, user_id ON chatbot_ai_settings
+         WHEN NEW.user_id IS NULL
+         BEGIN
+           UPDATE chatbot_ai_settings
+           SET user_id = (SELECT user_id FROM sessions WHERE session_id = NEW.session_id)
+           WHERE session_id = NEW.session_id;
+         END`,
+        'CREATE INDEX idx_chatbot_ai_settings_user_id ON chatbot_ai_settings (user_id)',
+        'CREATE INDEX idx_chatbot_ai_settings_embedding_profile ON chatbot_ai_settings (embedding_profile_id, user_id)'
+      ]);
+    }
+  },
+  {
+    id: '028_expand_rag_context_and_output_limits',
+    description: 'Expand rag_context_tokens limit up to 10000 and max_output_tokens limit up to 10000.',
+    up: async (db) => {
+      await exec(db, [
+        `CREATE TABLE chatbot_ai_settings_v028 (
+          session_id TEXT PRIMARY KEY,
+          user_id INTEGER,
+          is_active INTEGER DEFAULT 0,
+          base_url TEXT DEFAULT 'https://openrouter.ai/api/v1',
+          api_key TEXT,
+          model_name TEXT DEFAULT 'glm-5-turbo',
+          system_instruction TEXT,
+          knowledge_base TEXT,
+          delay_seconds INTEGER DEFAULT 2,
+          show_typing INTEGER DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          credential_id INTEGER,
+          knowledge_source TEXT DEFAULT 'manual',
+          chatbot_mode TEXT DEFAULT 'both',
+          last_error TEXT,
+          last_error_at DATETIME,
+          max_output_tokens INTEGER NOT NULL DEFAULT 2048
+            CHECK (max_output_tokens BETWEEN 64 AND 10000),
+          temperature REAL NOT NULL DEFAULT 0.3 CHECK (temperature BETWEEN 0 AND 2),
+          rag_mode TEXT NOT NULL DEFAULT 'off' CHECK (rag_mode IN ('off', 'fts', 'hybrid')),
+          rag_top_k INTEGER NOT NULL DEFAULT 4 CHECK (rag_top_k BETWEEN 1 AND 5),
+          rag_context_tokens INTEGER NOT NULL DEFAULT 1000
+            CHECK (rag_context_tokens BETWEEN 100 AND 10000),
+          rag_input_budget_tokens INTEGER NOT NULL DEFAULT 2200
+            CHECK (rag_input_budget_tokens BETWEEN 256 AND 32768),
+          embedding_profile_id INTEGER,
+          cache_enabled INTEGER NOT NULL DEFAULT 0 CHECK (cache_enabled IN (0, 1)),
+          cache_ttl_seconds INTEGER NOT NULL DEFAULT 86400
+            CHECK (cache_ttl_seconds BETWEEN 60 AND 86400),
+          direct_answer_enabled INTEGER NOT NULL DEFAULT 0
+            CHECK (direct_answer_enabled IN (0, 1)),
+          debounce_ms INTEGER NOT NULL DEFAULT 0 CHECK (debounce_ms BETWEEN 0 AND 60000),
+          prompt_version INTEGER NOT NULL DEFAULT 1 CHECK (prompt_version >= 1),
+          config_revision INTEGER NOT NULL DEFAULT 1 CHECK (config_revision >= 1),
+          FOREIGN KEY (session_id, user_id)
+            REFERENCES sessions (session_id, user_id) ON DELETE CASCADE,
+          FOREIGN KEY (embedding_profile_id, user_id)
+            REFERENCES rag_embedding_profiles (id, user_id) ON DELETE RESTRICT
+        )`,
+        `INSERT INTO chatbot_ai_settings_v028 (
+           session_id, user_id, is_active, base_url, api_key, model_name,
+           system_instruction, knowledge_base, delay_seconds, show_typing, created_at,
+           credential_id, knowledge_source, chatbot_mode, last_error, last_error_at,
+           max_output_tokens, temperature, rag_mode, rag_top_k, rag_context_tokens,
+           rag_input_budget_tokens, embedding_profile_id, cache_enabled,
+           cache_ttl_seconds, direct_answer_enabled, debounce_ms, prompt_version,
+           config_revision
+         )
+         SELECT session_id, user_id, is_active, base_url, api_key, model_name,
+                system_instruction, knowledge_base, delay_seconds, show_typing, created_at,
+                credential_id, knowledge_source, chatbot_mode, last_error, last_error_at,
+                max_output_tokens, temperature, rag_mode, rag_top_k, rag_context_tokens,
+                rag_input_budget_tokens, embedding_profile_id, cache_enabled,
+                cache_ttl_seconds, direct_answer_enabled, debounce_ms, prompt_version,
+                config_revision
+         FROM chatbot_ai_settings`,
+        'DROP TABLE chatbot_ai_settings',
+        'ALTER TABLE chatbot_ai_settings_v028 RENAME TO chatbot_ai_settings',
+        `CREATE TRIGGER trg_chatbot_ai_settings_owner_insert
+         AFTER INSERT ON chatbot_ai_settings
+         WHEN NEW.user_id IS NULL
+         BEGIN
+           UPDATE chatbot_ai_settings
+           SET user_id = (SELECT user_id FROM sessions WHERE session_id = NEW.session_id)
+           WHERE session_id = NEW.session_id;
+         END`,
+        `CREATE TRIGGER trg_chatbot_ai_settings_owner_update
+         AFTER UPDATE OF session_id, user_id ON chatbot_ai_settings
+         WHEN NEW.user_id IS NULL
+         BEGIN
+           UPDATE chatbot_ai_settings
+           SET user_id = (SELECT user_id FROM sessions WHERE session_id = NEW.session_id)
+           WHERE session_id = NEW.session_id;
+         END`,
+        'CREATE INDEX idx_chatbot_ai_settings_user_id ON chatbot_ai_settings (user_id)',
+        'CREATE INDEX idx_chatbot_ai_settings_embedding_profile ON chatbot_ai_settings (embedding_profile_id, user_id)'
+      ]);
+    }
   }
 ];
 

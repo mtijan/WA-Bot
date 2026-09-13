@@ -15,10 +15,11 @@ describe('Chatbot AI output guard', () => {
     assert.equal(normalizeMaxOutputTokens('250'), 250);
     assert.equal(normalizeMaxOutputTokens(64), 64);
     assert.equal(normalizeMaxOutputTokens(2048), 2048);
+    assert.equal(normalizeMaxOutputTokens(10000), 10000);
   });
 
-  it('rejects decimals and values outside 64-2048', () => {
-    for (const value of [63, 2049, 250.5, 'not-a-number']) {
+  it('rejects decimals and values outside 64-10000', () => {
+    for (const value of [63, 10001, 250.5, 'not-a-number']) {
       assert.throws(
         () => normalizeMaxOutputTokens(value),
         (error) => error.code === 'INVALID_MAX_OUTPUT_TOKENS'

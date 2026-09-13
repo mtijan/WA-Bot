@@ -1384,7 +1384,7 @@ export async function getSessionRagStatus({ sessionId, userId }, databaseClient 
 
   const settings = await client.get(
     `SELECT is_active, rag_mode, rag_top_k, rag_context_tokens, rag_input_budget_tokens,
-            cache_enabled, cache_ttl_seconds, direct_answer_enabled, debounce_ms,
+            embedding_profile_id, cache_enabled, cache_ttl_seconds, direct_answer_enabled, debounce_ms,
             max_output_tokens, temperature, last_error, last_error_at, config_revision
      FROM chatbot_ai_settings
      WHERE session_id = ?`,
@@ -1419,9 +1419,11 @@ export async function getSessionRagStatus({ sessionId, userId }, databaseClient 
     activeJob = await client.get(
       `SELECT id, status, attempts, last_error_code, updated_at
        FROM rag_index_jobs
-       WHERE user_id = ? AND source_id IN (
-         SELECT source_id FROM rag_session_sources WHERE session_id = ? AND user_id = ?
-       )
+       WHERE user_id = ?
+         AND status IN ('PENDING', 'RUNNING')
+         AND source_id IN (
+           SELECT source_id FROM rag_session_sources WHERE session_id = ? AND user_id = ?
+         )
        ORDER BY id DESC LIMIT 1`,
       [userId, safeSessionId, userId]
     );
@@ -1429,10 +1431,14 @@ export async function getSessionRagStatus({ sessionId, userId }, databaseClient 
 
   const isLexicalReady = sources.length > 0 && sources.every((s) => s.lexical_status === 'READY');
   const isEmbeddingReady = sources.length > 0 && sources.every((s) => s.embedding_status === 'READY');
+  const hasEmbeddingProfile = Boolean(settings.embedding_profile_id);
   const ragMode = settings.rag_mode || 'off';
   const isIndexReady = ragMode === 'hybrid'
     ? (isLexicalReady && isEmbeddingReady)
     : (ragMode === 'fts' ? isLexicalReady : false);
+  const isOperationalReady = ragMode === 'off'
+    ? false
+    : isLexicalReady;
 
   const currentRevision = sources.reduce(
     (max, s) => Math.max(max, Number(s.current_revision) || 0),
@@ -1443,8 +1449,10 @@ export async function getSessionRagStatus({ sessionId, userId }, databaseClient 
     session_id: safeSessionId,
     rag_mode: ragMode,
     index_ready: isIndexReady,
+    operational_ready: isOperationalReady,
     lexical_ready: isLexicalReady,
     embedding_ready: isEmbeddingReady,
+    has_embedding_profile: hasEmbeddingProfile,
     sources_count: sources.length,
     source_count: sources.length,
     chunks_count: totalChunks,

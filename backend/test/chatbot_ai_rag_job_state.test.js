@@ -65,8 +65,10 @@ async function createSchema025Fixture() {
 
 test('migration registry reserves 026 for the RAG job state model', () => {
   const migrations = listMigrations();
-  assert.equal(migrations.length, 26);
-  assert.equal(migrations.at(-1).id, '026_rag_index_job_state_model');
+  assert.equal(migrations.length, 28);
+  assert.equal(migrations[25].id, '026_rag_index_job_state_model');
+  assert.equal(migrations[26].id, '027_expand_rag_input_budget_limit');
+  assert.equal(migrations.at(-1).id, '028_expand_rag_context_and_output_limits');
 });
 
 test('migration 026 maps legacy job states without changing source readiness', async (t) => {
@@ -89,7 +91,7 @@ test('migration 026 maps legacy job states without changing source readiness', a
     targetId: '026_rag_index_job_state_model'
   });
   assert.equal(result.applied, 1);
-  assert.equal(result.total, 26);
+  assert.equal(result.total, 28);
 
   const jobs = await all(
     db,

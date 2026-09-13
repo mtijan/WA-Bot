@@ -9,6 +9,7 @@ import {
   deleteCredential,
   toggleCredentialActive,
   reindexAISession,
+  generateAISessionEmbeddings,
   getAISessionRagStatus,
   testAISessionRetrieval,
   getEmbeddingProfile,
@@ -28,8 +29,8 @@ router.post('/settings', validateBody({
   max_output_tokens: { type: 'number', custom: validateMaxOutputTokens },
   rag_mode: { type: 'string', allowedValues: ['off', 'fts', 'hybrid'] },
   rag_top_k: { type: 'number', min: 1, max: 5 },
-  rag_context_tokens: { type: 'number', min: 100, max: 2200 },
-  rag_input_budget_tokens: { type: 'number', min: 256, max: 8192 },
+  rag_context_tokens: { type: 'number', min: 100, max: 10000 },
+  rag_input_budget_tokens: { type: 'number', min: 256, max: 32768 },
   cache_ttl_seconds: { type: 'number', min: 60, max: 86400 },
   debounce_ms: { type: 'number', min: 0, max: 60000 },
   temperature: { type: 'number', min: 0, max: 2 }
@@ -41,7 +42,13 @@ router.post('/test', validateBody({
   system_prompt: { type: 'string', max: 100000 },
   user_message: { type: 'string', max: 10000 },
   prompt_override: { type: 'string', max: 110000 },
-  max_output_tokens: { type: 'number', custom: validateMaxOutputTokens }
+  max_output_tokens: { type: 'number', custom: validateMaxOutputTokens },
+  use_rag: { type: 'boolean' },
+  rag_mode: { type: 'string', allowedValues: ['off', 'fts', 'hybrid'] },
+  rag_top_k: { type: 'number', min: 1, max: 5 },
+  rag_context_tokens: { type: 'number', min: 100, max: 10000 },
+  rag_threshold: { type: 'number', min: 0, max: 1 },
+  temperature: { type: 'number', min: 0, max: 2 }
 }), testAISettings);
 
 // Credentials routes
@@ -80,5 +87,8 @@ router.post('/rag/:sessionId/reindex', validateBody({
   source_id: { type: 'number' },
   force: { type: 'boolean' }
 }), reindexAISession);
+router.post('/rag/:sessionId/generate-embeddings', validateBody({
+  force: { type: 'boolean' }
+}), generateAISessionEmbeddings);
 
 export default router;
