@@ -141,10 +141,11 @@ Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan
 
 - **Monolith Mode (API + Workers):** `npm start`
 - **API Server Only:** `npm run start:api` (Express HTTP server saja, dapat mendelegasikan sesi ke manajer sesi internal lewat `WA_BOT_SESSION_MANAGER_URL`)
-- **Combined Worker:** `npm run start:worker` (Menjalankan session manager, polling campaign, dan polling warmer secara bersamaan tanpa HTTP API publik)
+- **Combined Worker:** `npm run start:worker` (Menjalankan session manager, polling campaign/warmer, dan polling index RAG jika `WA_BOT_RAG_INDEX_WORKER_ENABLED=true`, tanpa HTTP API publik)
 - **Session Manager Only:** `npm run start:sessions` (Menjalankan manajer sesi Baileys saja)
 - **Campaign Worker Only:** `npm run start:campaign-worker` (Memproses antrean pengiriman pesan campaign massal)
 - **Warmer Worker Only:** `npm run start:warmer-worker` (Memproses simulasi chat pemanasan reputasi akun)
+- **RAG Index Sekali Jalan:** `npm run rag:index:once` (Memulihkan lease kedaluwarsa lalu memproses satu batch job index RAG yang due; tetap memerlukan migration dan rollout runtime yang disetujui)
 
 ---
 
