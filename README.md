@@ -214,7 +214,7 @@ npm run logs:prune:apply
 
 ## Indeks Dokumentasi Lengkap
 
-Chatbot AI Token Optimization / Hybrid RAG berstatus **IN_PROGRESS — LOCAL**: migrations 024–026, default/maksimum output 2.048, prompt/usage/budget/retry, schema RAG + FTS, extractor/chunker, durable enqueue, gated polling, state job eksplisit, bounded index retry, stale-revision guard, publikasi lexical atomik, trigger KB manual, flow lifecycle triggers, manual reindex endpoint dengan ownership check (RAG-0311), serta durable claim, lease recovery, dan pembersihan job superseded (RAG-0312/RAG-0313 - Fase 3 selesai) telah diimplementasikan lokal. Empat puluh tujuh dari 128 item DONE; RAG-0011 tetap parsial. Focused RAG 110/110 dan full backend 237/237 lulus pada 2026-09-11. Poller dan budget moneter default nonaktif; database runtime belum dimigrasi, embedding provider/retrieval belum dibuat, dan deploy/UAT belum dilakukan.
+Chatbot AI Token Optimization / Hybrid RAG berstatus **IN_PROGRESS — LOCAL**: Fase 3–8 selesai dan Fase 9 berjalan 5/15. Sebanyak 108/131 item DONE, RAG-0011 parsial, dan 22 TODO. RAG-0901–RAG-0905 mengunci dataset 50 pola chat dengan gold source/klaim wajib serta mengukur retrieval aktual pada SQLite fixture deterministik: Top-1 100%, Top-3 complete-source 100%, negative rejection 100%, dan tanpa source lintas tenant/sesi. Full backend 374/374 across 74 suites serta frontend build/API guard lulus pada 2026-09-13. Poller/budget moneter default nonaktif; hasil ini bukan jawaban model generatif atau billing. Runtime database belum dimigrasi dan deploy/UAT belum dilakukan.
 
 - [Rencana optimasi dan baseline biaya](docs/CHATBOT_AI_TOKEN_OPTIMIZATION.md)
 - [Desain detail FR/RTM, ERD, diagram dan API target](docs/CHATBOT_AI_RAG_DESIGN.md)

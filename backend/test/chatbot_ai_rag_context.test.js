@@ -7,7 +7,11 @@ import {
   filterRagResultsByRelevance,
   selectRagContext
 } from '../src/services/chatbot_ai_rag_context.service.js';
-import { calibrateRagRelevanceThreshold } from '../src/services/chatbot_ai_rag_evaluation.service.js';
+import {
+  calibrateRagRelevanceThreshold,
+  evaluateRagRetrievalOutcomes,
+  validateRagEvaluationDataset
+} from '../src/services/chatbot_ai_rag_evaluation.service.js';
 
 function candidate(id, text, relevanceScore = 0.9, metadata = {}) {
   return {
@@ -118,4 +122,59 @@ test('RAG-0507 menolak kalibrasi yang tidak memiliki kelas positif dan negatif',
     ]),
     (error) => error.code === 'RAG_RETRIEVAL_INVALID_EVALUATION_INPUT'
   );
+});
+
+test('RAG-0901 menolak dataset duplikat atau answerable case tanpa klaim wajib', () => {
+  const validCase = {
+    id: 'EX-01',
+    category: 'exact',
+    query: 'berapa biaya',
+    vector: [1, 0],
+    gold_source_ids: [1],
+    required_claims: ['Rp150.000'],
+    claim_types: ['price'],
+    expected_behavior: 'answer',
+    calibration: true
+  };
+  assert.equal(validateRagEvaluationDataset([validCase], { expectedCaseCount: 1 }).length, 1);
+  assert.throws(
+    () => validateRagEvaluationDataset([validCase, validCase], { expectedCaseCount: 2 }),
+    (error) => error.code === 'RAG_RETRIEVAL_INVALID_EVALUATION_INPUT'
+  );
+  assert.throws(
+    () => validateRagEvaluationDataset([{
+      ...validCase,
+      required_claims: []
+    }], { expectedCaseCount: 1 }),
+    (error) => error.code === 'RAG_RETRIEVAL_INVALID_EVALUATION_INPUT'
+  );
+});
+
+test('RAG-0905 membedakan Top-1 hit, Top-3 complete coverage, dan negative rejection', () => {
+  const metrics = evaluateRagRetrievalOutcomes([
+    {
+      id: 'single-source',
+      category: 'exact',
+      gold_source_ids: [1],
+      retrieved_source_ids: [2, 1]
+    },
+    {
+      id: 'multi-source',
+      category: 'multi_source',
+      gold_source_ids: [3, 4],
+      retrieved_source_ids: [3, 4]
+    },
+    {
+      id: 'negative',
+      category: 'out_of_scope',
+      gold_source_ids: [],
+      retrieved_source_ids: []
+    }
+  ]);
+
+  assert.equal(metrics.top_1_accuracy, 0.5);
+  assert.equal(metrics.top_3_accuracy, 1);
+  assert.equal(metrics.negative_rejection_rate, 1);
+  assert.equal(metrics.overall_pass_rate, 1);
+  assert.deepEqual(metrics.failed_case_ids, []);
 });
