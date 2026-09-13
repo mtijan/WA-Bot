@@ -12,6 +12,7 @@ import {
   validateMaxOutputTokens
 } from '../services/chatbot_ai_runtime.service.js';
 import {
+  buildChatMessages,
   buildConnectionTestMessages,
   buildSandboxMessages
 } from '../services/chatbot_ai_prompt.service.js';
@@ -37,6 +38,7 @@ import {
   testEmbeddingCapability,
   getTenantEmbeddingUsageSummary,
   generateQueryEmbedding,
+  generateSessionEmbeddings,
   EMBEDDING_CAPABILITY_STATUSES
 } from '../services/chatbot_ai_embedding.service.js';
 
@@ -334,14 +336,14 @@ export const saveAISettings = async (req, res) => {
     }
     if (req.body.rag_context_tokens !== undefined) {
       const ctxTokens = Number(req.body.rag_context_tokens);
-      if (!Number.isInteger(ctxTokens) || ctxTokens < 100 || ctxTokens > 2200) {
-        return sendError(res, 400, 'VALIDATION_ERROR', 'rag_context_tokens harus berupa integer antara 100 dan 2200.');
+      if (!Number.isInteger(ctxTokens) || ctxTokens < 100 || ctxTokens > 10000) {
+        return sendError(res, 400, 'VALIDATION_ERROR', 'rag_context_tokens harus berupa integer antara 100 dan 10000.');
       }
     }
     if (req.body.rag_input_budget_tokens !== undefined) {
       const budget = Number(req.body.rag_input_budget_tokens);
-      if (!Number.isInteger(budget) || budget < 256 || budget > 8192) {
-        return sendError(res, 400, 'VALIDATION_ERROR', 'rag_input_budget_tokens harus berupa integer antara 256 dan 8192.');
+      if (!Number.isInteger(budget) || budget < 256 || budget > 32768) {
+        return sendError(res, 400, 'VALIDATION_ERROR', 'rag_input_budget_tokens harus berupa integer antara 256 dan 32768.');
       }
     }
     if (req.body.cache_ttl_seconds !== undefined) {
@@ -542,7 +544,13 @@ export const testAISettings = async (req, res) => {
     system_prompt,
     user_message,
     prompt_override,
-    max_output_tokens
+    max_output_tokens,
+    use_rag,
+    rag_mode,
+    rag_top_k,
+    rag_context_tokens,
+    rag_threshold,
+    temperature: requestedTemperature
   } = req.body;
 
   if (Object.prototype.hasOwnProperty.call(req.body, 'max_output_tokens')) {
@@ -571,6 +579,100 @@ export const testAISettings = async (req, res) => {
       : buildConnectionTestMessages();
   } catch (error) {
     return sendError(res, 400, error.code || 'INVALID_AI_TEST_PAYLOAD', error.message);
+  }
+
+  let ragInfo = { used_rag: false };
+  if (isSandbox && use_rag && session_id && user_message) {
+    try {
+      const client = req.dbClient || { get: dbGet, all: dbAll, run: dbRun };
+      const settings = await client.get('SELECT * FROM chatbot_ai_settings WHERE session_id = ?', [session_id]) || {};
+      const effectiveMode = ['fts', 'hybrid'].includes(String(rag_mode || settings.rag_mode).toLowerCase())
+        ? String(rag_mode || settings.rag_mode).toLowerCase()
+        : 'fts';
+
+      let queryVector = null;
+      if (effectiveMode === 'hybrid') {
+        try {
+          const tenantProfile = await getTenantEmbeddingProfile(req.auth.userId, client);
+          const credId = credential_id || settings.credential_id;
+          if (tenantProfile && credId) {
+            const credRow = await client.get('SELECT * FROM chatbot_ai_credentials WHERE id = ? AND user_id = ?', [credId, req.auth.userId]);
+            if (credRow?.api_key) {
+              const plainKey = revealSecret(credRow.api_key);
+              const queryEmbedding = await generateQueryEmbedding({
+                query: user_message,
+                userId: req.auth.userId,
+                credentialId: tenantProfile.credential_id || credId,
+                model: tenantProfile.model,
+                dimensions: tenantProfile.dimensions,
+                apiKey: plainKey,
+                baseUrl: credRow.base_url || 'https://ai.sumopod.com',
+                databaseClient: client
+              });
+              queryVector = queryEmbedding?.vector || null;
+            }
+          }
+        } catch {
+          queryVector = null;
+        }
+      }
+
+      const startRetrieval = performance.now();
+      const retrievalResult = await retrieveRagContext({
+        userId: req.auth.userId,
+        sessionId: session_id,
+        query: user_message,
+        queryVector,
+        mode: queryVector ? 'hybrid' : 'fts',
+        topK: rag_top_k !== undefined ? Number(rag_top_k) : (settings.rag_top_k || 4),
+        contextTokenBudget: rag_context_tokens !== undefined ? Number(rag_context_tokens) : (settings.rag_context_tokens || 1000),
+        relevanceThreshold: rag_threshold !== undefined ? Number(rag_threshold) : (effectiveMode === 'fts' ? 0.0 : 0.4)
+      }, client);
+      const retrievalLatency = Math.round(performance.now() - startRetrieval);
+
+      const safeChunks = (retrievalResult.results || []).map((chunk, idx) => ({
+        id: chunk.chunk_id || chunk.id || idx + 1,
+        source_id: chunk.source_id,
+        source_type: chunk.source_type,
+        source_title: chunk.flow_name || (chunk.source_type === 'manual' ? 'Basis Pengetahuan Manual' : `Sumber #${chunk.source_id}`),
+        content: chunk.chunk_text || chunk.text || '',
+        score: Number(chunk.score?.toFixed?.(4) ?? chunk.score ?? 0),
+        is_canonical: Boolean(chunk.is_canonical),
+        token_count: Number(chunk.token_count || 0)
+      }));
+
+      ragInfo = {
+        used_rag: true,
+        mode: queryVector ? 'hybrid' : 'fts',
+        chunks_found: retrievalResult.selected_count || 0,
+        chunks: safeChunks,
+        latency_ms: retrievalLatency
+      };
+
+      const systemSections = [];
+      if (system_prompt && String(system_prompt).trim()) {
+        systemSections.push(String(system_prompt).trim());
+      }
+
+      if (safeChunks.length > 0) {
+        const formattedKnowledge = safeChunks.map((c, i) => `[Dokumen ${i + 1}: ${c.source_title}]\n${c.content}`).join('\n\n');
+        systemSections.push(
+          `Gunakan informasi resmi berikut sebagai referensi utama untuk menjawab pertanyaan pengguna:\n\n${formattedKnowledge}\n\nAturan:\n1. Jawab pertanyaan pengguna dengan ramah, jelas, dan akurat berdasarkan dokumen di atas.\n2. Jika informasi tidak ada di dokumen, sampaikan dengan sopan bahwa Anda belum memiliki informasi tersebut.\n3. Jangan sebutkan kata teknis seperti "chunk", "dokumen 1", atau "database".`
+        );
+      } else {
+        systemSections.push(
+          `Informasi: Tidak ditemukan dokumen yang relevan untuk pertanyaan ini di basis data.\nAturan: Jawablah dengan sopan bahwa Anda belum memiliki informasi detail mengenai hal tersebut, dan tawarkan mereka untuk menghubungi customer service atau menanyakan hal lain.`
+        );
+      }
+
+      messages = buildChatMessages({
+        systemPrompt: systemSections.join('\n\n'),
+        userMessage: user_message
+      });
+    } catch (ragErr) {
+      logError('testAISettingsRAG', ragErr, { session_id, user_message });
+      ragInfo = { used_rag: false, error: ragErr.message };
+    }
   }
 
   try {
@@ -650,7 +752,9 @@ export const testAISettings = async (req, res) => {
       fetch: createSafeOutboundFetch()
     });
 
-    const temperature = resolveChatTemperature(isSandbox ? 'grounded' : 'existing');
+    const temperature = requestedTemperature !== undefined && !Number.isNaN(Number(requestedTemperature))
+      ? Math.max(0, Math.min(2, Number(requestedTemperature)))
+      : resolveChatTemperature(isSandbox ? 'grounded' : 'existing');
 
     const completion = await executeInstrumentedChatCompletion({
       openai,
@@ -684,7 +788,7 @@ export const testAISettings = async (req, res) => {
     if (reply === undefined || reply === null || reply.trim() === '') {
       return sendError(res, 400, 'EMPTY_MODEL_RESPONSE', `Koneksi API berhasil, tetapi model '${resolvedModelName || 'gpt-4o-mini'}' mengembalikan respon kosong. Silakan ganti model ke 'gpt-4o-mini' atau 'MiniMax-M2.7-highspeed' di pengaturan.`);
     }
-    return sendSuccess(res, { reply, test_kind: resolvedRequestKind }, 200, { message: 'Koneksi API SumoPod berhasil terjalin!' });
+    return sendSuccess(res, { reply, test_kind: resolvedRequestKind, rag_info: ragInfo }, 200, { message: 'Koneksi API SumoPod berhasil terjalin!' });
   } catch (error) {
     if (usageContext && !usageRecorded) {
       await recordChatbotAIUsageSafely({
@@ -754,6 +858,49 @@ export const reindexAISession = async (req, res) => {
   }
 };
 
+export const generateAISessionEmbeddings = async (req, res) => {
+  const { sessionId } = req.params;
+  const { force } = req.body || {};
+  const userId = req.auth.userId;
+  const isAdmin = req.auth?.role === 'admin';
+
+  try {
+    const client = req.dbClient || { get: dbGet, all: dbAll, run: dbRun };
+    const sess = await client.get('SELECT user_id FROM sessions WHERE session_id = ?', [sessionId]);
+    if (!sess) {
+      return sendError(res, 404, 'SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+    }
+    if (!isAdmin && Number(sess.user_id) !== userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
+    }
+    const targetUserId = isAdmin ? Number(sess.user_id) : userId;
+
+    const result = await generateSessionEmbeddings({
+      sessionId,
+      userId: targetUserId,
+      force: Boolean(force)
+    }, client);
+
+    return sendSuccess(res, result, 200, {
+      message: result.processed_chunks > 0
+        ? `Berhasil memproses ${result.processed_chunks} vektor chunk embedding.`
+        : 'Seluruh vektor chunk sudah up-to-date.'
+    });
+  } catch (error) {
+    if (error?.code === 'SESSION_NOT_FOUND') {
+      return sendError(res, 404, 'SESSION_NOT_FOUND', error.message);
+    }
+    if (error?.code === 'FORBIDDEN_ACCESS') {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', error.message);
+    }
+    if (error?.code === 'EMBEDDING_CREDENTIAL_REQUIRED' || error?.code === 'EMBEDDING_CREDENTIAL_NOT_FOUND') {
+      return sendError(res, 400, error.code, error.message);
+    }
+    logError('generateAISessionEmbeddings', error, { sessionId, body: req.body });
+    return sendError(res, 500, 'GENERATE_EMBEDDINGS_ERROR', error.message || 'Gagal menghasilkan vektor embedding.');
+  }
+};
+
 export const getAISessionRagStatus = async (req, res) => {
   const { sessionId } = req.params;
   const userId = req.auth.userId;
@@ -818,13 +965,14 @@ export const testAISessionRetrieval = async (req, res) => {
           if (credRow?.api_key) {
             const plainKey = revealSecret(credRow.api_key);
             const queryEmbedding = await generateQueryEmbedding({
-              text: query,
-              credentials: {
-                apiKey: plainKey,
-                baseUrl: credRow.base_url || 'https://ai.sumopod.com/v1',
-                model: tenantProfile.model
-              },
-              tenantProfile
+              query,
+              userId: targetUserId,
+              credentialId: tenantProfile.credential_id || credId,
+              model: tenantProfile.model,
+              dimensions: tenantProfile.dimensions,
+              apiKey: plainKey,
+              baseUrl: credRow.base_url || 'https://ai.sumopod.com',
+              databaseClient: client
             });
             queryVector = queryEmbedding?.vector || null;
           }

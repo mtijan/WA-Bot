@@ -96,7 +96,7 @@ async function seedTenants(db) {
 
 test('migration registry reserves 025 for the tenant-scoped RAG index', () => {
   const migrations = listMigrations();
-  assert.equal(migrations.length, 26);
+  assert.equal(migrations.length, 28);
   assert.equal(migrations[24].id, '025_chatbot_ai_rag_index');
 });
 
@@ -110,7 +110,7 @@ test('migration 025 builds an additive tenant-scoped RAG schema with synchronize
     targetId: '025_chatbot_ai_rag_index'
   });
   assert.equal(result.applied, 1);
-  assert.equal(result.total, 26);
+  assert.equal(result.total, 28);
 
   const settings = await get(
     db,

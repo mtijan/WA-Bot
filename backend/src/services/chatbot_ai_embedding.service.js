@@ -24,7 +24,6 @@ export function isRetryableEmbeddingError(error) {
   if (status === 408 || status === 409 || status === 429 || status >= 500) return true;
   return RETRYABLE_NETWORK_CODES.has(String(error?.code || '').toUpperCase());
 }
-
 export const EMBEDDING_DEFAULTS = Object.freeze({
   MODEL: 'text-embedding-3-small',
   DIMENSIONS: 1536,
@@ -81,7 +80,6 @@ export function calculateEmbeddingCost({ model = EMBEDDING_DEFAULTS.MODEL, total
     ratePerMillionUsd: pricing.usdPerMillionTokens
   };
 }
-
 export function clampEmbeddingOptions({
   timeoutMs = EMBEDDING_DEFAULTS.TIMEOUT_MS,
   maxBatchSize = EMBEDDING_DEFAULTS.MAX_BATCH_SIZE,
@@ -1178,5 +1176,171 @@ export async function getTenantEmbeddingUsageSummary({
     totalCostMicrousd,
     totalCostUsd,
     byOperation
+  };
+}
+
+// ============================================================================
+// Direct Manual Session Embeddings Generation
+// ============================================================================
+
+export async function generateSessionEmbeddings({
+  sessionId,
+  userId,
+  force = false
+}, databaseClient = null) {
+  requirePositiveInteger(userId, 'userId');
+  const safeSessionId = requireNonEmptyString(sessionId, 'sessionId');
+  const client = await resolveDatabaseClient(databaseClient);
+
+  // 1. Verify session ownership
+  const sess = await client.get('SELECT session_id, user_id FROM sessions WHERE session_id = ?', [safeSessionId]);
+  if (!sess) {
+    throw createEmbeddingError('SESSION_NOT_FOUND', 'Sesi tidak ditemukan.');
+  }
+  if (Number(sess.user_id) !== userId) {
+    throw createEmbeddingError('FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke sesi ini.');
+  }
+
+  // 2. Resolve embedding profile
+  let profile = await getTenantEmbeddingProfile(userId, client);
+  if (!profile || !profile.credential_id) {
+    const activeCred = await client.get(
+      'SELECT id, base_url, api_key FROM chatbot_ai_credentials WHERE user_id = ? AND is_active = 1 ORDER BY id DESC LIMIT 1',
+      [userId]
+    );
+    if (!activeCred) {
+      throw createEmbeddingError(
+        'EMBEDDING_CREDENTIAL_REQUIRED',
+        'Belum ada kredensial AI aktif untuk menghasilkan embedding. Harap tambahkan atau aktifkan kredensial terlebih dahulu.'
+      );
+    }
+    profile = await upsertTenantEmbeddingProfile({
+      userId,
+      credentialId: activeCred.id,
+      model: EMBEDDING_DEFAULTS.MODEL,
+      dimensions: EMBEDDING_DEFAULTS.DIMENSIONS,
+      capabilityStatus: EMBEDDING_CAPABILITY_STATUSES.SUPPORTED
+    }, client);
+  }
+
+  const cred = await client.get(
+    'SELECT id, base_url, api_key FROM chatbot_ai_credentials WHERE id = ? AND user_id = ?',
+    [profile.credential_id, userId]
+  );
+  if (!cred || !cred.api_key) {
+    throw createEmbeddingError(
+      'EMBEDDING_CREDENTIAL_NOT_FOUND',
+      'Kredensial API untuk profil embedding tidak ditemukan atau belum memiliki API Key.'
+    );
+  }
+  const apiKey = revealSecret(cred.api_key);
+  const baseUrl = cred.base_url || 'https://ai.sumopod.com/v1';
+
+  // 3. Find active sources for this session
+  const sources = await client.all(
+    `SELECT rs.id, rs.source_type, rs.current_revision, rs.indexed_revision
+     FROM rag_session_sources rss
+     JOIN rag_sources rs ON rs.id = rss.source_id AND rs.user_id = rss.user_id
+     WHERE rss.session_id = ? AND rss.user_id = ? AND rs.is_active = 1`,
+    [safeSessionId, userId]
+  );
+
+  if (!sources || sources.length === 0) {
+    return {
+      session_id: safeSessionId,
+      processed_sources: 0,
+      processed_chunks: 0,
+      total_tokens: 0,
+      cost_usd: 0,
+      latency_ms: 0,
+      profile: {
+        id: profile.id,
+        model: profile.model,
+        dimensions: profile.dimensions
+      },
+      message: 'Tidak ada sumber dokumen aktif yang terhubung ke sesi ini.'
+    };
+  }
+
+  let totalProcessedChunks = 0;
+  let totalTokens = 0;
+  let totalCostUsd = 0;
+  const startTime = Date.now();
+
+  for (const source of sources) {
+    const query = force
+      ? `SELECT id, source_id, chunk_index, chunk_text, token_count, source_revision
+         FROM rag_chunks
+         WHERE source_id = ? AND user_id = ? AND source_revision = ?
+         ORDER BY chunk_index ASC`
+      : `SELECT id, source_id, chunk_index, chunk_text, token_count, source_revision
+         FROM rag_chunks
+         WHERE source_id = ? AND user_id = ? AND source_revision = ?
+           AND (embedding IS NULL OR embedding_config_hash != ?)
+         ORDER BY chunk_index ASC`;
+
+    const params = force
+      ? [source.id, userId, source.current_revision]
+      : [source.id, userId, source.current_revision, profile.config_hash || ''];
+
+    const chunks = await client.all(query, params);
+    if (!chunks || chunks.length === 0) {
+      await client.run(
+        `UPDATE rag_sources
+         SET embedding_status = 'READY', embedding_profile_id = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ? AND current_revision = ?`,
+        [profile.id, source.id, userId, source.current_revision]
+      );
+      continue;
+    }
+
+    const batchRes = await generateBatchChunkEmbeddings({
+      chunks,
+      userId,
+      baseUrl,
+      apiKey,
+      model: profile.model,
+      dimensions: profile.dimensions,
+      databaseClient: client
+    });
+
+    await publishRagChunkEmbeddings({
+      sourceId: source.id,
+      userId,
+      sourceRevision: source.current_revision,
+      chunkEmbeddings: batchRes.chunkEmbeddings,
+      profile,
+      databaseClient: client
+    });
+
+    totalProcessedChunks += batchRes.chunkEmbeddings.length;
+    totalTokens += batchRes.totalTokens;
+    totalCostUsd += batchRes.costUsd;
+  }
+
+  await client.run(
+    `UPDATE chatbot_ai_settings
+     SET embedding_profile_id = ?, config_revision = COALESCE(config_revision, 0) + 1
+     WHERE session_id = ?`,
+    [profile.id, safeSessionId]
+  );
+
+  await client.run(
+    `DELETE FROM rag_response_cache WHERE session_id = ?`,
+    [safeSessionId]
+  );
+
+  return {
+    session_id: safeSessionId,
+    processed_sources: sources.length,
+    processed_chunks: totalProcessedChunks,
+    total_tokens: totalTokens,
+    cost_usd: Number(totalCostUsd.toFixed(8)),
+    latency_ms: Date.now() - startTime,
+    profile: {
+      id: profile.id,
+      model: profile.model,
+      dimensions: profile.dimensions
+    }
   };
 }

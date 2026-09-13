@@ -178,7 +178,6 @@ export function selectRagContext(results = [], {
 
   const effectiveContextBudget = Math.min(
     safeContextBudget,
-    RAG_CONTEXT_DEFAULTS.CONTEXT_TOKEN_BUDGET,
     safeHardInput - safeBaseInput
   );
   const selected = [];

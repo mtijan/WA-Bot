@@ -165,7 +165,7 @@ function resolveHardInputBudget(aiSettings) {
   if (!Number.isInteger(configured) || configured <= 0) {
     return RAG_CONTEXT_DEFAULTS.HARD_TOTAL_INPUT_TOKENS;
   }
-  return Math.min(configured, RAG_CONTEXT_DEFAULTS.HARD_TOTAL_INPUT_TOKENS);
+  return Math.min(Math.max(configured, 256), 32768);
 }
 
 function buildFallbackResult(reason, ragMetadata = {}) {
@@ -382,7 +382,11 @@ export async function executeRagRetrieval({
     query: cleanText,
     queryVector,
     mode: queryVector ? 'hybrid' : 'fts',
-    relevanceThreshold: RAG_CONTEXT_DEFAULTS.RELEVANCE_THRESHOLD,
+    relevanceThreshold: queryVector
+      ? (aiSettings?.rag_threshold !== undefined && aiSettings?.rag_threshold !== null
+          ? Number(aiSettings.rag_threshold)
+          : 0.4)
+      : 0.0,
     topK: aiSettings.rag_top_k || RAG_CONTEXT_DEFAULTS.TOP_K,
     contextTokenBudget:
       aiSettings.rag_context_tokens || RAG_CONTEXT_DEFAULTS.CONTEXT_TOKEN_BUDGET,

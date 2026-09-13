@@ -47,7 +47,7 @@ describe('Chatbot AI max_output_tokens settings', () => {
     const agent = await getTestAgent();
     await insertSession('ai-output-invalid');
 
-    for (const value of [null, 63, 2049, 250.5, 'invalid']) {
+    for (const value of [null, 63, 10001, 250.5, 'invalid']) {
       const response = await agent
         .post('/api/chatbot-ai/settings')
         .send({ session_id: 'ai-output-invalid', max_output_tokens: value });

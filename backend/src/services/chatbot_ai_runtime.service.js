@@ -1,6 +1,6 @@
 export const CHATBOT_AI_OUTPUT_LIMITS = Object.freeze({
   min: 64,
-  max: 2048,
+  max: 10000,
   default: 2048,
   connectionTest: 32
 });

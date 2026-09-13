@@ -129,6 +129,13 @@ describe('Chatbot AI RAG API Endpoints (RAG-0801 - RAG-0805)', () => {
       });
       assert.equal(res.status, 400);
 
+      // rag_context_tokens too high (> 10000)
+      res = await agent.post('/api/chatbot-ai/settings').send({
+        session_id: sessionId,
+        rag_context_tokens: 10001
+      });
+      assert.equal(res.status, 400);
+
       // temperature out of range (> 2.0)
       res = await agent.post('/api/chatbot-ai/settings').send({
         session_id: sessionId,
@@ -140,6 +147,20 @@ describe('Chatbot AI RAG API Endpoints (RAG-0801 - RAG-0805)', () => {
       res = await agent.post('/api/chatbot-ai/settings').send({
         session_id: sessionId,
         debounce_ms: 70000
+      });
+      assert.equal(res.status, 400);
+
+      // rag_input_budget_tokens excessive (> 32768)
+      res = await agent.post('/api/chatbot-ai/settings').send({
+        session_id: sessionId,
+        rag_input_budget_tokens: 35000
+      });
+      assert.equal(res.status, 400);
+
+      // rag_input_budget_tokens too low (< 256)
+      res = await agent.post('/api/chatbot-ai/settings').send({
+        session_id: sessionId,
+        rag_input_budget_tokens: 100
       });
       assert.equal(res.status, 400);
     });
@@ -356,7 +377,7 @@ describe('Chatbot AI RAG API Endpoints (RAG-0801 - RAG-0805)', () => {
   describe('RAG-0805: Max Output Tokens Control', () => {
     const tokensSessionId = 'session-tokens-control-0805';
 
-    it('accepts and persists valid max_output_tokens in range 64 to 2048', async () => {
+    it('accepts and persists valid max_output_tokens in range 64 to 10000', async () => {
       await seedTestSession(tokensSessionId, 1);
 
       const res = await agent.post('/api/chatbot-ai/settings').send({
@@ -379,10 +400,10 @@ describe('Chatbot AI RAG API Endpoints (RAG-0801 - RAG-0805)', () => {
       assert.equal(res.body.error_code, 'VALIDATION_ERROR');
     });
 
-    it('rejects max_output_tokens above 2048 with 400', async () => {
+    it('rejects max_output_tokens above 10000 with 400', async () => {
       const res = await agent.post('/api/chatbot-ai/settings').send({
         session_id: tokensSessionId,
-        max_output_tokens: 2049
+        max_output_tokens: 10001
       });
       assert.equal(res.status, 400);
       assert.equal(res.body.error_code, 'VALIDATION_ERROR');
@@ -440,6 +461,24 @@ describe('Chatbot AI RAG API Endpoints (RAG-0801 - RAG-0805)', () => {
         .send({ query: 'uji akses lintas tenant', mode: 'fts' });
 
       assert.ok([403, 404].includes(res.status));
+    });
+
+    it('rejects POST /rag/:sessionId/generate-embeddings when called by a different tenant', async () => {
+      const res = await authAgent
+        .post(`/api/chatbot-ai/rag/${foreignSession}/generate-embeddings`)
+        .set('Cookie', user2Cookie)
+        .send({ force: true });
+
+      assert.ok([403, 404].includes(res.status));
+    });
+
+    it('rejects POST /rag/:sessionId/generate-embeddings on non-existent session with 404', async () => {
+      const res = await authAgent
+        .post('/api/chatbot-ai/rag/non-existent-session-xyz/generate-embeddings')
+        .set('Cookie', user1Cookie)
+        .send({ force: true });
+
+      assert.equal(res.status, 404);
     });
   });
 });
