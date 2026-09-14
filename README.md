@@ -214,7 +214,9 @@ npm run logs:prune:apply
 
 ## Indeks Dokumentasi Lengkap
 
-Chatbot AI Token Optimization / Hybrid RAG berstatus **IN_PROGRESS — LOCAL**: Fase 3–8 selesai dan Fase 9 berjalan 5/15. Sebanyak 108/131 item DONE, RAG-0011 parsial, dan 22 TODO. RAG-0901–RAG-0905 mengunci dataset 50 pola chat dengan gold source/klaim wajib serta mengukur retrieval aktual pada SQLite fixture deterministik: Top-1 100%, Top-3 complete-source 100%, negative rejection 100%, dan tanpa source lintas tenant/sesi. Full backend 374/374 across 74 suites serta frontend build/API guard lulus pada 2026-09-13. Poller/budget moneter default nonaktif; hasil ini bukan jawaban model generatif atau billing. Runtime database belum dimigrasi dan deploy/UAT belum dilakukan.
+Chatbot AI Token Optimization / Hybrid RAG berstatus **IN_PROGRESS — LOCAL + PAID PROVIDER EVALUATION**: Fase 3–8 selesai dan Fase 9 berjalan 10/15. Sebanyak 113/131 item DONE, RAG-0011 parsial, dan 17 TODO. RAG-0901–RAG-0905 membuktikan retrieval 50 kasus; RAG-0906–RAG-0910 menambah dua run jawaban aktual, token/biaya/latency, serta audit log sensitif. Run final RAG mempertahankan required claims 35/35, tetapi grounded konservatif 32/35 masih di bawah target 95%; input answerable turun 36,75%, all-in fixture turun 55,30%, retrieval p95 2,26 ms, dan audit sensitif lulus. Full backend 385/385 across 74 suites serta frontend build/API guard lulus pada 2026-09-14. Poller/budget moneter default nonaktif; real embedding all-in dan billing belum direkonsiliasi. Runtime database belum dimigrasi dan deploy/UAT belum dilakukan.
+
+Baseline paid 2026-09-10 tetap dipertahankan sebagai bukti development source-oracle/same-model judge, bukan retrieval atau staging. [Bukti Fase 9 batch 1](docs/RAG_FASE_9_BATCH_1_EVIDENCE_2026-09-13.md) mencatat retrieval dan [bukti batch 2](docs/RAG_FASE_9_BATCH_2_EVIDENCE_2026-09-14.md) mencatat seluruh 50 transcript A/B tersanitasi. Quality target, billing reconciliation, staging, WhatsApp, dan UAT tetap belum lulus.
 
 - [Rencana optimasi dan baseline biaya](docs/CHATBOT_AI_TOKEN_OPTIMIZATION.md)
 - [Desain detail FR/RTM, ERD, diagram dan API target](docs/CHATBOT_AI_RAG_DESIGN.md)

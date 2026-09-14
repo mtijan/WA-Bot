@@ -11,6 +11,281 @@ function requireRate(value, field) {
   return parsed;
 }
 
+const GENERATION_PROFILES = Object.freeze(['CURRENT_FULL_KB', 'RAG_HYBRID']);
+
+function normalizeComparableText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLocaleLowerCase('id-ID')
+    .replace(/(\d)\s*%/gu, '$1 persen')
+    .replace(/[*_#`~]/gu, '')
+    .replace(/[\u2010-\u2015]/gu, '-')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+function isRequiredClaimSupported(answer, claim) {
+  const normalizedAnswer = normalizeComparableText(answer);
+  const normalizedClaim = normalizeComparableText(claim);
+  if (normalizedAnswer.includes(normalizedClaim)) return true;
+  const claimTokens = normalizedClaim.match(
+    /https?:\/\/\S+|(?:\+?\d[\d.,:/-]*\d)|[\p{L}\p{M}\p{N}]+/gu
+  ) || [];
+  return claimTokens.length > 0 && claimTokens.every((token) => normalizedAnswer.includes(token));
+}
+
+function percentile(values, target) {
+  const usable = values.filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((left, right) => left - right);
+  if (usable.length === 0) return null;
+  return usable[Math.max(0, Math.ceil((target / 100) * usable.length) - 1)];
+}
+
+function average(values) {
+  const usable = values.filter((value) => Number.isFinite(value) && value >= 0);
+  if (usable.length === 0) return null;
+  return usable.reduce((sum, value) => sum + value, 0) / usable.length;
+}
+
+function normalizeTokenCount(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function normalizeLatency(value) {
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function normalizeJudgement(value) {
+  if (!value || typeof value !== 'object') return null;
+  const groundedness = Number(value.groundedness);
+  const unsupportedClaim = value.unsupported_claim;
+  if (!Number.isInteger(groundedness) || groundedness < 1 || groundedness > 5
+      || typeof unsupportedClaim !== 'boolean') return null;
+  return {
+    groundedness,
+    unsupported_claim: unsupportedClaim,
+    pass: groundedness >= 4 && unsupportedClaim === false
+  };
+}
+
+function calculateChatCost(record, rates) {
+  if (record.input_tokens === null || record.output_tokens === null) return null;
+  const cached = Math.min(record.input_tokens, record.cached_tokens || 0);
+  return (
+    (record.input_tokens - cached) * rates.input_usd_per_million
+    + cached * rates.cached_input_usd_per_million
+    + record.output_tokens * rates.output_usd_per_million
+  ) / 1_000_000;
+}
+
+function summarizeGenerationProfile(records, rates, embeddingCostUsd) {
+  const providerRecords = records.filter((record) => record.provider_called);
+  const knownCostRecords = providerRecords.filter((record) => record.chat_cost_usd !== null);
+  const answerableProviderRecords = providerRecords.filter((record) => record.answerable);
+  const judgedAnswerable = answerableProviderRecords.filter((record) => record.judgement);
+  const usefulOutcomes = records.filter((record) => record.useful_outcome);
+  const chatCostUsd = knownCostRecords.reduce((sum, record) => sum + record.chat_cost_usd, 0);
+  const retryAttempts = providerRecords.reduce(
+    (sum, record) => sum + Math.max(0, record.provider_attempts - 1),
+    0
+  );
+  const safeEmbeddingCostUsd = Number.isFinite(embeddingCostUsd) && embeddingCostUsd >= 0
+    ? embeddingCostUsd : 0;
+  const allInCostUsd = chatCostUsd + safeEmbeddingCostUsd;
+  const latency = (field) => ({
+    p50_ms: percentile(records.map((record) => record[field]), 50),
+    p95_ms: percentile(records.map((record) => record[field]), 95)
+  });
+  return Object.freeze({
+    cases: records.length,
+    provider_calls: providerRecords.length,
+    provider_attempts: providerRecords.reduce((sum, record) => sum + record.provider_attempts, 0),
+    retry_attempts: retryAttempts,
+    successful_provider_calls: providerRecords.filter((record) => record.status === 'SUCCEEDED').length,
+    useful_outcomes: usefulOutcomes.length,
+    useful_coverage_rate: records.length === 0 ? 0 : usefulOutcomes.length / records.length,
+    required_claim_coverage_rate: answerableProviderRecords.length === 0 ? 0
+      : answerableProviderRecords.filter((record) => record.required_claims_pass).length
+        / answerableProviderRecords.length,
+    judge_coverage_rate: answerableProviderRecords.length === 0 ? 0
+      : judgedAnswerable.length / answerableProviderRecords.length,
+    groundedness_rate: answerableProviderRecords.length === 0 ? 0
+      : judgedAnswerable.filter((record) => record.judgement.pass).length
+        / answerableProviderRecords.length,
+    groundedness_rate_valid_judgements: judgedAnswerable.length === 0 ? 0
+      : judgedAnswerable.filter((record) => record.judgement.pass).length / judgedAnswerable.length,
+    hallucination_rate: judgedAnswerable.length === 0 ? 0
+      : judgedAnswerable.filter((record) => record.judgement.unsupported_claim).length
+        / judgedAnswerable.length,
+    valid_judgements: judgedAnswerable.length,
+    input_tokens: Object.freeze({
+      total: providerRecords.reduce((sum, record) => sum + (record.input_tokens || 0), 0),
+      average_per_provider_call: average(providerRecords.map((record) => record.input_tokens)),
+      average_answerable_call: average(answerableProviderRecords.map((record) => record.input_tokens)),
+      p95_per_provider_call: percentile(providerRecords.map((record) => record.input_tokens), 95)
+    }),
+    output_tokens: Object.freeze({
+      total: providerRecords.reduce((sum, record) => sum + (record.output_tokens || 0), 0),
+      average_per_provider_call: average(providerRecords.map((record) => record.output_tokens)),
+      p95_per_provider_call: percentile(providerRecords.map((record) => record.output_tokens), 95)
+    }),
+    latency_ms: Object.freeze({
+      retrieval: Object.freeze(latency('retrieval_latency_ms')),
+      provider: Object.freeze({
+        p50_ms: percentile(providerRecords.map((record) => record.provider_latency_ms), 50),
+        p95_ms: percentile(providerRecords.map((record) => record.provider_latency_ms), 95)
+      }),
+      total: Object.freeze(latency('total_latency_ms'))
+    }),
+    cost_usd: Object.freeze({
+      chat: chatCostUsd,
+      embedding: safeEmbeddingCostUsd,
+      retry_incremental: retryAttempts === 0 ? 0 : null,
+      all_in: allInCostUsd,
+      all_in_per_useful_outcome: usefulOutcomes.length === 0 ? null
+        : allInCostUsd / usefulOutcomes.length,
+      usage_known_calls: knownCostRecords.length,
+      rate_snapshot: Object.freeze({ ...rates })
+    }),
+    failed_case_ids: Object.freeze(records.filter((record) => !record.useful_outcome)
+      .map((record) => record.id))
+  });
+}
+
+export function sanitizeRagEvaluationTranscript(value) {
+  return String(value || '')
+    .replace(/\b\d{5,}@s\.whatsapp\.net\b/giu, '[JID]')
+    .replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/giu, '[EMAIL]')
+    .replace(/([?&](?:nim|student_id|user_id|phone|wa|whatsapp)=)[^&#\s]+/giu, '$1[REDACTED]')
+    .replace(/(?:\+?62|0)\s*8\d(?:[\s().-]*\d){6,12}/gu, '[PHONE]')
+    .replace(/[A-Za-z]:\\[^\r\n]+/g, '[LOCAL_PATH]')
+    .replace(/\b(?:sk|key|token)-[A-Za-z0-9_-]{12,}\b/giu, '[SECRET]')
+    .trim();
+}
+
+export function auditRagEvaluationEvidence(value, sensitiveValues = []) {
+  const serialized = JSON.stringify(value);
+  const detectedLabels = [];
+  for (const item of sensitiveValues) {
+    const label = requireEvaluationString(item?.label, 'sensitiveValues.label');
+    const secretValue = requireEvaluationString(item?.value, `sensitiveValues.${label}.value`);
+    if (serialized.includes(secretValue)) detectedLabels.push(label);
+  }
+  return Object.freeze({
+    passed: detectedLabels.length === 0,
+    detected_labels: Object.freeze(detectedLabels)
+  });
+}
+
+export function evaluateRagGenerationOutcomes(outcomes, {
+  rates = {},
+  embeddingCostUsd = {}
+} = {}) {
+  if (!Array.isArray(outcomes) || outcomes.length === 0) {
+    throw createRagRetrievalError(
+      'RAG_RETRIEVAL_INVALID_EVALUATION_INPUT',
+      'Hasil evaluasi generatif wajib berupa array non-kosong.'
+    );
+  }
+  const safeRates = Object.freeze({
+    input_usd_per_million: Number(rates.input_usd_per_million) || 0,
+    cached_input_usd_per_million: Number(rates.cached_input_usd_per_million) || 0,
+    output_usd_per_million: Number(rates.output_usd_per_million) || 0
+  });
+  if (Object.values(safeRates).some((value) => value < 0)) {
+    throw createRagRetrievalError(
+      'RAG_RETRIEVAL_INVALID_EVALUATION_INPUT',
+      'Tarif evaluasi tidak boleh negatif.'
+    );
+  }
+
+  const seen = new Set();
+  const normalized = outcomes.map((outcome, index) => {
+    const id = requireEvaluationString(outcome?.id, `outcomes[${index}].id`);
+    const profile = requireEvaluationString(outcome?.profile, `${id}.profile`);
+    if (!GENERATION_PROFILES.includes(profile)) {
+      throw createRagRetrievalError(
+        'RAG_RETRIEVAL_INVALID_EVALUATION_INPUT',
+        `${id}.profile tidak didukung.`
+      );
+    }
+    const uniqueKey = `${id}:${profile}`;
+    if (seen.has(uniqueKey)) {
+      throw createRagRetrievalError(
+        'RAG_RETRIEVAL_INVALID_EVALUATION_INPUT',
+        `Hasil generatif '${uniqueKey}' duplikat.`
+      );
+    }
+    seen.add(uniqueKey);
+    const answerable = outcome?.answerable === true;
+    const requiredClaims = normalizeUniqueStrings(outcome?.required_claims || [], `${uniqueKey}.required_claims`);
+    const answer = String(outcome?.answer || '').trim();
+    const requiredClaimsPass = answerable && requiredClaims.length > 0
+      ? requiredClaims.every((claim) => isRequiredClaimSupported(answer, claim))
+      : !answerable;
+    const providerCalled = outcome?.provider_called === true;
+    const normalizedRecord = {
+      id,
+      profile,
+      category: requireEvaluationString(outcome?.category, `${uniqueKey}.category`),
+      answerable,
+      status: requireEvaluationString(outcome?.status, `${uniqueKey}.status`),
+      provider_called: providerCalled,
+      provider_attempts: providerCalled
+        ? Math.max(1, Number.isInteger(outcome?.provider_attempts) ? outcome.provider_attempts : 1)
+        : 0,
+      required_claims_pass: requiredClaimsPass,
+      behavior_pass: answerable ? true : outcome?.behavior_pass === true,
+      judgement: normalizeJudgement(outcome?.judgement),
+      input_tokens: normalizeTokenCount(outcome?.input_tokens),
+      output_tokens: normalizeTokenCount(outcome?.output_tokens),
+      cached_tokens: normalizeTokenCount(outcome?.cached_tokens),
+      retrieval_latency_ms: normalizeLatency(outcome?.retrieval_latency_ms),
+      provider_latency_ms: normalizeLatency(outcome?.provider_latency_ms),
+      total_latency_ms: normalizeLatency(outcome?.total_latency_ms)
+    };
+    normalizedRecord.chat_cost_usd = calculateChatCost(normalizedRecord, safeRates);
+    normalizedRecord.useful_outcome = answerable
+      ? normalizedRecord.status === 'SUCCEEDED'
+        && normalizedRecord.required_claims_pass
+        && normalizedRecord.judgement?.pass === true
+      : normalizedRecord.behavior_pass;
+    return Object.freeze(normalizedRecord);
+  });
+
+  const profiles = Object.fromEntries(GENERATION_PROFILES.map((profile) => [
+    profile,
+    summarizeGenerationProfile(
+      normalized.filter((record) => record.profile === profile),
+      safeRates,
+      Number(embeddingCostUsd?.[profile]) || 0
+    )
+  ]));
+  const before = profiles.CURRENT_FULL_KB;
+  const after = profiles.RAG_HYBRID;
+  const reduction = (beforeValue, afterValue) => beforeValue > 0
+    ? 1 - (afterValue / beforeValue) : null;
+
+  return Object.freeze({
+    cases: new Set(normalized.map((record) => record.id)).size,
+    records: normalized.length,
+    profiles: Object.freeze(profiles),
+    comparison: Object.freeze({
+      answerable_input_token_reduction_rate: reduction(
+        before.input_tokens.average_answerable_call,
+        after.input_tokens.average_answerable_call
+      ),
+      total_input_token_reduction_rate: reduction(
+        before.input_tokens.total,
+        after.input_tokens.total
+      ),
+      all_in_cost_reduction_rate: reduction(before.cost_usd.all_in, after.cost_usd.all_in),
+      groundedness_delta: after.groundedness_rate - before.groundedness_rate,
+      useful_coverage_delta: after.useful_coverage_rate - before.useful_coverage_rate
+    })
+  });
+}
+
 const EVALUATION_CATEGORIES = Object.freeze([
   'exact',
   'synonym',
