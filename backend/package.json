@@ -24,6 +24,7 @@
     "logs:prune:apply": "node scripts/prune_delivery_logs.js --apply",
     "test": "node --test test/**/*.test.js",
     "test:smoke": "node scripts/deploy_smoke_test.js",
+    "rag:index:once": "node scripts/process_rag_indexing.js",
     "user:create": "node scripts/seed_admin_user.js"
   },
   "dependencies": {
