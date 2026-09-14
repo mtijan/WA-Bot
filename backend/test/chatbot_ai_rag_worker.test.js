@@ -7,6 +7,7 @@ import {
   listDueRagIndexJobs,
   RagIndexPollingWorker
 } from '../src/services/chatbot_ai_rag_worker.service.js';
+import { processRagIndexJobs } from '../src/services/chatbot_ai_rag_processor.service.js';
 
 const silentLogger = {
   debug() {},
@@ -45,6 +46,31 @@ test('RAG polling is gated to all/worker roles and remains disabled by default',
   assert.equal(isRagIndexPollingRole('api', true), false);
   assert.equal(isRagIndexPollingRole('sessions', true), false);
   assert.equal(isRagIndexPollingRole('worker', false), false);
+});
+
+test('RAG polling uses the real index processor by default', () => {
+  const worker = new RagIndexPollingWorker();
+  assert.equal(worker.handleJobs, processRagIndexJobs);
+});
+
+test('RAG polling recovers expired leases before listing due jobs', async () => {
+  const events = [];
+  const recovery = { recovered_count: 1 };
+  const worker = new RagIndexPollingWorker({
+    recoverLeases: async () => {
+      events.push('recover');
+      return recovery;
+    },
+    pollJobs: async () => {
+      events.push('poll');
+      return [];
+    },
+    workerLogger: silentLogger
+  });
+
+  const result = await worker.pollOnce();
+  assert.deepEqual(events, ['recover', 'poll']);
+  assert.equal(result.recovery, recovery);
 });
 
 test('RAG worker lists only due current active jobs with a bounded batch', async () => {

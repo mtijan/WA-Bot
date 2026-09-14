@@ -186,7 +186,8 @@ let runtimeDatabaseClientPromise;
 
 async function getRuntimeDatabaseClient() {
   if (!runtimeDatabaseClientPromise) {
-    runtimeDatabaseClientPromise = import('../database.js').then(({ dbGet, dbRun }) => ({
+    runtimeDatabaseClientPromise = import('../database.js').then(({ dbAll, dbGet, dbRun }) => ({
+      all: dbAll,
       get: dbGet,
       run: dbRun
     }));

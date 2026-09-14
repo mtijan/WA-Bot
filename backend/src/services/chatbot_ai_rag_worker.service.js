@@ -1,5 +1,7 @@
 import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { recoverExpiredRagIndexJobLeases } from './chatbot_ai_rag_job_state.service.js';
+import { processRagIndexJobs } from './chatbot_ai_rag_processor.service.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_BATCH_SIZE = 10;
@@ -72,7 +74,14 @@ export async function listDueRagIndexJobs({ limit = DEFAULT_BATCH_SIZE } = {}, d
 export class RagIndexPollingWorker {
   constructor({
     pollJobs = listDueRagIndexJobs,
-    handleJobs = async () => {},
+    handleJobs = processRagIndexJobs,
+    recoverLeases = async () => ({
+      recovered_count: 0,
+      rescheduled_count: 0,
+      failed_count: 0,
+      superseded_count: 0,
+      details: []
+    }),
     databaseClient = null,
     intervalMs = config.runtime.ragIndexWorkerPollMs,
     batchSize = config.runtime.ragIndexWorkerBatchSize,
@@ -82,6 +91,7 @@ export class RagIndexPollingWorker {
   } = {}) {
     this.pollJobs = pollJobs;
     this.handleJobs = handleJobs;
+    this.recoverLeases = recoverLeases;
     this.databaseClient = databaseClient;
     this.intervalMs = requirePositiveInteger(intervalMs, 'intervalMs', DEFAULT_POLL_INTERVAL_MS);
     this.batchSize = requirePositiveInteger(batchSize, 'batchSize', DEFAULT_BATCH_SIZE);
@@ -98,11 +108,13 @@ export class RagIndexPollingWorker {
     }
 
     const cycle = (async () => {
+      const recovery = await this.recoverLeases({}, this.databaseClient);
       const jobs = await this.pollJobs({ limit: this.batchSize }, this.databaseClient);
+      let handlerResult = null;
       if (jobs.length > 0) {
-        await this.handleJobs(jobs);
+        handlerResult = await this.handleJobs(jobs);
       }
-      return { skipped: false, jobs };
+      return { skipped: false, jobs, recovery, handler_result: handlerResult };
     })();
     this.pollInFlight = cycle;
 
@@ -157,6 +169,8 @@ export class RagIndexPollingWorker {
   }
 }
 
-const ragIndexPollingWorker = new RagIndexPollingWorker();
+const ragIndexPollingWorker = new RagIndexPollingWorker({
+  recoverLeases: recoverExpiredRagIndexJobLeases
+});
 
 export default ragIndexPollingWorker;
