@@ -1,23 +1,23 @@
 # WA-Bot Branch Strategy
 
-Updated: 2026-09-12
+Updated: 2026-09-14
 
 ## Branch responsibilities
 
 | Branch | Purpose | Allowed content | Base/key commit |
 |---|---|---|---|
 | `main` | Current shared baseline | Only changes that passed the agreed merge and release gates | `63c93c6` at separation time |
-| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core implementation through RAG-0811 (Fase 8 API, Frontend UI, Status, Sliders & Retrieval Sandbox); use the reviewed branch-tip SHA |
-| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | Experiment tooling plus core implementation through RAG-0811 (Fase 8 complete 11/11: RAG-0801–RAG-0811); use the reviewed branch-tip SHA |
+| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core evaluator/tests through RAG-0910; excludes paid provider runner and development-only npm command |
+| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | RAG-0901–RAG-0910 plus paid phase-9 runner; use the reviewed branch-tip SHA |
 | `hotfix/urgent-fixes` | Urgent production/staging bug fixes | The smallest isolated fix and its focused regression test; no unfinished RAG or experiment files | Directly from `origin/main` at `63c93c6` |
 
 The three branches were published to `origin` on 2026-09-11 after explicit approval. Publishing the refs did not merge or deploy them, and `origin/main` remained at `63c93c6`. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
 
-Current local milestone on 2026-09-12: RAG-0801–RAG-0811 are complete and Fase 8 is 11/11 COMPLETE (100%). Milestones include RAG settings API with tenant boundaries and automatic cache invalidation, session RAG status endpoint (`GET /api/chatbot-ai/rag/:sessionId/status`), session reindex API, cross-tenant test retrieval API (`POST /api/chatbot-ai/rag/:sessionId/test-retrieval`), token output controls (64-2048), frontend RAG strategy mode selection, interactive settings sliders, visual RAG status dashboard, and live Test Retrieval Sandbox in `ChatbotAI.jsx`. Full backend 369/369 passed, frontend production build passed in 766ms with clean URL guard, and route/OpenAPI parity 122/122 passed. These are LOCAL/GIT candidate facts only; runtime migration, real provider/WhatsApp delivery, staging deploy, UAT, and merge to `main` have not occurred.
+Current local milestone on 2026-09-14: RAG-0901–RAG-0910 are complete as retrieval and measurement work, so Fase 9 is 10/15. Two paid generation runs recorded 310 provider requests and sanitized A/B transcripts; the final run preserved required claims 35/35 but conservative groundedness 32/35 remains below target. Full backend 385/385 passed across 74 suites, frontend production build/API guard passed, and route/OpenAPI parity remains 123/123. These are LOCAL/GIT candidate facts only; real embedding all-in cost, billing reconciliation, runtime migration, WhatsApp delivery, staging deploy, UAT, and merge to `main` have not occurred.
 
 ## Separation rules
 
-RAG-0801–RAG-0811 completes all 11 steps of Fase 8 with session RAG status, source/chunk readiness counters, session reindex API, cross-tenant test retrieval API, settings boundaries, output token controls, frontend RAG tab navigation, status dashboard, settings sliders, and live Test Retrieval Sandbox. Real provider and WhatsApp requests remain zero in the local fixture evaluation. No schema migration was added.
+RAG-0906–RAG-0910 add reusable answer-quality/token/cost/latency evaluation and log-sensitivity audit. Provider calls exist only in the development runner; the release candidate receives the evaluator, shared deterministic fixture, and automated tests. No schema migration or runtime activation was added.
 
 ### Release candidate
 
@@ -25,7 +25,8 @@ RAG-0801–RAG-0811 completes all 11 steps of Fase 8 with session RAG status, so
 
 - `backend/scripts/probe_chatbot_ai_provider.js`;
 - `backend/scripts/probe_chatbot_ai_rag_development.js`;
-- npm scripts `test:ai-provider`, `test:rag-development`, or `test:rag-freeform-development`;
+- `backend/scripts/probe_chatbot_ai_rag_phase9.js`;
+- npm scripts `test:ai-provider`, `test:rag-development`, `test:rag-freeform-development`, or `test:rag-phase9`;
 - `apiDevelopment.txt`, `ChatBot-Flow (2).json`, or `PersonaChatBot.txt`;
 - raw experiment transcripts, credentials, runtime databases, sessions, uploads, backups, or exports.
 
