@@ -14,6 +14,7 @@ import {
 import {
   buildChatMessages,
   buildConnectionTestMessages,
+  buildRagConversationalFallbackMessages,
   buildSandboxMessages
 } from '../services/chatbot_ai_prompt.service.js';
 import {
@@ -32,6 +33,11 @@ import {
 import {
   invalidateSessionCache
 } from '../services/chatbot_ai_rag_cache.service.js';
+import {
+  buildRagPreflightDiagnostic,
+  resolveRagAutoConfiguration,
+  resolveRagQueryPolicy
+} from '../services/chatbot_ai_rag_policy.service.js';
 import {
   getTenantEmbeddingProfile,
   upsertTenantEmbeddingProfile,
@@ -390,6 +396,12 @@ export const saveAISettings = async (req, res) => {
     }
 
     const existing = await dbGet('SELECT * FROM chatbot_ai_settings WHERE session_id = ?', [session_id]);
+    const ragAutoConfiguration = resolveRagAutoConfiguration({
+      requestedMode: req.body.rag_mode,
+      previousMode: existing?.rag_mode || 'off',
+      payload: req.body
+    });
+    const settingsBody = { ...req.body, ...ragAutoConfiguration.applied };
     if (existing) {
       const updates = [];
       const values = [];
@@ -420,21 +432,21 @@ export const saveAISettings = async (req, res) => {
       ];
 
       for (const item of keysToUpdate) {
-        if (req.body[item.key] !== undefined || (item.key === 'api_key' && req.body.clear_api_key !== undefined)) {
+        if (settingsBody[item.key] !== undefined || (item.key === 'api_key' && settingsBody.clear_api_key !== undefined)) {
           updates.push(`${item.dbKey} = ?`);
           
           if (item.type === 'secret') {
-            values.push(protectSecret(resolveStoredApiKey(existing.api_key, req.body.api_key, req.body.clear_api_key)));
+            values.push(protectSecret(resolveStoredApiKey(existing.api_key, settingsBody.api_key, settingsBody.clear_api_key)));
           } else if (item.type === 'boolean') {
-            values.push(req.body[item.key] ? 1 : 0);
+            values.push(settingsBody[item.key] ? 1 : 0);
           } else if (item.key === 'max_output_tokens') {
-            values.push(normalizeMaxOutputTokens(req.body[item.key]));
+            values.push(normalizeMaxOutputTokens(settingsBody[item.key]));
           } else if (item.type === 'float') {
-            values.push(req.body[item.key] !== null && req.body[item.key] !== undefined ? parseFloat(req.body[item.key]) : 0.3);
+            values.push(settingsBody[item.key] !== null && settingsBody[item.key] !== undefined ? parseFloat(settingsBody[item.key]) : 0.3);
           } else if (item.type === 'number') {
-            values.push(req.body[item.key] !== null && req.body[item.key] !== undefined ? parseInt(req.body[item.key], 10) : null);
+            values.push(settingsBody[item.key] !== null && settingsBody[item.key] !== undefined ? parseInt(settingsBody[item.key], 10) : null);
           } else {
-            values.push(req.body[item.key] !== undefined ? req.body[item.key] : item.default);
+            values.push(settingsBody[item.key] !== undefined ? settingsBody[item.key] : item.default);
           }
         }
       }
@@ -447,38 +459,38 @@ export const saveAISettings = async (req, res) => {
         );
       }
 
-      if (req.body.knowledge_base !== undefined) {
+      if (settingsBody.knowledge_base !== undefined) {
         await syncManualKnowledgeSourceSafely({
-          userId: req.auth.userId,
+          userId: targetUserId,
           sessionId: session_id,
-          knowledgeBase: req.body.knowledge_base
+          knowledgeBase: settingsBody.knowledge_base
         });
       }
 
-      await invalidateSessionCache(req.auth.userId, session_id).catch(() => {});
+      await invalidateSessionCache(targetUserId, session_id).catch(() => {});
     } else {
-      const is_active = req.body.is_active !== undefined ? (req.body.is_active ? 1 : 0) : 0;
-      const base_url = req.body.base_url || 'https://ai.sumopod.com/v1';
-      const api_key = req.body.api_key ? protectSecret(req.body.api_key) : null;
-      const model_name = req.body.model_name || 'gpt-4o-mini';
-      const system_instruction = req.body.system_instruction || '';
-      const knowledge_base = req.body.knowledge_base || '';
-      const knowledge_source = req.body.knowledge_source || 'manual';
-      const delay_seconds = req.body.delay_seconds !== undefined ? parseInt(req.body.delay_seconds, 10) : 2;
-      const show_typing = req.body.show_typing !== undefined ? (req.body.show_typing ? 1 : 0) : 1;
+      const is_active = settingsBody.is_active !== undefined ? (settingsBody.is_active ? 1 : 0) : 0;
+      const base_url = settingsBody.base_url || 'https://ai.sumopod.com/v1';
+      const api_key = settingsBody.api_key ? protectSecret(settingsBody.api_key) : null;
+      const model_name = settingsBody.model_name || 'gpt-4o-mini';
+      const system_instruction = settingsBody.system_instruction || '';
+      const knowledge_base = settingsBody.knowledge_base || '';
+      const knowledge_source = settingsBody.knowledge_source || 'manual';
+      const delay_seconds = settingsBody.delay_seconds !== undefined ? parseInt(settingsBody.delay_seconds, 10) : 2;
+      const show_typing = settingsBody.show_typing !== undefined ? (settingsBody.show_typing ? 1 : 0) : 1;
       const cred_id = credential_id !== undefined && credential_id !== null ? parseInt(credential_id, 10) : null;
-      const chatbot_mode = req.body.chatbot_mode || 'both';
-      const max_output_tokens = normalizeMaxOutputTokens(req.body.max_output_tokens);
-      const temperature = req.body.temperature !== undefined ? parseFloat(req.body.temperature) : 0.3;
-      const rag_mode = req.body.rag_mode || 'off';
-      const rag_top_k = req.body.rag_top_k !== undefined ? parseInt(req.body.rag_top_k, 10) : 4;
-      const rag_context_tokens = req.body.rag_context_tokens !== undefined ? parseInt(req.body.rag_context_tokens, 10) : 1000;
-      const rag_input_budget_tokens = req.body.rag_input_budget_tokens !== undefined ? parseInt(req.body.rag_input_budget_tokens, 10) : 2200;
-      const embedding_profile_id = req.body.embedding_profile_id !== undefined && req.body.embedding_profile_id !== null ? parseInt(req.body.embedding_profile_id, 10) : null;
-      const cache_enabled = req.body.cache_enabled !== undefined ? (req.body.cache_enabled ? 1 : 0) : 0;
-      const cache_ttl_seconds = req.body.cache_ttl_seconds !== undefined ? parseInt(req.body.cache_ttl_seconds, 10) : 86400;
-      const direct_answer_enabled = req.body.direct_answer_enabled !== undefined ? (req.body.direct_answer_enabled ? 1 : 0) : 0;
-      const debounce_ms = req.body.debounce_ms !== undefined ? parseInt(req.body.debounce_ms, 10) : 0;
+      const chatbot_mode = settingsBody.chatbot_mode || 'both';
+      const max_output_tokens = normalizeMaxOutputTokens(settingsBody.max_output_tokens);
+      const temperature = settingsBody.temperature !== undefined ? parseFloat(settingsBody.temperature) : 0.3;
+      const rag_mode = settingsBody.rag_mode || 'off';
+      const rag_top_k = settingsBody.rag_top_k !== undefined ? parseInt(settingsBody.rag_top_k, 10) : 4;
+      const rag_context_tokens = settingsBody.rag_context_tokens !== undefined ? parseInt(settingsBody.rag_context_tokens, 10) : 1000;
+      const rag_input_budget_tokens = settingsBody.rag_input_budget_tokens !== undefined ? parseInt(settingsBody.rag_input_budget_tokens, 10) : 2200;
+      const embedding_profile_id = settingsBody.embedding_profile_id !== undefined && settingsBody.embedding_profile_id !== null ? parseInt(settingsBody.embedding_profile_id, 10) : null;
+      const cache_enabled = settingsBody.cache_enabled !== undefined ? (settingsBody.cache_enabled ? 1 : 0) : 0;
+      const cache_ttl_seconds = settingsBody.cache_ttl_seconds !== undefined ? parseInt(settingsBody.cache_ttl_seconds, 10) : 86400;
+      const direct_answer_enabled = settingsBody.direct_answer_enabled !== undefined ? (settingsBody.direct_answer_enabled ? 1 : 0) : 0;
+      const debounce_ms = settingsBody.debounce_ms !== undefined ? parseInt(settingsBody.debounce_ms, 10) : 0;
 
       await dbRun(
         `INSERT INTO chatbot_ai_settings 
@@ -520,7 +532,19 @@ export const saveAISettings = async (req, res) => {
 
       await invalidateSessionCache(targetUserId, session_id).catch(() => {});
     }
-    return sendSuccess(res, null, 200, { message: 'Pengaturan Chatbot AI berhasil disimpan.' });
+    const savedSettings = await dbGet(
+      `SELECT rag_mode, rag_top_k, rag_context_tokens, rag_input_budget_tokens,
+              cache_enabled, cache_ttl_seconds, direct_answer_enabled, debounce_ms,
+              max_output_tokens, temperature
+       FROM chatbot_ai_settings WHERE session_id = ? AND user_id = ?`,
+      [session_id, targetUserId]
+    ) || {};
+    const ragStatus = await getSessionRagStatus({ sessionId: session_id, userId: targetUserId });
+    const ragPreflight = buildRagPreflightDiagnostic({ status: ragStatus, settings: savedSettings });
+    return sendSuccess(res, {
+      rag_auto_configuration: ragAutoConfiguration,
+      rag_preflight: ragPreflight
+    }, 200, { message: 'Pengaturan Chatbot AI berhasil disimpan.' });
   } catch (error) {
     if (error.code === 'UNSAFE_OUTBOUND_URL') {
       return sendError(res, 400, error.code, error.message);
@@ -589,9 +613,14 @@ export const testAISettings = async (req, res) => {
       const effectiveMode = ['fts', 'hybrid'].includes(String(rag_mode || settings.rag_mode).toLowerCase())
         ? String(rag_mode || settings.rag_mode).toLowerCase()
         : 'fts';
+      const initialConversationPolicy = resolveRagQueryPolicy({
+        query: user_message,
+        mode: effectiveMode,
+        hasQueryVector: false
+      });
 
       let queryVector = null;
-      if (effectiveMode === 'hybrid') {
+      if (effectiveMode === 'hybrid' && initialConversationPolicy.should_retrieve) {
         try {
           const tenantProfile = await getTenantEmbeddingProfile(req.auth.userId, client);
           const credId = credential_id || settings.credential_id;
@@ -618,17 +647,26 @@ export const testAISettings = async (req, res) => {
       }
 
       const startRetrieval = performance.now();
-      const retrievalResult = await retrieveRagContext({
-        userId: req.auth.userId,
-        sessionId: session_id,
-        query: user_message,
-        queryVector,
-        mode: queryVector ? 'hybrid' : 'fts',
-        topK: rag_top_k !== undefined ? Number(rag_top_k) : (settings.rag_top_k || 4),
-        contextTokenBudget: rag_context_tokens !== undefined ? Number(rag_context_tokens) : (settings.rag_context_tokens || 1000),
-        relevanceThreshold: rag_threshold !== undefined ? Number(rag_threshold) : (effectiveMode === 'fts' ? 0.0 : 0.4)
-      }, client);
-      const retrievalLatency = Math.round(performance.now() - startRetrieval);
+      const retrievalResult = initialConversationPolicy.should_retrieve
+        ? await retrieveRagContext({
+            userId: req.auth.userId,
+            sessionId: session_id,
+            query: user_message,
+            queryVector,
+            mode: queryVector ? 'hybrid' : 'fts',
+            topK: rag_top_k !== undefined ? Number(rag_top_k) : (settings.rag_top_k || 4),
+            contextTokenBudget: rag_context_tokens !== undefined ? Number(rag_context_tokens) : (settings.rag_context_tokens || 1000),
+            relevanceThreshold: resolveRagQueryPolicy({
+              query: user_message,
+              mode: queryVector ? 'hybrid' : 'fts',
+              hasQueryVector: Boolean(queryVector),
+              explicitThreshold: rag_threshold
+            }).relevance_threshold
+          }, client)
+        : { results: [], selected_count: 0 };
+      const retrievalLatency = initialConversationPolicy.should_retrieve
+        ? Math.round(performance.now() - startRetrieval)
+        : 0;
 
       const safeChunks = (retrievalResult.results || []).map((chunk, idx) => ({
         id: chunk.chunk_id || chunk.id || idx + 1,
@@ -654,7 +692,22 @@ export const testAISettings = async (req, res) => {
         systemSections.push(String(system_prompt).trim());
       }
 
-      if (safeChunks.length > 0) {
+      const conversationPolicy = resolveRagQueryPolicy({
+        query: user_message,
+        mode: effectiveMode,
+        hasQueryVector: Boolean(queryVector)
+      });
+      if (safeChunks.length === 0 && !conversationPolicy.should_retrieve) {
+        messages = buildRagConversationalFallbackMessages({
+          systemInstruction: system_prompt,
+          userMessage: user_message
+        });
+        ragInfo = {
+          ...ragInfo,
+          mode: 'conversation',
+          conversational_fallback: true
+        };
+      } else if (safeChunks.length > 0) {
         const formattedKnowledge = safeChunks.map((c, i) => `[Dokumen ${i + 1}: ${c.source_title}]\n${c.content}`).join('\n\n');
         systemSections.push(
           `Gunakan informasi resmi berikut sebagai referensi utama untuk menjawab pertanyaan pengguna:\n\n${formattedKnowledge}\n\nAturan:\n1. Jawab pertanyaan pengguna dengan ramah, jelas, dan akurat berdasarkan dokumen di atas.\n2. Jika informasi tidak ada di dokumen, sampaikan dengan sopan bahwa Anda belum memiliki informasi tersebut.\n3. Jangan sebutkan kata teknis seperti "chunk", "dokumen 1", atau "database".`
@@ -665,10 +718,12 @@ export const testAISettings = async (req, res) => {
         );
       }
 
-      messages = buildChatMessages({
-        systemPrompt: systemSections.join('\n\n'),
-        userMessage: user_message
-      });
+      if (!(safeChunks.length === 0 && !conversationPolicy.should_retrieve)) {
+        messages = buildChatMessages({
+          systemPrompt: systemSections.join('\n\n'),
+          userMessage: user_message
+        });
+      }
     } catch (ragErr) {
       logError('testAISettingsRAG', ragErr, { session_id, user_message });
       ragInfo = { used_rag: false, error: ragErr.message };
@@ -918,7 +973,15 @@ export const getAISessionRagStatus = async (req, res) => {
     const targetUserId = isAdmin ? Number(sess.user_id) : userId;
 
     const status = await getSessionRagStatus({ sessionId, userId: targetUserId }, client);
-    return sendSuccess(res, status);
+    const preflight = buildRagPreflightDiagnostic({
+      status,
+      settings: {
+        rag_mode: status.rag_mode,
+        cache_enabled: status.cache_enabled,
+        cache_ttl_seconds: status.cache_ttl_seconds
+      }
+    });
+    return sendSuccess(res, { ...status, preflight });
   } catch (error) {
     if (error?.code === 'SESSION_NOT_FOUND') {
       return sendError(res, 404, 'SESSION_NOT_FOUND', error.message || 'Sesi tidak ditemukan.');
@@ -954,6 +1017,25 @@ export const testAISessionRetrieval = async (req, res) => {
     const settings = await client.get('SELECT * FROM chatbot_ai_settings WHERE session_id = ?', [sessionId]) || {};
     const requestedMode = String(mode || settings.rag_mode || 'fts').toLowerCase();
     const effectiveMode = ['fts', 'hybrid'].includes(requestedMode) ? requestedMode : 'fts';
+    const initialQueryPolicy = resolveRagQueryPolicy({
+      query,
+      mode: effectiveMode,
+      hasQueryVector: false,
+      explicitThreshold: relevance_threshold
+    });
+    if (!initialQueryPolicy.should_retrieve) {
+      return sendSuccess(res, {
+        session_id: sessionId,
+        query: String(query).trim(),
+        mode: 'conversation',
+        query_kind: initialQueryPolicy.query_kind,
+        relevance_threshold: null,
+        threshold_source: initialQueryPolicy.threshold_source,
+        selected_count: 0,
+        chunks: [],
+        retrieval_latency_ms: 0
+      });
+    }
     let queryVector = null;
 
     if (effectiveMode === 'hybrid') {
@@ -982,6 +1064,25 @@ export const testAISessionRetrieval = async (req, res) => {
       }
     }
 
+    const retrievalPolicy = resolveRagQueryPolicy({
+      query,
+      mode: queryVector ? 'hybrid' : 'fts',
+      hasQueryVector: Boolean(queryVector),
+      explicitThreshold: relevance_threshold
+    });
+    if (!retrievalPolicy.should_retrieve) {
+      return sendSuccess(res, {
+        session_id: sessionId,
+        query: String(query).trim(),
+        mode: 'conversation',
+        query_kind: retrievalPolicy.query_kind,
+        relevance_threshold: null,
+        threshold_source: retrievalPolicy.threshold_source,
+        selected_count: 0,
+        chunks: [],
+        retrieval_latency_ms: 0
+      });
+    }
     const startTime = performance.now();
     const retrievalResult = await retrieveRagContext({
       userId: targetUserId,
@@ -990,7 +1091,7 @@ export const testAISessionRetrieval = async (req, res) => {
       queryVector,
       mode: queryVector ? 'hybrid' : 'fts',
       topK: top_k !== undefined ? Number(top_k) : (settings.rag_top_k || 4),
-      relevanceThreshold: relevance_threshold !== undefined ? Number(relevance_threshold) : 0.4
+      relevanceThreshold: retrievalPolicy.relevance_threshold
     }, client);
     const latencyMs = Math.round(performance.now() - startTime);
 
@@ -1009,6 +1110,9 @@ export const testAISessionRetrieval = async (req, res) => {
       session_id: sessionId,
       query: String(query).trim(),
       mode: queryVector ? 'hybrid' : 'fts',
+      query_kind: retrievalPolicy.query_kind,
+      relevance_threshold: retrievalPolicy.relevance_threshold,
+      threshold_source: retrievalPolicy.threshold_source,
       selected_count: safeChunks.length,
       chunks: safeChunks,
       retrieval_latency_ms: latencyMs

@@ -1,11 +1,11 @@
 import sqlite3 from 'sqlite3';
 import axios from 'axios';
 import puppeteer from 'puppeteer';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { createApiKeyAuth, createCorsOptions, createRateLimiter } from '../backend/src/middleware/security.middleware.js';
-import { buildAdminCookie, createAdminAuthMiddleware, createAdminSessionToken, validateAdminCredentials, verifyAdminSessionToken } from '../backend/src/middleware/admin_auth.middleware.js';
+import { buildAccessCookie, createAdminAuthMiddleware, signAccessToken, verifyToken } from '../backend/src/middleware/admin_auth.middleware.js';
 import { maskAISettings, resolveStoredApiKey } from '../backend/src/controllers/chatbot_ai.controller.js';
 import { protectSecret, revealSecret } from '../backend/src/services/secret.service.js';
 import { databaseReady, dbRun } from '../backend/src/database.js';
@@ -15,9 +15,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Konfigurasi Path
-const dbPath = join(__dirname, '..', 'backend', 'database.sqlite');
-const screenshotsDir = join(__dirname, 'screenshots');
-const backendUrl = 'http://localhost:3001/api';
+const dbPath = process.env.WA_BOT_DB_PATH || join(__dirname, '..', 'backend', 'database.sqlite');
+const screenshotsDir = process.env.WA_BOT_QA_SCREENSHOTS_DIR
+  ? resolve(process.env.WA_BOT_QA_SCREENSHOTS_DIR)
+  : join(__dirname, 'screenshots');
+const backendUrl = process.env.WA_BOT_QA_BACKEND_URL || 'http://localhost:3001/api';
+const qaApiKey = process.env.WA_BOT_QA_API_KEY || '';
+const backendClient = axios.create({
+  headers: qaApiKey ? { 'X-API-Key': qaApiKey } : {}
+});
+const frontendUrls = (process.env.WA_BOT_QA_FRONTEND_URLS || 'http://localhost:5174,http://localhost:5173')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 // Buat folder screenshots jika belum ada
 if (!fs.existsSync(screenshotsDir)) {
@@ -104,7 +114,7 @@ function verifyDatabaseSchema() {
 async function verifyBackendApi() {
   // 1. Uji Sesi
   console.log(' - Menguji GET /api/sessions...');
-  const sessionsRes = await axios.get(`${backendUrl}/sessions`);
+  const sessionsRes = await backendClient.get(`${backendUrl}/sessions`);
   if (sessionsRes.data.status !== 'success' || !Array.isArray(sessionsRes.data.data)) {
     throw new Error('Format respon GET /api/sessions tidak valid!');
   }
@@ -112,7 +122,7 @@ async function verifyBackendApi() {
 
   // 2. Uji Proxy
   console.log(' - Menguji GET /api/proxies...');
-  const proxiesRes = await axios.get(`${backendUrl}/proxies`);
+  const proxiesRes = await backendClient.get(`${backendUrl}/proxies`);
   if (proxiesRes.data.status !== 'success') {
     throw new Error('Gagal memanggil GET /api/proxies!');
   }
@@ -120,7 +130,7 @@ async function verifyBackendApi() {
 
   // 3. Uji Contacts & Groups
   console.log(' - Menguji GET /api/contacts/groups...');
-  const groupsRes = await axios.get(`${backendUrl}/contacts/groups`);
+  const groupsRes = await backendClient.get(`${backendUrl}/contacts/groups`);
   if (groupsRes.data.status !== 'success' || !Array.isArray(groupsRes.data.data)) {
     throw new Error('Gagal memanggil GET /api/contacts/groups!');
   }
@@ -128,7 +138,7 @@ async function verifyBackendApi() {
 
   // 4. Uji Templates
   console.log(' - Menguji GET /api/templates...');
-  const templatesRes = await axios.get(`${backendUrl}/templates`);
+  const templatesRes = await backendClient.get(`${backendUrl}/templates`);
   if (templatesRes.data.status !== 'success') {
     throw new Error('Gagal memanggil GET /api/templates!');
   }
@@ -163,7 +173,7 @@ async function runSecurityTests() {
   };
 
   try {
-    const res = await axios.post(`${backendUrl}/chatbot-ai/settings`, sqlInjectionPayload);
+    const res = await backendClient.post(`${backendUrl}/chatbot-ai/settings`, sqlInjectionPayload);
     if (res.data.status === 'success') {
       console.log('   Status: System sukses memproses payload tanpa error crash database (Prepared Statement berhasil meresolusi karakter escape SQL dengan aman).');
     } else {
@@ -182,6 +192,7 @@ async function runSecurityTests() {
 
 async function verifySecurityMiddleware() {
   console.log(' - TC-SEC-04: Menguji CORS, API key auth, rate limiting, dan masking secret...');
+  let qaAuthUserId = null;
   const originalEnv = {
     apiKey: process.env.WA_BOT_API_KEY,
     origins: process.env.WA_BOT_ALLOWED_ORIGINS,
@@ -198,10 +209,10 @@ async function verifySecurityMiddleware() {
     process.env.WA_BOT_ALLOWED_ORIGINS = 'http://localhost:5174';
     process.env.WA_BOT_RATE_LIMIT_MAX = '2';
     process.env.WA_BOT_RATE_LIMIT_WINDOW_MS = '60000';
-    process.env.WA_BOT_SECRET_ENCRYPTION_KEY = 'qa-encryption-secret';
+    process.env.WA_BOT_SECRET_ENCRYPTION_KEY = 'qa-encryption-secret-at-least-32-chars';
     process.env.WA_BOT_ADMIN_USERNAME = 'qa-admin';
     process.env.WA_BOT_ADMIN_PASSWORD = 'qa-admin-password';
-    process.env.WA_BOT_ADMIN_SESSION_SECRET = 'qa-admin-session-secret';
+    process.env.WA_BOT_ADMIN_SESSION_SECRET = 'qa-admin-session-secret-at-least-32-chars';
 
     const corsOptions = createCorsOptions();
     await new Promise((resolve, reject) => {
@@ -230,22 +241,30 @@ async function verifySecurityMiddleware() {
     });
     if (limited.statusCode !== 429) throw new Error('Rate limiter tidak mengembalikan HTTP 429.');
 
-    if (!validateAdminCredentials('qa-admin', 'qa-admin-password') || validateAdminCredentials('qa-admin', 'wrong')) {
-      throw new Error('Validasi credential admin tidak bekerja.');
-    }
-    const adminToken = createAdminSessionToken('qa-admin');
-    if (verifyAdminSessionToken(adminToken)?.sub !== 'qa-admin') {
-      throw new Error('Token sesi admin tidak dapat diverifikasi.');
+    const insertedAuthUser = await dbRun(
+      `INSERT INTO users (username, password_hash, display_name, role, is_active, token_version)
+       VALUES (?, ?, ?, 'admin', 1, 0)`,
+      [`qa-security-${Date.now()}`, 'qa-placeholder-not-for-login', 'QA Security User']
+    );
+    qaAuthUserId = insertedAuthUser.id;
+    const adminToken = signAccessToken({
+      id: qaAuthUserId,
+      username: 'qa-security',
+      role: 'admin',
+      token_version: 0
+    });
+    if (verifyToken(adminToken, 'access')?.sub !== qaAuthUserId) {
+      throw new Error('Token akses admin tidak dapat diverifikasi.');
     }
     const adminAuth = createAdminAuthMiddleware();
     const noSession = createMockResponse();
-    adminAuth(createMockRequest({}), noSession, () => {
+    await adminAuth(createMockRequest({}), noSession, () => {
       throw new Error('Admin auth melewatkan request tanpa cookie.');
     });
     if (noSession.statusCode !== 401) throw new Error('Admin auth tidak mengembalikan HTTP 401.');
 
     let adminAllowed = false;
-    adminAuth(createMockRequest({ cookie: buildAdminCookie(adminToken) }), createMockResponse(), () => {
+    await adminAuth(createMockRequest({ cookie: buildAccessCookie(adminToken) }), createMockResponse(), () => {
       adminAllowed = true;
     });
     if (!adminAllowed) throw new Error('Admin auth menolak cookie sesi yang valid.');
@@ -269,14 +288,17 @@ async function verifySecurityMiddleware() {
       throw new Error('Normalisasi nomor atau keyword opt-out tidak bekerja.');
     }
     const qaOptOutNumber = '6280000000999';
-    await recordOptOut(qaOptOutNumber, 'QA_TEST');
-    if (!await isOptedOut('080000000999')) throw new Error('Suppression list gagal mencocokkan format nomor lokal.');
-    await removeOptOut('080000000999');
-    if (await isOptedOut(qaOptOutNumber)) throw new Error('Suppression list gagal menghapus opt-out.');
+    await recordOptOut(qaOptOutNumber, qaAuthUserId, 'QA_TEST');
+    if (!await isOptedOut('080000000999', qaAuthUserId)) throw new Error('Suppression list gagal mencocokkan format nomor lokal.');
+    await removeOptOut('080000000999', qaAuthUserId);
+    if (await isOptedOut(qaOptOutNumber, qaAuthUserId)) throw new Error('Suppression list gagal menghapus opt-out.');
     console.log('   TC-OPT-01: Suppression list opt-out terverifikasi untuk format nomor 08 dan 62.');
 
     console.log('   Status: Middleware security dan masking secret terverifikasi.');
   } finally {
+    if (qaAuthUserId) {
+      await dbRun('DELETE FROM users WHERE id = ?', [qaAuthUserId]);
+    }
     restoreEnv('WA_BOT_API_KEY', originalEnv.apiKey);
     restoreEnv('WA_BOT_ALLOWED_ORIGINS', originalEnv.origins);
     restoreEnv('WA_BOT_RATE_LIMIT_MAX', originalEnv.max);
@@ -326,12 +348,18 @@ function restoreEnv(name, value) {
 
 // Tahap 4: Uji E2E UI & Tangkapan Layar (Puppeteer)
 async function runE2eUiTests() {
-  // Cek port frontend yang aktif (5174 atau 5173)
-  let frontendUrl = 'http://localhost:5174';
-  try {
-    await axios.get(frontendUrl);
-  } catch (e) {
-    frontendUrl = 'http://localhost:5173';
+  let frontendUrl = null;
+  for (const candidate of frontendUrls) {
+    try {
+      await axios.get(candidate);
+      frontendUrl = candidate;
+      break;
+    } catch {
+      // Try the next explicitly configured QA frontend URL.
+    }
+  }
+  if (!frontendUrl) {
+    throw new Error(`Frontend QA tidak tersedia pada URL: ${frontendUrls.join(', ')}`);
   }
   console.log(` - Menggunakan Alamat Frontend: ${frontendUrl}`);
 

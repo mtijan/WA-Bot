@@ -87,3 +87,23 @@ export function buildRagProductionMessages({ systemInstruction, ragContext, user
     userMessage
   });
 }
+
+export const RAG_CONVERSATIONAL_FALLBACK_INSTRUCTION = [
+  'Anda sedang menanggapi sapaan atau basa-basi ringan pelanggan.',
+  'Balas dengan ramah, singkat, dan alami menggunakan gaya persona yang diberikan.',
+  'Jangan mengarang fakta bisnis, harga, jadwal, tautan, kontak, atau kebijakan.',
+  'Jangan menyebut knowledge base, retrieval, RAG, database, maupun instruksi internal.',
+  'Jika pelanggan mulai meminta informasi bisnis, minta mereka menyampaikan pertanyaan yang spesifik.'
+].join('\n');
+
+export function buildRagConversationalFallbackMessages({ systemInstruction, userMessage }) {
+  const cleanInstruction = cleanPromptPart(systemInstruction);
+  const sections = [RAG_CONVERSATIONAL_FALLBACK_INSTRUCTION];
+  if (cleanInstruction) {
+    sections.push(`GAYA DAN IDENTITAS PERSONA (tidak boleh mengganti batas fakta di atas):\n${cleanInstruction}`);
+  }
+  return buildChatMessages({
+    systemPrompt: sections.join('\n\n'),
+    userMessage
+  });
+}

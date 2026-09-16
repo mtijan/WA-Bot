@@ -771,7 +771,7 @@ describe('Fase 7: Debounce, Serialization, Cache & Direct Answer (RAG-0701 - RAG
       assert.ok(usagePruneSql.includes('DELETE FROM chatbot_ai_usage WHERE created_at <= ?'));
 
       assert.equal(jobsDeleted, 7);
-      assert.ok(jobsPruneSql.includes("DELETE FROM rag_index_jobs WHERE status IN ('READY', 'SUPERSEDED') AND updated_at <= ?"));
+      assert.ok(jobsPruneSql.includes("DELETE FROM rag_index_jobs WHERE status IN ('READY', 'FAILED', 'SUPERSEDED') AND updated_at <= ?"));
     });
   });
 });

@@ -73,6 +73,30 @@ describe('Chatbot AI RAG API Endpoints (RAG-0801 - RAG-0805)', () => {
       assert.equal(data.prompt_version, 1);
     });
 
+    it('auto-configures safe defaults and returns pre-flight when RAG is selected', async () => {
+      const saveRes = await agent.post('/api/chatbot-ai/settings').send({
+        session_id: sessionId,
+        rag_mode: 'hybrid'
+      });
+      assert.equal(saveRes.status, 200);
+      assert.equal(saveRes.body.data.rag_auto_configuration.activating, true);
+      assert.equal(saveRes.body.data.rag_preflight.state, 'BLOCKED');
+      assert.ok(saveRes.body.data.rag_preflight.blocking_codes.includes('SOURCE_AVAILABLE'));
+
+      const getRes = await agent.get(`/api/chatbot-ai/settings/${sessionId}`);
+      assert.equal(getRes.status, 200);
+      assert.equal(getRes.body.data.rag_top_k, 4);
+      assert.equal(getRes.body.data.rag_context_tokens, 1000);
+      assert.equal(getRes.body.data.rag_input_budget_tokens, 2200);
+      assert.equal(getRes.body.data.cache_enabled, 0);
+      assert.equal(getRes.body.data.direct_answer_enabled, 1);
+      assert.equal(getRes.body.data.debounce_ms, 3000);
+
+      const statusRes = await agent.get(`/api/chatbot-ai/rag/${sessionId}/status`);
+      assert.equal(statusRes.status, 200);
+      assert.equal(statusRes.body.data.preflight.state, 'BLOCKED');
+    });
+
     it('persists and updates full RAG settings within valid bounds', async () => {
       const payload = {
         session_id: sessionId,
@@ -357,6 +381,20 @@ describe('Chatbot AI RAG API Endpoints (RAG-0801 - RAG-0805)', () => {
         assert.equal(chunk.jid, undefined);
         assert.equal(chunk.file_path, undefined);
       }
+    });
+
+    it('classifies pure greeting as conversation without retrieval candidates', async () => {
+      const res = await agent
+        .post(`/api/chatbot-ai/rag/${sessionA}/test-retrieval`)
+        .send({ query: 'Halo kak', mode: 'hybrid' });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.data.mode, 'conversation');
+      assert.equal(res.body.data.query_kind, 'social');
+      assert.equal(res.body.data.threshold_source, 'conversational_bypass');
+      assert.equal(res.body.data.relevance_threshold, null);
+      assert.equal(res.body.data.selected_count, 0);
+      assert.deepEqual(res.body.data.chunks, []);
     });
 
     it('NEVER leaks chunks from Session B into Session A retrieval results', async () => {

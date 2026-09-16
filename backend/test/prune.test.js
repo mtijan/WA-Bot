@@ -44,6 +44,28 @@ describe('Log and File Pruning Script', () => {
     await dbRun(`INSERT INTO delivery_logs (campaign_id, target_number, status, created_at) VALUES (1, '628999', 'FAILED', datetime('now', '-35 days'))`);
     await dbRun(`INSERT INTO warmer_logs (campaign_id, sender_session, receiver_session, message, status, created_at) VALUES (1, 's1', 's2', 'kuno', 'FAILED', datetime('now', '-35 days'))`);
 
+    // Data RAG: cache expired, usage >30 hari, dan terminal job >7 hari harus dipangkas.
+    await dbRun(`INSERT INTO sessions (session_id, status, user_id) VALUES ('rag-prune-session', 'CONNECTED', 1)`);
+    await dbRun(`INSERT INTO rag_sources (
+      id, user_id, source_type, manual_session_id, content_hash, current_revision,
+      indexed_revision, lexical_status, embedding_status, is_active
+    ) VALUES (9901, 1, 'manual', 'rag-prune-session', 'rag-prune', 1, 1, 'READY', 'DISABLED', 1)`);
+    await dbRun(`INSERT INTO rag_response_cache (
+      user_id, session_id, cache_key, source_revision_digest, response_ciphertext, expires_at, created_at
+    ) VALUES
+      (1, 'rag-prune-session', 'expired-cache', 'rev-1', X'00', datetime('now', '-1 day'), datetime('now', '-2 days')),
+      (1, 'rag-prune-session', 'active-cache', 'rev-1', X'01', datetime('now', '+1 day'), datetime('now'))`);
+    await dbRun(`INSERT INTO chatbot_ai_usage (
+      user_id, session_id, request_id, attempt_no, request_kind, operation, request_status, delivery_status, created_at
+    ) VALUES
+      (1, 'rag-prune-session', 'old-usage', 1, 'production', 'chat', 'SUCCEEDED', 'SENT', datetime('now', '-31 days')),
+      (1, 'rag-prune-session', 'new-usage', 1, 'production', 'chat', 'SUCCEEDED', 'SENT', datetime('now'))`);
+    await dbRun(`INSERT INTO rag_index_jobs (
+      source_id, user_id, requested_revision, embedding_config_hash, status, attempts, created_at, updated_at
+    ) VALUES
+      (9901, 1, 1, 'old-job', 'FAILED', 1, datetime('now', '-8 days'), datetime('now', '-8 days')),
+      (9901, 1, 1, 'new-job', 'READY', 1, datetime('now'), datetime('now'))`);
+
     // 2. Setup dummy files di folder temporary workspace
     const oldExportFile = join(testWorkspaceRoot, 'ExportWAContacts_TestOld_20260501000000.csv');
     const newExportFile = join(testWorkspaceRoot, 'ExportWAContacts_TestNew_20260606000000.csv');
@@ -73,7 +95,9 @@ describe('Log and File Pruning Script', () => {
           WA_BOT_DB_PATH: process.env.WA_BOT_DB_PATH,
           WA_BOT_WORKSPACE_ROOT: testWorkspaceRoot,
           WA_BOT_BACKUP_DIR: testBackupDir,
-          WA_BOT_LOG_RETENTION_DAYS: '30'
+          WA_BOT_LOG_RETENTION_DAYS: '30',
+          WA_BOT_AI_USAGE_RETENTION_DAYS: '30',
+          WA_BOT_RAG_JOB_RETENTION_DAYS: '7'
         }
       }, (err, stdout, stderr) => {
         if (err) {
@@ -96,6 +120,13 @@ describe('Log and File Pruning Script', () => {
     const oldWarmerLogs = warmerLogs.filter(l => l.message === 'kuno');
     assert.equal(activeWarmerLogs.length, 1);
     assert.equal(oldWarmerLogs.length, 0);
+
+    const cacheRows = await dbAll('SELECT cache_key FROM rag_response_cache ORDER BY cache_key');
+    assert.deepEqual(cacheRows.map((row) => row.cache_key), ['active-cache']);
+    const usageRows = await dbAll('SELECT request_id FROM chatbot_ai_usage ORDER BY request_id');
+    assert.deepEqual(usageRows.map((row) => row.request_id), ['new-usage']);
+    const jobRows = await dbAll('SELECT embedding_config_hash FROM rag_index_jobs ORDER BY embedding_config_hash');
+    assert.deepEqual(jobRows.map((row) => row.embedding_config_hash), ['new-job']);
 
     // 6. Verifikasi file ekspor usang telah dihapus, file ekspor baru tetap ada
     assert.ok(!fs.existsSync(oldExportFile), 'File ekspor usang harus dihapus');
