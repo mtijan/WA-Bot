@@ -82,7 +82,10 @@ function App() {
   const handleLogout = async () => {
     try {
       await apiRequest('/auth/logout', { method: 'POST' });
-    } catch (e) {}
+    } catch {
+      setAuthState({ loading: false, enabled: true, authenticated: false, username: null, role: null });
+      return;
+    }
     setAuthState({ loading: false, enabled: true, authenticated: false, username: null, role: null });
   };
 

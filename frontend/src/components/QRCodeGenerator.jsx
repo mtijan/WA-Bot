@@ -303,7 +303,7 @@ const QRCodeGenerator = () => {
   const [bgColor, setBgColor] = useState('#ffffff'); // White
   const [errorLevel, setErrorLevel] = useState('H'); // High level for logos
   const [downloadSize, setDownloadSize] = useState(512); // Default resolution
-  const [logoFile, setLogoFile] = useState(null);
+  const [, setLogoFile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
   const [logoSize, setLogoSize] = useState(20); // Percentage of QR Code size (15% - 30%)
   const [logoBgMode, setLogoBgMode] = useState('white'); // 'white', 'transparent', 'none'
