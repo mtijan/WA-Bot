@@ -29,6 +29,7 @@
     "test:rag-freeform-development": "node scripts/probe_chatbot_ai_rag_development.js --conversation true --question-mode freeform --judge true --cases 12 --answer-cap 512 --judge-cap 1024 --seed 20260910",
     "test:rag-phase9": "node scripts/probe_chatbot_ai_rag_phase9.js --output ../scratch/rag_phase9_generation_report.json",
     "test:rag-phase9-completion": "node scripts/probe_chatbot_ai_rag_phase9_completion.js --output ../scratch/rag_phase9_completion_report.json",
+    "test:rag-phase10-shadow": "node scripts/probe_chatbot_ai_rag_phase10_shadow.js --output ../scratch/rag_phase10_shadow_chat_report.json",
     "rag:evaluate:offline": "node scripts/evaluate_rag_offline.js --output ../scratch/rag_phase10_offline_retrieval_report.json",
     "rag:index:once": "node scripts/process_rag_indexing.js",
     "user:create": "node scripts/seed_admin_user.js"
