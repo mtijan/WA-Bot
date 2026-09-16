@@ -176,10 +176,6 @@ const Monitoring = () => {
     fetchStatus();
   }, [fetchStatus]);
 
-  const sessionConnectedPct = data?.sessions?.total > 0
-    ? Math.round((data.sessions.connected / data.sessions.total) * 100)
-    : 0;
-
   // ---- Loading state ----
   if (loading && !data) {
     return (

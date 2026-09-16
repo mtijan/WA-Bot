@@ -8,7 +8,6 @@ import {
   Edit, 
   Trash2, 
   X, 
-  Check, 
   AlertTriangle,
   ShieldAlert,
   UserCheck,
@@ -944,7 +943,7 @@ const UserManagement = ({ authState }) => {
         <div style={modalOverlayStyle}>
           <div className="card" style={{ width: '100%', maxWidth: '420px', padding: '24px', position: 'relative', background: '#fff', borderRadius: '12px' }}>
             <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', display: 'flex', alignItems: 'center', justifyCenter: 'center', flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', display: 'flex', alignItems: 'center', flexShrink: 0, justifyContent: 'center' }}>
                 <AlertTriangle size={20} style={{ alignSelf: 'center' }} />
               </div>
               <div>

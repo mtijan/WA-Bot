@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, RefreshCw, Trash2, X, AlertTriangle, UserMinus, ShieldAlert } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Search, RefreshCw, Trash2, X, AlertTriangle, UserMinus } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
 const OptOutManagement = () => {
@@ -106,7 +106,7 @@ const OptOutManagement = () => {
         hour: '2-digit',
         minute: '2-digit'
       });
-    } catch (e) {
+    } catch {
       return dateStr;
     }
   };
