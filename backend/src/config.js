@@ -75,7 +75,9 @@ export const config = {
   },
   rag: {
     rolloutMode: (process.env.WA_BOT_RAG_ROLLOUT_MODE || 'all').trim().toLowerCase(),
-    rolloutSessions: splitCsv(process.env.WA_BOT_RAG_ROLLOUT_SESSIONS, [])
+    rolloutSessions: splitCsv(process.env.WA_BOT_RAG_ROLLOUT_SESSIONS, []),
+    shadowMode: (process.env.WA_BOT_RAG_SHADOW_MODE || 'disabled').trim().toLowerCase(),
+    shadowSessions: splitCsv(process.env.WA_BOT_RAG_SHADOW_SESSIONS, [])
   },
   internal: {
     token: process.env.WA_BOT_INTERNAL_TOKEN || '',

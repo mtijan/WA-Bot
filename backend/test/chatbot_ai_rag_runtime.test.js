@@ -17,12 +17,14 @@ const {
   CS_FALLBACK_MESSAGE,
   estimateChatInputTokens,
   isSessionRagRolloutEnabled,
+  isSessionRagShadowEnabled,
   normalizeChatbotMode,
   processInboundAIMessage,
   RAG_RUNTIME_STATUSES,
   recheckDeliveryAccess,
   shouldEvaluateFlow,
   shouldProcessAIFallback,
+  shouldRunRagShadow,
   shouldUseRag
 } = await import('../src/services/chatbot_ai_rag_runtime.service.js');
 const {
@@ -733,6 +735,115 @@ test('RAG-0611 shouldUseRag mengintegrasikan mode RAG dan rollout session', () =
   assert.equal(shouldUseRag({ rag_mode: 'fts' }, { sessionId: 'sess-1', rolloutMode: 'disabled' }), false);
   assert.equal(shouldUseRag({ rag_mode: 'hybrid' }, { sessionId: 'sess-1', rolloutMode: 'allowlist', rolloutSessions: ['sess-2'] }), false);
   assert.equal(shouldUseRag({ rag_mode: 'hybrid' }, { sessionId: 'sess-2', rolloutMode: 'allowlist', rolloutSessions: ['sess-2'] }), true);
+});
+
+test('RAG-1001 shadow selector hanya aktif untuk sesi opt-in di luar live rollout', () => {
+  assert.equal(isSessionRagShadowEnabled('sess-1', { shadowMode: 'disabled' }), false);
+  assert.equal(isSessionRagShadowEnabled('sess-1', { shadowMode: 'all' }), true);
+  assert.equal(isSessionRagShadowEnabled('sess-1', {
+    shadowMode: 'allowlist', shadowSessions: ['sess-1']
+  }), true);
+  assert.equal(isSessionRagShadowEnabled('sess-2', {
+    shadowMode: 'allowlist', shadowSessions: ['sess-1']
+  }), false);
+  assert.equal(shouldRunRagShadow({ rag_mode: 'off' }, {
+    sessionId: 'sess-1', rolloutMode: 'disabled', shadowMode: 'all'
+  }), false);
+  assert.equal(shouldRunRagShadow({ rag_mode: 'fts' }, {
+    sessionId: 'sess-1', rolloutMode: 'disabled', shadowMode: 'all'
+  }), true);
+  assert.equal(shouldRunRagShadow({ rag_mode: 'fts' }, {
+    sessionId: 'sess-1', rolloutMode: 'all', shadowMode: 'all'
+  }), false);
+});
+
+test('RAG-1001 shadow retrieval mencatat kandidat tetapi mempertahankan satu balasan legacy', async () => {
+  const { db, client } = await createRuntimeFixture();
+  try {
+    const { dependencies, calls } = createControlledProvider({
+      reply: 'Balasan legacy tetap digunakan.',
+      onPayload(payload) {
+        assert.match(payload.messages[0].content, /Manual KB legacy/);
+        assert.doesNotMatch(payload.messages[0].content, /Rp150\.000/);
+      }
+    });
+    let legacyKnowledgeCalls = 0;
+    const result = await processInboundAIMessage(runtimeParams(client, {
+      knowledge_base: 'Manual KB legacy'
+    }), {
+      ...dependencies,
+      rolloutMode: 'disabled',
+      shadowMode: 'allowlist',
+      shadowSessions: ['session-a'],
+      resolveKnowledgeBase: async () => {
+        legacyKnowledgeCalls += 1;
+        return 'Manual KB legacy';
+      }
+    });
+
+    assert.equal(result.status, RAG_RUNTIME_STATUSES.REPLIED);
+    assert.equal(result.reply, 'Balasan legacy tetap digunakan.');
+    assert.equal(result.ragMetadata.effective_mode, 'legacy');
+    assert.equal(result.ragMetadata.shadow_enabled, true);
+    assert.equal(result.ragMetadata.shadow_effective_mode, 'fts');
+    assert.equal(result.ragMetadata.shadow_retrieval_reason, 'ready');
+    assert.equal(result.ragMetadata.shadow_selected_count, 1);
+    assert.equal(calls.provider, 1, 'shadow tidak boleh menambah chat LLM call');
+    assert.equal(calls.usage.length, 1);
+    assert.equal(calls.usage[0].retrievalType, 'legacy');
+    assert.equal(legacyKnowledgeCalls, 1);
+  } finally {
+    await close(db);
+  }
+});
+
+test('RAG-1001 kegagalan shadow retrieval tidak mengubah atau menggagalkan balasan legacy', async () => {
+  const { calls, dependencies } = createControlledProvider({ reply: 'Balasan legacy aman.' });
+  const result = await processInboundAIMessage({
+    sessionId: 'session-shadow-failure',
+    userId: 1,
+    cleanText: 'Berapa biaya pendaftaran?',
+    aiSettings: createSettings({ knowledge_base: 'Legacy knowledge' }),
+    credentials: { apiKey: 'test', baseUrl: 'https://provider.example/v1' }
+  }, {
+    ...dependencies,
+    rolloutMode: 'disabled',
+    shadowMode: 'all',
+    executeRagRetrieval: async () => {
+      throw new Error('detail provider privat');
+    },
+    resolveKnowledgeBase: async () => 'Legacy knowledge'
+  });
+
+  assert.equal(result.status, RAG_RUNTIME_STATUSES.REPLIED);
+  assert.equal(result.reply, 'Balasan legacy aman.');
+  assert.equal(result.ragMetadata.effective_mode, 'legacy');
+  assert.equal(result.ragMetadata.shadow_retrieval_reason, 'retrieval_failed');
+  assert.equal(calls.provider, 1);
+});
+
+test('RAG-1001 shadow melewati retrieval untuk sapaan sosial gabungan', async () => {
+  const { calls, dependencies } = createControlledProvider({ reply: 'Halo, kabar baik.' });
+  const result = await processInboundAIMessage({
+    sessionId: 'session-shadow-social',
+    userId: 1,
+    cleanText: 'Halo admin, apa kabar?',
+    aiSettings: createSettings({ knowledge_base: 'Legacy knowledge' }),
+    credentials: { apiKey: 'test', baseUrl: 'https://provider.example/v1' }
+  }, {
+    ...dependencies,
+    rolloutMode: 'disabled',
+    shadowMode: 'all',
+    executeRagRetrieval: async () => assert.fail('sapaan sosial tidak boleh menjalankan retrieval'),
+    resolveKnowledgeBase: async () => 'Legacy knowledge'
+  });
+
+  assert.equal(result.status, RAG_RUNTIME_STATUSES.REPLIED);
+  assert.equal(result.reply, 'Halo, kabar baik.');
+  assert.equal(result.ragMetadata.shadow_effective_mode, 'conversation');
+  assert.equal(result.ragMetadata.shadow_retrieval_reason, 'conversational_bypass');
+  assert.equal(result.ragMetadata.shadow_selected_count, 0);
+  assert.equal(calls.provider, 1);
 });
 
 test('RAG-0611 sesi di luar rollout allowlist beralih mulus ke legacy tanpa error', async () => {
