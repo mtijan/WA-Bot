@@ -1,5 +1,6 @@
 import '../src/env.js';
-import { config } from '../src/config.js';
+import { pathToFileURL } from 'node:url';
+import { config, parseReleaseId } from '../src/config.js';
 
 const RESET = '\x1b[0m';
 const GREEN = '\x1b[32m';
@@ -11,11 +12,43 @@ const frontendUrl = process.env.WA_BOT_FRONTEND_URL || 'http://localhost:5173';
 const apiUrl = process.env.WA_BOT_API_URL || 'http://localhost:3001/api';
 const internalUrl = process.env.WA_BOT_INTERNAL_URL || 'http://localhost:3002/internal';
 const internalToken = process.env.WA_BOT_INTERNAL_TOKEN || config.internal.token || '';
+const expectedReleaseId = parseReleaseId(process.env.WA_BOT_EXPECTED_RELEASE_ID, '');
 
 // Health checks are registered at the root level of the host, not under /api
 const apiBaseUrl = apiUrl.endsWith('/api') ? apiUrl.slice(0, -4) : apiUrl;
 
 let failed = false;
+
+export function evaluateDeploymentHealth({
+  responseOk = false,
+  statusCode = null,
+  payload = null,
+  expectedStatus,
+  expectedReleaseId: expectedRelease = ''
+} = {}) {
+  const blockers = [];
+  const actualStatus = String(payload?.status || '').trim();
+  const actualReleaseId = String(payload?.release_id || '').trim();
+  const normalizedExpectedRelease = parseReleaseId(expectedRelease, '');
+
+  if (responseOk !== true) blockers.push('http_status');
+  if (actualStatus !== expectedStatus) blockers.push('runtime_status');
+  if (!normalizedExpectedRelease) blockers.push('expected_release_id_missing');
+  if (!actualReleaseId) blockers.push('actual_release_id_missing');
+  if (normalizedExpectedRelease && actualReleaseId
+    && actualReleaseId !== normalizedExpectedRelease) {
+    blockers.push('release_id_mismatch');
+  }
+
+  return Object.freeze({
+    ready: blockers.length === 0,
+    blockers: Object.freeze(blockers),
+    status_code: Number.isInteger(statusCode) ? statusCode : null,
+    actual_status: actualStatus || null,
+    actual_release_id: actualReleaseId || null,
+    expected_release_id: normalizedExpectedRelease || null
+  });
+}
 
 async function runCheck(name, fn) {
   console.log(`${CYAN}[SMOKE TEST] Menjalankan: ${name}...${RESET}`);
@@ -33,14 +66,18 @@ async function runCheck(name, fn) {
   }
 }
 
-async function start() {
+export async function runDeploymentSmoke() {
+  failed = false;
   console.log('==================================================');
   console.log('MEMULAI SMOKE TEST DEPLOY OTOMATIS');
   console.log(`Frontend URL: ${frontendUrl}`);
   console.log(`Public API URL: ${apiUrl}`);
   console.log(`Internal URL: ${internalUrl}`);
   console.log(`Internal Token Terkonfigurasi: ${internalToken ? 'Ya' : 'Tidak'}`);
+  console.log(`Expected Release ID: ${expectedReleaseId || 'TIDAK DISET'}`);
   console.log('==================================================\n');
+
+  await runCheck('Expected Release ID dikonfigurasi', async () => Boolean(expectedReleaseId));
 
   // 1. Periksa Frontend Static Server
   await runCheck('Frontend Static Page', async () => {
@@ -70,11 +107,15 @@ async function start() {
       return false;
     }
     const json = await res.json();
-    if (json.status !== 'healthy') {
-      console.log(`Ekspektasi status "healthy", menerima: ${JSON.stringify(json)}`);
-      return false;
-    }
-    return true;
+    const verdict = evaluateDeploymentHealth({
+      responseOk: res.ok,
+      statusCode: res.status,
+      payload: json,
+      expectedStatus: 'healthy',
+      expectedReleaseId
+    });
+    if (!verdict.ready) console.log(`Blocker health: ${verdict.blockers.join(', ')}`);
+    return verdict.ready;
   });
 
   // 3. Periksa Public API Readiness
@@ -83,11 +124,15 @@ async function start() {
     const json = await res.json();
     console.log(`Status respon readiness: ${res.status}`);
     console.log(`Detail readiness: ${JSON.stringify(json)}`);
-    if (!json.status) {
-      console.log('JSON respon tidak memiliki field "status"');
-      return false;
-    }
-    return true;
+    const verdict = evaluateDeploymentHealth({
+      responseOk: res.ok,
+      statusCode: res.status,
+      payload: json,
+      expectedStatus: 'ready',
+      expectedReleaseId
+    });
+    if (!verdict.ready) console.log(`Blocker readiness: ${verdict.blockers.join(', ')}`);
+    return verdict.ready;
   });
 
   // 4. Periksa Internal Health Live
@@ -111,11 +156,15 @@ async function start() {
     const json = await res.json();
     console.log(`Status respon internal readiness: ${res.status}`);
     console.log(`Detail internal readiness: ${JSON.stringify(json)}`);
-    if (!json.status) {
-      console.log('JSON respon tidak memiliki field "status"');
-      return false;
-    }
-    return true;
+    const verdict = evaluateDeploymentHealth({
+      responseOk: res.ok,
+      statusCode: res.status,
+      payload: json,
+      expectedStatus: 'ready',
+      expectedReleaseId
+    });
+    if (!verdict.ready) console.log(`Blocker internal readiness: ${verdict.blockers.join(', ')}`);
+    return verdict.ready;
   });
 
   // 6. Periksa Internal Authenticated Session Check (jika token terkonfigurasi)
@@ -148,12 +197,16 @@ async function start() {
   if (failed) {
     console.log(`${RED}SMOKE TEST DEPLOY GAGAL${RESET}`);
     console.log('==================================================');
-    process.exit(1);
+    process.exitCode = 1;
   } else {
     console.log(`${GREEN}SMOKE TEST DEPLOY BERHASIL DENGAN SUKSES${RESET}`);
     console.log('==================================================');
-    process.exit(0);
+    process.exitCode = 0;
   }
+
+  return !failed;
 }
 
-start();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runDeploymentSmoke();
+}

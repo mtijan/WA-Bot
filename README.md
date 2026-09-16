@@ -152,17 +152,17 @@ Kontrol rollout RAG bersifat default-safe. Shadow dan rollback hanya boleh diakt
 ## Panduan Pengujian (Testing)
 
 ### Pengujian Unit & Integrasi Backend
-Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, isolasi/mapping sesi flow, dan RAG rollout/rollback) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite lokal terakhir: 414/414 test pass pada 78 suite (2026-09-16); ini bukan bukti staging atau UAT.
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, isolasi/mapping sesi flow, RAG rollout/rollback, dan exact-release smoke) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite lokal terakhir: 421/421 test pass pada 79 suite (2026-09-16); ini bukan bukti staging atau UAT.
 ```bash
 cd backend
 npm test
 ```
 
 ### Smoke Test Peluncuran (Deploy Smoke Test)
-Menjalankan pengujian cepat pasca-deploy untuk memastikan keandalan API publik dan respons delegasi internal:
+Menjalankan pengujian cepat pasca-deploy untuk memastikan frontend, API publik, respons delegasi internal, dan exact release yang sedang berjalan. Set `WA_BOT_RELEASE_ID` pada service ke SHA Git immutable yang dideploy, lalu jalankan smoke dengan `WA_BOT_EXPECTED_RELEASE_ID` yang sama. Smoke gagal jika `/health` atau readiness tidak memuat release ID, status bukan `healthy`/`ready`, atau SHA berbeda:
 ```bash
 cd backend
-npm run test:smoke
+WA_BOT_EXPECTED_RELEASE_ID=<reviewed-git-sha> npm run test:smoke
 ```
 
 ### Pengujian Integrasi Sistem QA

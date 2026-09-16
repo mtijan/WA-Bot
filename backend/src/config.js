@@ -44,8 +44,14 @@ export function splitCsv(value, fallback = []) {
   return value.split(',').map(item => item.trim()).filter(Boolean);
 }
 
+export function parseReleaseId(value, fallback = 'unknown') {
+  const normalized = String(value || '').trim();
+  return /^[A-Za-z0-9._-]{1,128}$/.test(normalized) ? normalized : fallback;
+}
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
+  releaseId: parseReleaseId(process.env.WA_BOT_RELEASE_ID),
   port: parsePositiveInteger(process.env.PORT, 3001),
   trustProxyHops: parseOptionalPositiveInteger(process.env.WA_BOT_TRUST_PROXY_HOPS),
   allowedOrigins: splitCsv(process.env.WA_BOT_ALLOWED_ORIGINS, DEFAULT_ALLOWED_ORIGINS),
