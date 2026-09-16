@@ -7,13 +7,13 @@ Updated: 2026-09-16
 | Branch | Purpose | Allowed content | Base/key commit |
 |---|---|---|---|
 | `main` | Current shared baseline | Only changes that passed the agreed merge and release gates | `c16c379` current README-only baseline; no RAG merge |
-| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core through RAG-1010; excludes paid provider runners and development-only npm commands |
-| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | Core RAG-1006–RAG-1010 `c9d8c47`; rollback probe `cab650b`; use the reviewed branch-tip SHA |
+| `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core through RAG-1012 foundation; excludes paid provider runners and development-only npm commands |
+| `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | RAG-1011/RAG-1012 exact-release foundation is release-safe; use the reviewed branch-tip SHA |
 | `hotfix/urgent-fixes` | Urgent production/staging bug fixes | The smallest isolated fix and its focused regression test; no unfinished RAG or experiment files | Directly from `origin/main` at `63c93c6` |
 
 The three branches were published to `origin` on 2026-09-11 after explicit approval. That publication did not merge or deploy them. `origin/main` later moved independently to `c16c379` for README-only updates; no RAG commit was merged. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
 
-Current milestone on 2026-09-16: RAG-1001–RAG-1009 have LOCAL/GIT foundations and remain IN_PROGRESS pending operational acceptance; RAG-1010 documentation synchronization is DONE locally and pushed. The checklist is 119/131 DONE, 1 partial, 9 IN_PROGRESS, and 2 TODO. Transition gates enforce 25→50→100, rollback routes explicitly to FTS/CS without full-KB or cache, and legacy retirement remains default-on until its fail-closed gate passes. The final paid rollback probe used 3 provider calls while two CS paths used zero. Full backend 414/414 passed across 78 suites, frontend lint/build/API guard passed, npm audit reports 0 vulnerabilities, and route/OpenAPI parity remains 123/123. These are LOCAL/GIT facts only; quality remains below target, and real embedding all-in cost, billing reconciliation, runtime migration, WhatsApp delivery, staging rollout/rollback, UAT, and merge to `main` have not occurred.
+Current milestone on 2026-09-16: RAG-1001–RAG-1012 have LOCAL foundations, but 11 items remain IN_PROGRESS pending operational acceptance; RAG-1010 documentation synchronization is DONE. The checklist is 119/131 DONE, 1 partial, 11 IN_PROGRESS, and 0 untouched TODO. Exact-release health/readiness smoke now rejects missing/mismatched deployed SHA. Public staging remained healthy on its older contract but correctly failed this gate because `release_id` is absent. Full backend 421/421 passed across 79 suites. These are LOCAL/public-read-only facts only; quality remains below target, and real embedding all-in cost, billing reconciliation, runtime migration, WhatsApp delivery, authenticated staging/browser smoke, rollout/rollback, UAT, and merge to `main` have not occurred.
 
 ## Separation rules
 
@@ -59,7 +59,7 @@ Set-Location "D:\Self Project\WA-Bot\frontend"
 npm run build
 ```
 
-Also verify focused RAG tests, Express/OpenAPI parity, documentation audit, `git diff --check`, and ignored/sensitive-file coverage. Review the exact range rather than using `git add .`:
+Also verify focused RAG tests, Express/OpenAPI parity, documentation audit, `git diff --check`, and ignored/sensitive-file coverage. On staging, set `WA_BOT_RELEASE_ID` to the exact deployed SHA and run `test:smoke` with the same `WA_BOT_EXPECTED_RELEASE_ID`; missing or mismatched release identity is a failed release gate. Review the exact range rather than using `git add .`:
 
 ```powershell
 git diff --name-status origin/main..release/rag-merge-ready

@@ -193,7 +193,11 @@ export function createApp(options = {}) {
   });
 
   app.get('/health', (req, res) => {
-    res.json({ status: 'healthy', timestamp: new Date() });
+    res.json({
+      status: 'healthy',
+      release_id: config.releaseId,
+      timestamp: new Date()
+    });
   });
 
   app.get('/health/ready', async (req, res) => {

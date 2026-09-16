@@ -31,6 +31,7 @@ export const getReadiness = async (role = getCurrentRole()) => {
 
   return {
     status: ready ? 'ready' : 'not_ready',
+    release_id: config.releaseId,
     role,
     started_at: startedAt.toISOString(),
     uptime_seconds: Math.round(process.uptime()),

@@ -11,6 +11,8 @@ describe('GET /health', () => {
 
     assert.equal(res.status, 200);
     assert.equal(res.body.status, 'healthy');
+    assert.equal(typeof res.body.release_id, 'string');
+    assert.ok(res.body.release_id.length > 0);
     assert.ok(res.body.timestamp);
   });
 });
@@ -23,6 +25,8 @@ describe('GET /health/ready', () => {
     // Bisa 200 (ready) atau 503 (not ready) tergantung kondisi database
     assert.ok([200, 503].includes(res.status), `Expected 200 or 503, got ${res.status}`);
     assert.ok(res.body.status);
+    assert.equal(typeof res.body.release_id, 'string');
+    assert.ok(res.body.release_id.length > 0);
     assert.ok(res.body.role);
     assert.ok(res.body.checks);
     assert.ok(res.body.metrics !== undefined);
