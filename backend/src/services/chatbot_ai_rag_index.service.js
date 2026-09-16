@@ -1459,6 +1459,8 @@ export async function getSessionRagStatus({ sessionId, userId }, databaseClient 
     chunk_count: totalChunks,
     current_revision: currentRevision,
     config_revision: Number(settings.config_revision) || 1,
+    cache_enabled: Number(settings.cache_enabled) === 1,
+    cache_ttl_seconds: Number(settings.cache_ttl_seconds) || 86400,
     active_job: activeJob ? {
       id: activeJob.id,
       status: activeJob.status,

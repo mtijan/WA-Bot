@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../apiClient';
 
+const CALIBRATED_RAG_RELEVANCE_THRESHOLD = 0.7571067;
+
 function ChatbotAI() {
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState('');
@@ -50,8 +52,8 @@ function ChatbotAI() {
   // RAG Configuration State
   const [ragMode, setRagMode] = useState('off');
   const [ragTopK, setRagTopK] = useState(4);
-  const [ragContextTokens, setRagContextTokens] = useState(1200);
-  const [ragInputBudgetTokens, setRagInputBudgetTokens] = useState(30000);
+  const [ragContextTokens, setRagContextTokens] = useState(1000);
+  const [ragInputBudgetTokens, setRagInputBudgetTokens] = useState(2200);
   const [maxOutputTokens, setMaxOutputTokens] = useState(512);
   const [temperature, setTemperature] = useState(0.3);
   const [cacheEnabled, setCacheEnabled] = useState(false);
@@ -78,7 +80,7 @@ function ChatbotAI() {
   const [retrievalQuery, setRetrievalQuery] = useState('');
   const [retrievalMode, setRetrievalMode] = useState('hybrid');
   const [retrievalTopK, setRetrievalTopK] = useState(4);
-  const [retrievalThreshold] = useState(0.4);
+  const [retrievalThreshold] = useState(CALIBRATED_RAG_RELEVANCE_THRESHOLD);
   const [retrievalResult, setRetrievalResult] = useState(null);
   const [testingRetrieval, setTestingRetrieval] = useState(false);
 
@@ -197,9 +199,9 @@ function ChatbotAI() {
         // RAG Settings
         setRagMode(d.rag_mode || 'off');
         setRagTopK(d.rag_top_k !== undefined ? Number(d.rag_top_k) : 4);
-        setRagContextTokens(d.rag_context_tokens !== undefined ? Number(d.rag_context_tokens) : 1200);
-        setRagInputBudgetTokens(d.rag_input_budget_tokens !== undefined ? Number(d.rag_input_budget_tokens) : 3000);
-        setMaxOutputTokens(d.max_output_tokens !== undefined ? Number(d.max_output_tokens) : 512);
+        setRagContextTokens(d.rag_context_tokens !== undefined ? Number(d.rag_context_tokens) : 1000);
+        setRagInputBudgetTokens(d.rag_input_budget_tokens !== undefined ? Number(d.rag_input_budget_tokens) : 2200);
+        setMaxOutputTokens(d.max_output_tokens !== undefined ? Number(d.max_output_tokens) : 2048);
         setTemperature(d.temperature !== undefined ? Number(d.temperature) : 0.3);
         setCacheEnabled(d.cache_enabled === 1 || d.cache_enabled === true);
         setCacheTtlSeconds(d.cache_ttl_seconds !== undefined ? Number(d.cache_ttl_seconds) : 86400);
@@ -418,9 +420,9 @@ function ChatbotAI() {
     setChatbotMode('both');
     setRagMode('off');
     setRagTopK(4);
-    setRagContextTokens(1200);
-    setRagInputBudgetTokens(3000);
-    setMaxOutputTokens(512);
+    setRagContextTokens(1000);
+    setRagInputBudgetTokens(2200);
+    setMaxOutputTokens(2048);
     setTemperature(0.3);
     setCacheEnabled(false);
     setCacheTtlSeconds(86400);
@@ -640,7 +642,12 @@ function ChatbotAI() {
         })
       });
       if (result.status === 'success') {
-        window.showSuccess('Pengaturan Chatbot AI & RAG berhasil disimpan.');
+        const preflight = result.data?.rag_preflight;
+        if (ragMode !== 'off' && preflight && !preflight.ready) {
+          window.showWarning(`Pengaturan tersimpan, tetapi pre-flight RAG belum siap: ${preflight.blocking_codes.join(', ')}.`);
+        } else {
+          window.showSuccess('Pengaturan Chatbot AI & RAG berhasil disimpan dan pre-flight selesai.');
+        }
         fetchAISettings(selectedSession);
         fetchRagStatus(selectedSession);
       } else {
@@ -720,14 +727,29 @@ function ChatbotAI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: selectedSession,
-          rag_mode: nextMode
+          rag_mode: nextMode,
+          ...(nextMode !== 'off' ? {
+            rag_top_k: Number(ragTopK),
+            rag_context_tokens: Number(ragContextTokens),
+            rag_input_budget_tokens: Number(ragInputBudgetTokens),
+            temperature: Number(temperature),
+            cache_enabled: cacheEnabled ? 1 : 0,
+            cache_ttl_seconds: Number(cacheTtlSeconds),
+            direct_answer_enabled: directAnswerEnabled ? 1 : 0,
+            debounce_ms: Number(debounceMs)
+          } : {})
         })
       });
       if (result.status === 'success') {
         const modeLabel = nextMode === 'off'
           ? 'NON-RAG (Standar Prompt AI)'
           : (nextMode === 'fts' ? 'RAG AKTIF (Pencarian Kata Kunci FTS5)' : 'RAG AKTIF (Hybrid: Semantik + Kata Kunci)');
-        window.showSuccess(`Metode basis pengetahuan sesi diubah: ${modeLabel}.`);
+        const preflight = result.data?.rag_preflight;
+        if (nextMode !== 'off' && preflight && !preflight.ready) {
+          window.showWarning(`${modeLabel} tersimpan, tetapi pre-flight belum siap: ${preflight.blocking_codes.join(', ')}.`);
+        } else {
+          window.showSuccess(`Metode basis pengetahuan sesi diubah: ${modeLabel}. Pre-flight selesai.`);
+        }
         fetchRagStatus(selectedSession);
       } else {
         window.showError(result.message || 'Gagal mengubah mode RAG.');
@@ -2253,6 +2275,28 @@ function ChatbotAI() {
                       <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '4px' }}>Revisi #{ragStatus?.current_revision || 0} (Config #{ragStatus?.config_revision || 1})</div>
                     </div>
                   </div>
+
+                  {ragStatus?.preflight && ragStatus.preflight.state !== 'DISABLED' && (
+                    <div style={{
+                      padding: '12px 14px',
+                      borderRadius: 'var(--border-radius-md)',
+                      background: ragStatus.preflight.ready ? 'rgba(16,185,129,0.08)' : 'rgba(245,158,11,0.08)',
+                      border: `1px solid ${ragStatus.preflight.ready ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8125rem', fontWeight: 700, color: ragStatus.preflight.ready ? '#10b981' : '#f59e0b' }}>
+                        {ragStatus.preflight.ready ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                        Auto Pre-flight: {ragStatus.preflight.state.replaceAll('_', ' ')}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Mode efektif: <strong style={{ color: 'var(--text-main)' }}>{ragStatus.preflight.effective_mode?.toUpperCase() || 'BELUM SIAP'}</strong>
+                        {ragStatus.preflight.warning_codes?.length > 0 && ` · Peringatan: ${ragStatus.preflight.warning_codes.join(', ')}`}
+                        {ragStatus.preflight.blocking_codes?.length > 0 && ` · Penghambat: ${ragStatus.preflight.blocking_codes.join(', ')}`}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Active Job Alert - hanya muncul jika job benar-benar PENDING / RUNNING */}
                   {ragStatus?.active_job && ['PENDING', 'RUNNING'].includes(ragStatus.active_job.status) && (

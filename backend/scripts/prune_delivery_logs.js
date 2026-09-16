@@ -8,16 +8,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const dbPath = process.env.WA_BOT_DB_PATH || join(__dirname, '..', 'database.sqlite');
 const retentionDays = Number.parseInt(process.env.WA_BOT_LOG_RETENTION_DAYS || '30', 10);
+const aiUsageRetentionDays = Number.parseInt(process.env.WA_BOT_AI_USAGE_RETENTION_DAYS || '30', 10);
+const ragJobRetentionDays = Number.parseInt(process.env.WA_BOT_RAG_JOB_RETENTION_DAYS || '7', 10);
 const shouldApply = process.argv.includes('--apply');
 
-if (!Number.isFinite(retentionDays) || retentionDays < 1) {
-  throw new Error('WA_BOT_LOG_RETENTION_DAYS harus berupa angka positif.');
+if ([retentionDays, aiUsageRetentionDays, ragJobRetentionDays]
+  .some((value) => !Number.isFinite(value) || value < 1)) {
+  throw new Error('Seluruh nilai retensi harus berupa angka positif.');
 }
 
 const ageLimitMs = retentionDays * 24 * 60 * 60 * 1000;
 const cutOffDate = new Date(Date.now() - ageLimitMs);
 
 console.log(`[Logs Pruner] Retention: ${retentionDays} hari`);
+console.log(`[RAG Pruner] Usage retention: ${aiUsageRetentionDays} hari; terminal job retention: ${ragJobRetentionDays} hari`);
 console.log(`[Logs Pruner] Batas waktu: ${cutOffDate.toISOString()}`);
 
 const db = new sqlite3.Database(dbPath);
@@ -45,6 +49,29 @@ const pruneDbTable = (tableName) => {
         }
         console.log(`[Database] Table ${tableName} - Baris dihapus: ${this.changes}`);
         resolvePromise(this.changes);
+      });
+    });
+  });
+};
+
+const pruneOptionalDbRows = (tableName, whereClause, params = []) => {
+  return new Promise((resolvePromise, rejectPromise) => {
+    db.get("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?", [tableName], (tableError, tableRow) => {
+      if (tableError) return rejectPromise(tableError);
+      if (!tableRow) {
+        console.log(`[RAG Pruner] Table ${tableName} belum tersedia; dilewati.`);
+        return resolvePromise(0);
+      }
+      db.get(`SELECT COUNT(*) AS count FROM ${tableName} WHERE ${whereClause}`, params, (countError, row) => {
+        if (countError) return rejectPromise(countError);
+        const count = row ? row.count : 0;
+        console.log(`[RAG Pruner] Table ${tableName} - Kandidat penghapusan: ${count}`);
+        if (!shouldApply) return resolvePromise(0);
+        db.run(`DELETE FROM ${tableName} WHERE ${whereClause}`, params, function onDelete(deleteError) {
+          if (deleteError) return rejectPromise(deleteError);
+          console.log(`[RAG Pruner] Table ${tableName} - Baris dihapus: ${this.changes}`);
+          resolvePromise(this.changes);
+        });
       });
     });
   });
@@ -126,6 +153,17 @@ const pruneBackups = async () => {
 try {
   await pruneDbTable('delivery_logs');
   await pruneDbTable('warmer_logs');
+  await pruneOptionalDbRows('rag_response_cache', "expires_at <= datetime('now')");
+  await pruneOptionalDbRows(
+    'chatbot_ai_usage',
+    "created_at IS NOT NULL AND created_at < datetime('now', ?)",
+    [`-${aiUsageRetentionDays} days`]
+  );
+  await pruneOptionalDbRows(
+    'rag_index_jobs',
+    "status IN ('READY', 'FAILED', 'SUPERSEDED') AND updated_at IS NOT NULL AND updated_at < datetime('now', ?)",
+    [`-${ragJobRetentionDays} days`]
+  );
   await pruneExportFiles();
   await pruneBackups();
 

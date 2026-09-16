@@ -13,7 +13,7 @@ Updated: 2026-09-14
 
 The three branches were published to `origin` on 2026-09-11 after explicit approval. Publishing the refs did not merge or deploy them, and `origin/main` remained at `63c93c6`. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
 
-Current local milestone on 2026-09-14: RAG-0901–RAG-0910 are complete as retrieval and measurement work, so Fase 9 is 10/15. Two paid generation runs recorded 310 provider requests and sanitized A/B transcripts; the final run preserved required claims 35/35 but conservative groundedness 32/35 remains below target. Full backend 385/385 passed across 74 suites, frontend production build/API guard passed, and route/OpenAPI parity remains 123/123. These are LOCAL/GIT candidate facts only; real embedding all-in cost, billing reconciliation, runtime migration, WhatsApp delivery, staging deploy, UAT, and merge to `main` have not occurred.
+Current local milestone on 2026-09-15: RAG-0901–RAG-0915 are complete, so Fase 9 is 15/15 and the overall checklist is 118/131 DONE, 1 partial, 12 TODO. The final 25-request run recorded 10/10 social persona replies without false CS, 10/10 contextual gold-source hits, and 5/5 weak false positives avoided by threshold 0.7571067. Full backend 395/395 passed across 78 suites, frontend lint/build/API guard and QA passed, npm audit reports 0 vulnerabilities, and route/OpenAPI parity remains 123/123. These are LOCAL/GIT candidate facts only; the prior grounded score 32/35 remains below target, and real embedding all-in cost, billing reconciliation, runtime migration, WhatsApp delivery, staging deploy, UAT, and merge to `main` have not occurred.
 
 ## Separation rules
 

@@ -220,9 +220,10 @@ test('RAG-0910 transcript sanitizer dan runtime event allowlist tidak membocorka
   ]);
   assert.deepEqual(audit, { passed: true, detected_labels: [] });
   assert.deepEqual(Object.keys(event).sort(), [
-    'ai_call_avoided', 'cache_hit', 'chunk_count', 'debounced', 'debounced_count',
-    'delivered', 'direct_answer', 'embedding_fallback', 'event', 'provider_latency_ms',
-    'rag_mode', 'request_id', 'retrieval_latency_ms', 'retrieval_reason', 'retrieval_type',
-    'status', 'total_latency_ms', 'user_id'
+    'ai_call_avoided', 'cache_hit', 'chunk_count', 'conversational_fallback',
+    'debounced', 'debounced_count', 'delivered', 'direct_answer', 'embedding_fallback',
+    'event', 'provider_latency_ms', 'query_kind', 'rag_mode', 'relevance_threshold',
+    'request_id', 'retrieval_latency_ms', 'retrieval_reason', 'retrieval_type', 'status',
+    'threshold_source', 'total_latency_ms', 'user_id'
   ]);
 });

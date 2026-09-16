@@ -445,7 +445,7 @@ export async function pruneOldRagIndexJobs({
   const cutoffDate = new Date(now.getTime() - olderThanDays * 86_400_000).toISOString();
   try {
     const result = await client.run(
-      "DELETE FROM rag_index_jobs WHERE status IN ('READY', 'SUPERSEDED') AND updated_at <= ?",
+      "DELETE FROM rag_index_jobs WHERE status IN ('READY', 'FAILED', 'SUPERSEDED') AND updated_at <= ?",
       [cutoffDate]
     );
     return result?.changes || 0;

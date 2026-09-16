@@ -6,6 +6,7 @@ import { resolveKnowledgeBase } from './chatbot_ai.service.js';
 import { buildChatCompletionPayload, resolveChatTemperature } from './chatbot_ai_runtime.service.js';
 import {
   buildProductionMessages,
+  buildRagConversationalFallbackMessages,
   buildRagProductionMessages
 } from './chatbot_ai_prompt.service.js';
 import { executeInstrumentedChatCompletion } from './chatbot_ai_provider.service.js';
@@ -30,6 +31,7 @@ import {
   shouldCacheResult,
   resolveDirectAnswerCandidate
 } from './chatbot_ai_rag_cache.service.js';
+import { resolveRagQueryPolicy } from './chatbot_ai_rag_policy.service.js';
 
 export const CS_FALLBACK_MESSAGE =
   'Mohon maaf, saya belum bisa menjawab pertanyaan tersebut saat ini. ' +
@@ -376,17 +378,19 @@ export async function executeRagRetrieval({
   }
 
   const hardInputBudget = resolveHardInputBudget(aiSettings);
+  const queryPolicy = resolveRagQueryPolicy({
+    query: cleanText,
+    mode: queryVector ? 'hybrid' : 'fts',
+    hasQueryVector: Boolean(queryVector),
+    explicitThreshold: aiSettings?.rag_threshold
+  });
   const retrievalOptions = {
     userId,
     sessionId,
     query: cleanText,
     queryVector,
     mode: queryVector ? 'hybrid' : 'fts',
-    relevanceThreshold: queryVector
-      ? (aiSettings?.rag_threshold !== undefined && aiSettings?.rag_threshold !== null
-          ? Number(aiSettings.rag_threshold)
-          : 0.4)
-      : 0.0,
+    relevanceThreshold: queryPolicy.relevance_threshold,
     topK: aiSettings.rag_top_k || RAG_CONTEXT_DEFAULTS.TOP_K,
     contextTokenBudget:
       aiSettings.rag_context_tokens || RAG_CONTEXT_DEFAULTS.CONTEXT_TOKEN_BUDGET,
@@ -410,6 +414,7 @@ export async function executeRagRetrieval({
     ragResult,
     effectiveMode,
     embeddingFallback,
+    queryPolicy,
     reason: ragResult.selected_count > 0 ? 'ready' : 'no_relevant_chunks'
   };
 }
@@ -561,128 +566,162 @@ async function processInboundAIMessageCore({
         });
       }
 
-      const retrievalStartedAt = performance.now();
-      let retrieval;
-      try {
-        retrieval = await dependencies.executeRagRetrieval({
-          userId,
-          sessionId: safeSessionId,
-          cleanText: safeText,
-          aiSettings,
-          baseInputTokens,
-          databaseClient
-        }, dependencies);
-      } catch {
-        ragMetadata.retrieval_latency_ms = performance.now() - retrievalStartedAt;
-        return await fallback('retrieval_failed');
-      }
-      ragMetadata = {
-        ...ragMetadata,
-        effective_mode: retrieval.effectiveMode,
-        embedding_fallback: retrieval.embeddingFallback === true,
-        retrieval_latency_ms: performance.now() - retrievalStartedAt,
-        retrieval_reason: retrieval.reason
-      };
-      if (retrieval.reason !== 'ready' || !retrieval.ragResult) {
-        return await fallback(retrieval.reason);
-      }
-
-      // RAG-0707: Canonical Direct Answer check
-      if (aiSettings?.direct_answer_enabled === 1 && retrieval.ragResult?.results?.length > 0) {
-        const directCandidate = dependencies.resolveDirectAnswerCandidate(retrieval.ragResult, {
-          threshold: aiSettings.direct_answer_threshold
+      const initialQueryPolicy = resolveRagQueryPolicy({
+        query: safeText,
+        mode: aiSettings.rag_mode,
+        hasQueryVector: false
+      });
+      if (!initialQueryPolicy.should_retrieve) {
+        messages = buildRagConversationalFallbackMessages({
+          systemInstruction: aiSettings.system_instruction,
+          userMessage: safeText
         });
-        if (directCandidate?.isDirectAnswer) {
-          let delivered = false;
-          if (deliverReply) {
-            const accessCheck = await dependencies.recheckDeliveryAccess({
-              userId,
-              sessionId: safeSessionId,
-              databaseClient
-            });
-            if (!accessCheck.allowed) {
-              return {
-                status: RAG_RUNTIME_STATUSES.SKIPPED,
-                reply: null,
-                delivered: false,
-                ragMetadata: {
-                  ...ragMetadata,
-                  delivery_cancelled_reason: accessCheck.reason,
-                  direct_answer: true,
-                  ai_call_avoided: true
-                },
-                usageContext: null,
-                error: `Delivery dibatalkan karena status akses berubah: ${accessCheck.reason}`
-              };
-            }
-            await deliverReply(directCandidate.directReply);
-            delivered = true;
-          }
+        const estimatedInputTokens = dependencies.estimateChatInputTokens(messages);
+        if (estimatedInputTokens > hardInputBudget) {
+          return await fallback('final_input_budget_exceeded', {
+            ...ragMetadata,
+            estimated_total_input_tokens: estimatedInputTokens,
+            hard_input_budget_tokens: hardInputBudget
+          });
+        }
+        ragMetadata = {
+          ...ragMetadata,
+          effective_mode: 'conversation',
+          retrieval_reason: 'conversational_fallback',
+          conversational_fallback: true,
+          query_kind: initialQueryPolicy.query_kind,
+          selected_count: 0,
+          estimated_total_input_tokens: estimatedInputTokens,
+          hard_input_budget_tokens: hardInputBudget,
+          within_hard_budget: true
+        };
+      } else {
+        const retrievalStartedAt = performance.now();
+        let retrieval;
+        try {
+          retrieval = await dependencies.executeRagRetrieval({
+            userId,
+            sessionId: safeSessionId,
+            cleanText: safeText,
+            aiSettings,
+            baseInputTokens,
+            databaseClient
+          }, dependencies);
+        } catch {
+          ragMetadata.retrieval_latency_ms = performance.now() - retrievalStartedAt;
+          return await fallback('retrieval_failed');
+        }
+        ragMetadata = {
+          ...ragMetadata,
+          effective_mode: retrieval.effectiveMode,
+          embedding_fallback: retrieval.embeddingFallback === true,
+          retrieval_latency_ms: performance.now() - retrievalStartedAt,
+          retrieval_reason: retrieval.reason,
+          relevance_threshold: retrieval.queryPolicy?.relevance_threshold ?? null,
+          threshold_source: retrieval.queryPolicy?.threshold_source ?? null,
+          query_kind: retrieval.queryPolicy?.query_kind ?? 'knowledge'
+        };
+        if (retrieval.reason !== 'ready' || !retrieval.ragResult) {
+          return await fallback(retrieval.reason);
+        }
 
-          if (aiSettings?.cache_enabled === 1 && dependencies.shouldCacheResult({
-            status: RAG_RUNTIME_STATUSES.REPLIED,
-            reply: directCandidate.directReply,
-            finishReason: 'stop',
-            error: null
-          }, { query: safeText })) {
-            try {
-              await dependencies.storeCachedResponse({
+        // RAG-0707: Canonical Direct Answer check
+        if (aiSettings?.direct_answer_enabled === 1 && retrieval.ragResult?.results?.length > 0) {
+          const directCandidate = dependencies.resolveDirectAnswerCandidate(retrieval.ragResult, {
+            threshold: aiSettings.direct_answer_threshold
+          });
+          if (directCandidate?.isDirectAnswer) {
+            let delivered = false;
+            if (deliverReply) {
+              const accessCheck = await dependencies.recheckDeliveryAccess({
                 userId,
                 sessionId: safeSessionId,
-                query: safeText,
-                promptVersion: aiSettings.prompt_version || 1,
-                configRevision: aiSettings.config_revision || 1,
-                model,
-                temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing'),
-                reply: directCandidate.directReply,
-                ttlSeconds: aiSettings.cache_ttl_seconds,
                 databaseClient
               });
-            } catch {
-              // Cache store failure must not fail the reply delivery.
+              if (!accessCheck.allowed) {
+                return {
+                  status: RAG_RUNTIME_STATUSES.SKIPPED,
+                  reply: null,
+                  delivered: false,
+                  ragMetadata: {
+                    ...ragMetadata,
+                    delivery_cancelled_reason: accessCheck.reason,
+                    direct_answer: true,
+                    ai_call_avoided: true
+                  },
+                  usageContext: null,
+                  error: `Delivery dibatalkan karena status akses berubah: ${accessCheck.reason}`
+                };
+              }
+              await deliverReply(directCandidate.directReply);
+              delivered = true;
             }
+
+            if (aiSettings?.cache_enabled === 1 && dependencies.shouldCacheResult({
+              status: RAG_RUNTIME_STATUSES.REPLIED,
+              reply: directCandidate.directReply,
+              finishReason: 'stop',
+              error: null
+            }, { query: safeText })) {
+              try {
+                await dependencies.storeCachedResponse({
+                  userId,
+                  sessionId: safeSessionId,
+                  query: safeText,
+                  promptVersion: aiSettings.prompt_version || 1,
+                  configRevision: aiSettings.config_revision || 1,
+                  model,
+                  temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing'),
+                  reply: directCandidate.directReply,
+                  ttlSeconds: aiSettings.cache_ttl_seconds,
+                  databaseClient
+                });
+              } catch {
+                // Cache store failure must not fail the reply delivery.
+              }
+            }
+
+            return {
+              status: RAG_RUNTIME_STATUSES.REPLIED,
+              reply: directCandidate.directReply,
+              delivered,
+              fromDirectAnswer: true,
+              ragMetadata: {
+                ...ragMetadata,
+                direct_answer: true,
+                ai_call_avoided: true,
+                effective_mode: 'direct_answer',
+                confidence: directCandidate.confidence,
+                selected_count: retrieval.ragResult.selected_count
+              },
+              usageContext: null,
+              error: null
+            };
           }
-
-          return {
-            status: RAG_RUNTIME_STATUSES.REPLIED,
-            reply: directCandidate.directReply,
-            delivered,
-            fromDirectAnswer: true,
-            ragMetadata: {
-              ...ragMetadata,
-              direct_answer: true,
-              ai_call_avoided: true,
-              effective_mode: 'direct_answer',
-              confidence: directCandidate.confidence,
-              selected_count: retrieval.ragResult.selected_count
-            },
-            usageContext: null,
-            error: null
-          };
         }
-      }
 
-      messages = buildRagProductionMessages({
-        systemInstruction: aiSettings.system_instruction,
-        ragContext: retrieval.ragResult.context,
-        userMessage: safeText
-      });
-      const estimatedInputTokens = dependencies.estimateChatInputTokens(messages);
-      if (estimatedInputTokens > hardInputBudget) {
-        return await fallback('final_input_budget_exceeded', {
-          ...ragMetadata,
-          estimated_total_input_tokens: estimatedInputTokens,
-          hard_input_budget_tokens: hardInputBudget
+        messages = buildRagProductionMessages({
+          systemInstruction: aiSettings.system_instruction,
+          ragContext: retrieval.ragResult.context,
+          userMessage: safeText
         });
+        const estimatedInputTokens = dependencies.estimateChatInputTokens(messages);
+        if (estimatedInputTokens > hardInputBudget) {
+          return await fallback('final_input_budget_exceeded', {
+            ...ragMetadata,
+            estimated_total_input_tokens: estimatedInputTokens,
+            hard_input_budget_tokens: hardInputBudget
+          });
+        }
+        ragMetadata = {
+          ...ragMetadata,
+          selected_count: retrieval.ragResult.selected_count,
+          context_tokens: retrieval.ragResult.context_tokens,
+          estimated_total_input_tokens: estimatedInputTokens,
+          hard_input_budget_tokens: hardInputBudget,
+          within_hard_budget: true
+        };
       }
-      ragMetadata = {
-        ...ragMetadata,
-        selected_count: retrieval.ragResult.selected_count,
-        context_tokens: retrieval.ragResult.context_tokens,
-        estimated_total_input_tokens: estimatedInputTokens,
-        hard_input_budget_tokens: hardInputBudget,
-        within_hard_budget: true
-      };
     } else {
       const knowledgeBase = await dependencies.resolveKnowledgeBase(aiSettings);
       messages = buildProductionMessages({

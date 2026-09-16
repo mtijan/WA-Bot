@@ -1,12 +1,14 @@
 import { logger } from '../logger.js';
 
-const MODES = new Set(['off', 'fts', 'hybrid', 'legacy', 'cache', 'direct_answer']);
+const MODES = new Set(['off', 'fts', 'hybrid', 'legacy', 'cache', 'direct_answer', 'conversation']);
 const STATUSES = new Set(['REPLIED', 'EMPTY_REPLY', 'CS_FALLBACK', 'ERROR', 'SKIPPED']);
 const REASONS = new Set([
   'ready', 'index_not_ready', 'no_relevant_chunks', 'retrieval_failed',
   'input_budget_exceeded', 'final_input_budget_exceeded',
-  'output_truncated', 'output_rejected', 'runtime_failed'
+  'output_truncated', 'output_rejected', 'runtime_failed', 'conversational_fallback'
 ]);
+const THRESHOLD_SOURCES = new Set(['lexical', 'explicit', 'calibrated_hybrid', 'conversational_bypass']);
+const QUERY_KINDS = new Set(['knowledge', 'social']);
 
 function duration(value) {
   return Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
@@ -25,6 +27,13 @@ export function buildRagRuntimeEvent({ userId, result, totalLatencyMs }) {
     rag_mode: MODES.has(metadata.rag_mode) ? metadata.rag_mode : null,
     retrieval_type: MODES.has(metadata.effective_mode) ? metadata.effective_mode : null,
     retrieval_reason: REASONS.has(metadata.retrieval_reason) ? metadata.retrieval_reason : null,
+    query_kind: QUERY_KINDS.has(metadata.query_kind) ? metadata.query_kind : null,
+    relevance_threshold: Number.isFinite(metadata.relevance_threshold)
+      && metadata.relevance_threshold >= 0 && metadata.relevance_threshold <= 1
+      ? Number(metadata.relevance_threshold) : null,
+    threshold_source: THRESHOLD_SOURCES.has(metadata.threshold_source)
+      ? metadata.threshold_source : null,
+    conversational_fallback: metadata.conversational_fallback === true,
     embedding_fallback: metadata.embedding_fallback === true,
     cache_hit: metadata.cache_hit === true,
     direct_answer: metadata.direct_answer === true,
