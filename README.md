@@ -16,7 +16,6 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - Panduan Pengujian (Testing)
 - Panduan Pemeliharaan (Maintenance)
 - Keamanan & Praktik Terbaik
-- Lisensi
 
 ---
 
@@ -209,9 +208,3 @@ npm run logs:prune:apply
 - **Sesi Legacy Lokal:** Jika sesi dibuat sebelum v2.9.9 tanpa key eksplisit, pertahankan foldernya tetapi lakukan pairing ulang dengan key baru yang stabil; jangan menghapus folder sesi lama tanpa konfirmasi target yang tepat.
 - **Batas Media dan AI:** Lampiran harus berasal dari `/api/uploads/media/*`; path lokal lain dan URL remote ditolak. Base URL provider AI wajib HTTPS publik, tidak boleh menuju localhost/private/reserved IP, dan redirect HTTP ditolak.
 - **Monitoring Mandiri:** Pantau performa melalui endpoint kesiapan `/health/ready` (untuk API publik) dan `/internal/health/ready` (untuk internal workers). Netdata diatur hanya mendengarkan di localhost (`127.0.0.1:19999`) dan diakses aman menggunakan SSH Tunneling.
-
----
-
-## Lisensi
-
-Proyek internal eksklusif. Dilarang mendistribusikan ulang kode sumber tanpa persetujuan tertulis pemilik lisensi.
