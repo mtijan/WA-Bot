@@ -16,7 +16,6 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - Panduan Pengujian (Testing)
 - Panduan Pemeliharaan (Maintenance)
 - Keamanan & Praktik Terbaik
-- Indeks Dokumentasi Lengkap
 - Lisensi
 
 ---
@@ -50,7 +49,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 
 ## Prasyarat Sistem
 
-- Node.js >= 18.16.0
+- Node.js 20.19+ (LTS 20) atau 22.12+; staging terverifikasi memakai Node.js 22.x
 - npm >= 9.x
 - Sistem Operasi: Windows, Linux (Ubuntu disarankan untuk staging), macOS
 
@@ -141,10 +140,11 @@ Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan
 
 - **Monolith Mode (API + Workers):** `npm start`
 - **API Server Only:** `npm run start:api` (Express HTTP server saja, dapat mendelegasikan sesi ke manajer sesi internal lewat `WA_BOT_SESSION_MANAGER_URL`)
-- **Combined Worker:** `npm run start:worker` (Menjalankan session manager, polling campaign, dan polling warmer secara bersamaan tanpa HTTP API publik)
+- **Combined Worker:** `npm run start:worker` (Menjalankan session manager, polling campaign/warmer, dan polling index RAG jika `WA_BOT_RAG_INDEX_WORKER_ENABLED=true`, tanpa HTTP API publik)
 - **Session Manager Only:** `npm run start:sessions` (Menjalankan manajer sesi Baileys saja)
 - **Campaign Worker Only:** `npm run start:campaign-worker` (Memproses antrean pengiriman pesan campaign massal)
 - **Warmer Worker Only:** `npm run start:warmer-worker` (Memproses simulasi chat pemanasan reputasi akun)
+- **RAG Index Sekali Jalan:** `npm run rag:index:once` (Memulihkan lease kedaluwarsa lalu memproses satu batch job index RAG yang due; tetap memerlukan migration dan rollout runtime yang disetujui)
 
 ---
 
@@ -209,35 +209,6 @@ npm run logs:prune:apply
 - **Sesi Legacy Lokal:** Jika sesi dibuat sebelum v2.9.9 tanpa key eksplisit, pertahankan foldernya tetapi lakukan pairing ulang dengan key baru yang stabil; jangan menghapus folder sesi lama tanpa konfirmasi target yang tepat.
 - **Batas Media dan AI:** Lampiran harus berasal dari `/api/uploads/media/*`; path lokal lain dan URL remote ditolak. Base URL provider AI wajib HTTPS publik, tidak boleh menuju localhost/private/reserved IP, dan redirect HTTP ditolak.
 - **Monitoring Mandiri:** Pantau performa melalui endpoint kesiapan `/health/ready` (untuk API publik) dan `/internal/health/ready` (untuk internal workers). Netdata diatur hanya mendengarkan di localhost (`127.0.0.1:19999`) dan diakses aman menggunakan SSH Tunneling.
-
----
-
-## Indeks Dokumentasi Lengkap
-
-Perencanaan terbaru mencakup dua workstream yang tetap **PLANNED**: Chatbot AI Token Optimization / Hybrid RAG (2026-09-05) dan WhatsApp Socket Lifecycle & AI Delivery Race Hardening (2026-09-07). Workstream socket menutup risiko balasan memakai socket lama setelah reconnect, timer reconnect tumpang tindih, dan klasifikasi salah antara error provider AI dengan transport WhatsApp. Belum ada implementasi/deploy runtime dari revisi dokumentasi ini.
-
-- [Rencana optimasi dan baseline biaya](docs/CHATBOT_AI_TOKEN_OPTIMIZATION.md)
-- [Desain detail FR/RTM, ERD, diagram dan API target](docs/CHATBOT_AI_RAG_DESIGN.md)
-- [Checklist pekerjaan, dependencies, acceptance dan bukti](docs/CHATBOT_AI_RAG_CHECKLIST.md)
-- [Rencana hardening lifecycle socket dan race pengiriman AI](docs/WHATSAPP_SOCKET_LIFECYCLE_HARDENING_PLAN.md)
-
-Seluruh dokumentasi teknis tersimpan di dalam folder `docs/`. Anda dapat merujuk ke dokumen berikut untuk pemahaman mendalam:
-
-| Berkas Dokumen | Tujuan & Deskripsi |
-|----------------|---------------------|
-| [sdlc_documentation.md](file:///d:/Self%20Project/WA-Bot/sdlc_documentation.md) | Dokumen master SDLC: SRS, arsitektur, test plan, dan peta jalan VPS. |
-| [docs/RUNBOOK.md](file:///d:/Self%20Project/WA-Bot/docs/RUNBOOK.md) | Panduan operasional harian, tata cara pemulihan darurat, pruner, dan backup. |
-| [docs/SECURITY.md](file:///d:/Self%20Project/WA-Bot/docs/SECURITY.md) | Kebijakan keamanan, kontrol aktif, backend hardening, dan checklist rilis. |
-| [docs/PRIVACY.md](file:///d:/Self%20Project/WA-Bot/docs/PRIVACY.md) | Kebijakan pesan, aturan persetujuan (consent), penanganan opt-out, dan retensi log. |
-| [docs/MONITORING.md](file:///d:/Self%20Project/WA-Bot/docs/MONITORING.md) | Metrik yang harus dipantau, batas ambang sumber daya (thresholds), dan respons alert. |
-| [docs/STAGING.md](file:///d:/Self%20Project/WA-Bot/docs/STAGING.md) | Catatan dan bukti verifikasi lingkungan staging VPS. |
-| [docs/CODEBASE_QUALITY.md](file:///d:/Self%20Project/WA-Bot/docs/CODEBASE_QUALITY.md) | Panduan migrasi logger Pino, response helper, dan struktur config. |
-| [docs/MEDIA_UPLOAD_WORKLOG.md](file:///d:/Self%20Project/WA-Bot/docs/MEDIA_UPLOAD_WORKLOG.md) | Catatan log implementasi fitur pengunggahan media di backend & frontend. |
-| [docs/WHATSAPP_SOCKET_LIFECYCLE_HARDENING_PLAN.md](file:///d:/Self%20Project/WA-Bot/docs/WHATSAPP_SOCKET_LIFECYCLE_HARDENING_PLAN.md) | Rencana generation-safe socket, outbound gateway, retry aman, test race, observability, rollout, dan rollback. |
-| [docs/deploy/README.md](file:///d:/Self%20Project/WA-Bot/docs/deploy/README.md) | Template konfigurasi server (PM2, systemd, Caddy, logrotate). |
-| [docs/openapi.yaml](file:///d:/Self%20Project/WA-Bot/docs/openapi.yaml) | Spesifikasi OpenAPI 3.0 untuk endpoints REST API. |
-| [checklist.html](file:///d:/Self%20Project/WA-Bot/checklist.html) | Halaman referensi interaktif status roadmap development. |
-| [AGENTS.md](file:///d:/Self%20Project/WA-Bot/AGENTS.md) | Catatan serah terima (handoff context) untuk agen AI berikutnya. |
 
 ---
 
