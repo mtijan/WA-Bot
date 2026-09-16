@@ -29,7 +29,9 @@ const BUSINESS_MARKERS = new Set([
 const SOCIAL_PATTERNS = Object.freeze([
   /^(?:hai+|halo+|hello+|hi+|hei+|hey+)(?:\s+(?:kak|admin|min|bot))?$/u,
   /^(?:hai+|halo+|hello+|hi+|hei+|hey+)(?:\s+(?:kak|admin|min|bot))?\s+(?:apa\s+kabar|gimana\s+kabarnya)$/u,
+  /^(?:hai+|halo+|hello+|hi+|hei+|hey+)(?:\s+(?:kak|admin|min|bot))?\s+semoga\s+(?:hari|harimu)\s+[\p{L}\s]+$/u,
   /^(?:selamat\s+(?:pagi|siang|sore|malam))(?:\s+(?:kak|admin|min|bot))?$/u,
+  /^(?:selamat\s+(?:pagi|siang|sore|malam))(?:\s+(?:kak|admin|min|bot))?\s+(?:apa\s+kabar|gimana\s+kabarnya)$/u,
   /^(?:apa\s+kabar|gimana\s+kabarnya)(?:\s+(?:kak|admin|min|bot))?$/u,
   /^(?:makasih|terima\s+kasih|thanks|thank\s+you)(?:\s+(?:ya|kak|admin|min|bot))?$/u,
   /^(?:siapa\s+(?:nama\s+)?kamu|kamu\s+siapa)$/u,

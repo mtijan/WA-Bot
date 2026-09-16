@@ -4,7 +4,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
 **Versi Dokumen/Sistem:** 2.9.9
-**Terakhir Diperbarui:** 2026-07-25
+**Terakhir Diperbarui:** 2026-09-16
 
 ---
 
@@ -16,7 +16,6 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - Panduan Pengujian (Testing)
 - Panduan Pemeliharaan (Maintenance)
 - Keamanan & Praktik Terbaik
-- Lisensi
 
 ---
 
@@ -29,6 +28,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Chatbot Flow:** Alur auto-reply interaktif berbasis node dengan perancang visual yang mendukung teks, gambar, video, audio, dokumen, dan template respons.
 - **Chatbot Flow Runtime Scaling:** Assignment flow-ke-sesi dinormalisasi melalui `chatbot_flow_sessions`, sehingga pesan masuk hanya mencari flow aktif untuk sesi terkait lewat index dan tidak melakukan scan semua flow aktif.
 - **Chatbot AI:** Integrasi penyedia AI (seperti OpenAI GPT atau Google Gemini) dengan mode operasional fleksibel per-sesi (off, chatbot flow saja, AI saja, atau kombinasi keduanya).
+- **Hybrid RAG (pengembangan lokal):** Retrieval tenant/session-scoped, shadow evaluation, rollout transition gate, dan rollback FTS/CS tersedia di branch pengembangan/release. Fitur ini belum diaktifkan di staging/produksi; full-KB tetap aktif secara default sampai quality, billing, migration, rollback-window, dan OPS/UAT gate ditutup.
 - **Group Grabber:** Ekstraksi anggota grup WhatsApp secara instan ke file CSV 14 kolom dengan resolusi LID (Lid-to-Jid resolution) untuk penargetan campaign yang aman.
 - **Single Message Composer:** Pengiriman pesan individual cepat dengan dukungan lampiran media dan pembuatan jajak pendapat (polls).
 - **Media Upload Manager:** Upload gambar (maksimal 5 MB), video (maksimal 10 MB), audio (maksimal 2 MB), dan dokumen (maksimal 5 MB) dengan mitigasi Stored XSS, metadata kepemilikan tenant di `uploaded_media`, serta download/delete terautentikasi hanya untuk pemilik file.
@@ -145,12 +145,14 @@ Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan
 - **Campaign Worker Only:** `npm run start:campaign-worker` (Memproses antrean pengiriman pesan campaign massal)
 - **Warmer Worker Only:** `npm run start:warmer-worker` (Memproses simulasi chat pemanasan reputasi akun)
 
+Kontrol rollout RAG bersifat default-safe. Shadow dan rollback hanya boleh diaktifkan setelah review menggunakan `WA_BOT_RAG_SHADOW_MODE`, `WA_BOT_RAG_ROLLBACK_FTS_SESSIONS`, dan `WA_BOT_RAG_ROLLBACK_CS_SESSIONS`. Jangan mengubah `WA_BOT_RAG_LEGACY_FULL_KB_ENABLED=false` sebelum rollout 100%, rollback drill, rollback window, staging readiness, dan pengecualian legacy telah diverifikasi.
+
 ---
 
 ## Panduan Pengujian (Testing)
 
 ### Pengujian Unit & Integrasi Backend
-Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, serta isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite terakhir: 120 test pass.
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, isolasi/mapping sesi flow, dan RAG rollout/rollback) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite lokal terakhir: 414/414 test pass pada 78 suite (2026-09-16); ini bukan bukti staging atau UAT.
 ```bash
 cd backend
 npm test
@@ -208,9 +210,3 @@ npm run logs:prune:apply
 - **Sesi Legacy Lokal:** Jika sesi dibuat sebelum v2.9.9 tanpa key eksplisit, pertahankan foldernya tetapi lakukan pairing ulang dengan key baru yang stabil; jangan menghapus folder sesi lama tanpa konfirmasi target yang tepat.
 - **Batas Media dan AI:** Lampiran harus berasal dari `/api/uploads/media/*`; path lokal lain dan URL remote ditolak. Base URL provider AI wajib HTTPS publik, tidak boleh menuju localhost/private/reserved IP, dan redirect HTTP ditolak.
 - **Monitoring Mandiri:** Pantau performa melalui endpoint kesiapan `/health/ready` (untuk API publik) dan `/internal/health/ready` (untuk internal workers). Netdata diatur hanya mendengarkan di localhost (`127.0.0.1:19999`) dan diakses aman menggunakan SSH Tunneling.
-
----
-
-## Lisensi
-
-Proyek internal eksklusif. Dilarang mendistribusikan ulang kode sumber tanpa persetujuan tertulis pemilik lisensi.

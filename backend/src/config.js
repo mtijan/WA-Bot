@@ -77,7 +77,10 @@ export const config = {
     rolloutMode: (process.env.WA_BOT_RAG_ROLLOUT_MODE || 'all').trim().toLowerCase(),
     rolloutSessions: splitCsv(process.env.WA_BOT_RAG_ROLLOUT_SESSIONS, []),
     shadowMode: (process.env.WA_BOT_RAG_SHADOW_MODE || 'disabled').trim().toLowerCase(),
-    shadowSessions: splitCsv(process.env.WA_BOT_RAG_SHADOW_SESSIONS, [])
+    shadowSessions: splitCsv(process.env.WA_BOT_RAG_SHADOW_SESSIONS, []),
+    rollbackFtsSessions: splitCsv(process.env.WA_BOT_RAG_ROLLBACK_FTS_SESSIONS, []),
+    rollbackCsSessions: splitCsv(process.env.WA_BOT_RAG_ROLLBACK_CS_SESSIONS, []),
+    legacyFullKbEnabled: parseBoolean(process.env.WA_BOT_RAG_LEGACY_FULL_KB_ENABLED, true)
   },
   internal: {
     token: process.env.WA_BOT_INTERNAL_TOKEN || '',

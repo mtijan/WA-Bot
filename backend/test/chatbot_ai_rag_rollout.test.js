@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  evaluateLegacyFullKbRetirement,
   evaluateRagPilotObservation,
   evaluateRagPilotPreflight,
+  evaluateRagRolloutAdvance,
+  planRagRollback,
   planRagRolloutCohort,
   RAG_ROLLOUT_REQUIREMENTS
 } from '../src/services/chatbot_ai_rag_rollout.service.js';
@@ -112,4 +115,88 @@ test('RAG-1005 cohort 25 persen deterministik, kumulatif, dan berbasis eligible 
   });
   assert.equal(expanded.selected_count, 6);
   assert.equal(first.selected_sessions.every((id) => expanded.selected_sessions.includes(id)), true);
+});
+
+test('RAG-1006 ekspansi 25 ke 50 persen hanya lulus setelah preflight dan observasi', () => {
+  const blocked = evaluateRagRolloutAdvance({
+    currentPercentage: 25,
+    targetPercentage: 50,
+    preflightReady: true,
+    observation: { ready: false, blockers: ['evaluable_answers'] }
+  });
+  assert.equal(blocked.ready, false);
+  assert.ok(blocked.blockers.includes('observation'));
+  assert.ok(blocked.blockers.includes('observation_blockers'));
+
+  const ready = evaluateRagRolloutAdvance({
+    currentPercentage: 25,
+    targetPercentage: 50,
+    preflightReady: true,
+    observation: { ready: true, blockers: [] }
+  });
+  assert.equal(ready.ready, true);
+  assert.equal(ready.required_target_percentage, 50);
+});
+
+test('RAG-1007 ekspansi penuh hanya menerima transisi 50 ke 100 persen', () => {
+  const skippedGate = evaluateRagRolloutAdvance({
+    currentPercentage: 25,
+    targetPercentage: 100,
+    preflightReady: true,
+    observation: { ready: true, blockers: [] }
+  });
+  assert.equal(skippedGate.ready, false);
+  assert.ok(skippedGate.blockers.includes('invalid_transition'));
+
+  const ready = evaluateRagRolloutAdvance({
+    currentPercentage: 50,
+    targetPercentage: 100,
+    preflightReady: true,
+    observation: { ready: true, blockers: [] }
+  });
+  assert.equal(ready.ready, true);
+});
+
+test('RAG-1008 rollback memilih FTS jika lexical current dan CS jika tidak siap', () => {
+  const plan = planRagRollback({
+    sessionIds: ['session-a', 'session-b'],
+    lexicalReadySessionIds: ['session-a'],
+    reason: 'quality_regression'
+  });
+  assert.equal(plan.fts_count, 1);
+  assert.equal(plan.cs_count, 1);
+  assert.equal(plan.delete_sources, false);
+  assert.equal(plan.delete_sessions, false);
+  assert.deepEqual(plan.actions, [
+    {
+      session_id: 'session-a', mode: 'fts', hybrid_enabled: false,
+      cache_enabled: false, full_kb_enabled: false, delete_data: false
+    },
+    {
+      session_id: 'session-b', mode: 'cs', hybrid_enabled: false,
+      cache_enabled: false, full_kb_enabled: false, delete_data: false
+    }
+  ]);
+});
+
+test('RAG-1009 retirement full-KB fail-closed sampai rollout dan rollback window selesai', () => {
+  const blocked = evaluateLegacyFullKbRetirement({
+    rolloutPercentage: 100,
+    rollbackWindowEnded: false,
+    rollbackValidated: true,
+    stagingReady: true,
+    activeLegacyExemptions: ['session-exempt']
+  });
+  assert.equal(blocked.ready, false);
+  assert.ok(blocked.blockers.includes('rollback_window'));
+  assert.ok(blocked.blockers.includes('legacy_exemptions'));
+
+  const ready = evaluateLegacyFullKbRetirement({
+    rolloutPercentage: 100,
+    rollbackWindowEnded: true,
+    rollbackValidated: true,
+    stagingReady: true,
+    activeLegacyExemptions: []
+  });
+  assert.equal(ready.ready, true);
 });

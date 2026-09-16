@@ -151,6 +151,29 @@ export function isSessionRagShadowEnabled(sessionId, {
   return false;
 }
 
+export function resolveRagRollbackMode(sessionId, {
+  rollbackFtsSessions = config?.rag?.rollbackFtsSessions || [],
+  rollbackCsSessions = config?.rag?.rollbackCsSessions || [],
+  overrideMode = undefined
+} = {}) {
+  if (overrideMode !== undefined) {
+    const normalizedOverride = String(overrideMode || '').trim().toLowerCase();
+    return normalizedOverride === 'fts' || normalizedOverride === 'cs'
+      ? normalizedOverride : null;
+  }
+  const safeSessionId = String(sessionId || '').trim();
+  if (!safeSessionId) return null;
+  const inFts = Array.isArray(rollbackFtsSessions)
+    && rollbackFtsSessions.includes(safeSessionId);
+  const inCs = Array.isArray(rollbackCsSessions)
+    && rollbackCsSessions.includes(safeSessionId);
+  // Konflik konfigurasi harus fail-closed tanpa provider atau full-KB.
+  if (inFts && inCs) return 'cs';
+  if (inCs) return 'cs';
+  if (inFts) return 'fts';
+  return null;
+}
+
 export function shouldUseRag(aiSettings, {
   sessionId = null,
   rolloutMode = null,
@@ -361,6 +384,7 @@ function resolveDependencies(overrides = {}) {
     resolveAIProvider,
     resolveDirectAnswerCandidate,
     resolveKnowledgeBase,
+    resolveRagRollbackMode,
     retrieveRagContext,
     shouldCacheResult,
     shouldRunRagShadow,
@@ -488,21 +512,35 @@ async function processInboundAIMessageCore({
   }
 
   const dependencies = resolveDependencies(dependencyOverrides);
-  const ragEnabled = dependencies.shouldUseRag(aiSettings, {
-    sessionId: safeSessionId,
-    rolloutMode: dependencyOverrides?.rolloutMode,
-    rolloutSessions: dependencyOverrides?.rolloutSessions,
-    overrideFlag: dependencyOverrides?.ragOverrideFlag
+  const rollbackMode = dependencies.resolveRagRollbackMode(safeSessionId, {
+    rollbackFtsSessions: dependencyOverrides?.rollbackFtsSessions,
+    rollbackCsSessions: dependencyOverrides?.rollbackCsSessions,
+    overrideMode: dependencyOverrides?.rollbackMode
   });
-  const shadowEnabled = dependencies.shouldRunRagShadow(aiSettings, {
-    sessionId: safeSessionId,
-    rolloutMode: dependencyOverrides?.rolloutMode,
-    rolloutSessions: dependencyOverrides?.rolloutSessions,
-    ragOverrideFlag: dependencyOverrides?.ragOverrideFlag,
-    shadowMode: dependencyOverrides?.shadowMode,
-    shadowSessions: dependencyOverrides?.shadowSessions,
-    shadowOverrideFlag: dependencyOverrides?.shadowOverrideFlag
-  });
+  const runtimeAiSettings = rollbackMode === 'fts'
+    ? { ...aiSettings, rag_mode: 'fts', cache_enabled: 0, direct_answer_enabled: 0 }
+    : aiSettings;
+  const ragEnabled = rollbackMode === 'fts' || (rollbackMode === null
+    && dependencies.shouldUseRag(runtimeAiSettings, {
+      sessionId: safeSessionId,
+      rolloutMode: dependencyOverrides?.rolloutMode,
+      rolloutSessions: dependencyOverrides?.rolloutSessions,
+      overrideFlag: dependencyOverrides?.ragOverrideFlag
+    }));
+  const shadowEnabled = rollbackMode === null && dependencies.shouldRunRagShadow(
+    runtimeAiSettings,
+    {
+      sessionId: safeSessionId,
+      rolloutMode: dependencyOverrides?.rolloutMode,
+      rolloutSessions: dependencyOverrides?.rolloutSessions,
+      ragOverrideFlag: dependencyOverrides?.ragOverrideFlag,
+      shadowMode: dependencyOverrides?.shadowMode,
+      shadowSessions: dependencyOverrides?.shadowSessions,
+      shadowOverrideFlag: dependencyOverrides?.shadowOverrideFlag
+    }
+  );
+  const legacyFullKbEnabled = dependencyOverrides?.legacyFullKbEnabled
+    ?? config?.rag?.legacyFullKbEnabled ?? true;
   const model = credentials.model || 'gpt-4o-mini';
   let usageContext = null;
   let providerResponse = null;
@@ -510,8 +548,10 @@ async function processInboundAIMessageCore({
   let providerLatencyMs = null;
   let resolvedProvider = 'unknown';
   let ragMetadata = {
-    rag_mode: ragEnabled ? String(aiSettings.rag_mode).toLowerCase() : 'off',
-    effective_mode: ragEnabled ? null : 'legacy',
+    rag_mode: ragEnabled ? String(runtimeAiSettings.rag_mode).toLowerCase() : 'off',
+    effective_mode: rollbackMode === 'cs' ? 'cs' : (ragEnabled ? null : 'legacy'),
+    rollback_mode: rollbackMode,
+    legacy_full_kb_enabled: legacyFullKbEnabled === true,
     selected_count: 0,
     retrieval_latency_ms: 0,
     provider_latency_ms: null,
@@ -549,15 +589,23 @@ async function processInboundAIMessageCore({
   };
 
   try {
+    if (rollbackMode === 'cs') {
+      return await fallback('rollback_cs', {
+        ...ragMetadata,
+        effective_mode: 'cs',
+        ai_call_avoided: true
+      });
+    }
     // RAG-0703 / RAG-0704: Response Cache Lookup
-    if (aiSettings?.cache_enabled === 1) {
+    if (rollbackMode === null && (ragEnabled || legacyFullKbEnabled === true)
+      && runtimeAiSettings?.cache_enabled === 1) {
       try {
         const cached = await dependencies.lookupCachedResponse({
           userId,
           sessionId: safeSessionId,
           query: safeText,
-          promptVersion: aiSettings.prompt_version || 1,
-          configRevision: aiSettings.config_revision || 1,
+          promptVersion: runtimeAiSettings.prompt_version || 1,
+          configRevision: runtimeAiSettings.config_revision || 1,
           model,
           temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing'),
           databaseClient
@@ -611,12 +659,12 @@ async function processInboundAIMessageCore({
     let messages;
     if (ragEnabled) {
       const baseMessages = buildRagProductionMessages({
-        systemInstruction: aiSettings.system_instruction,
+        systemInstruction: runtimeAiSettings.system_instruction,
         ragContext: '',
         userMessage: safeText
       });
       const baseInputTokens = dependencies.estimateChatInputTokens(baseMessages);
-      const hardInputBudget = resolveHardInputBudget(aiSettings);
+      const hardInputBudget = resolveHardInputBudget(runtimeAiSettings);
       if (baseInputTokens > hardInputBudget) {
         return await fallback('input_budget_exceeded', {
           ...ragMetadata,
@@ -627,12 +675,12 @@ async function processInboundAIMessageCore({
 
       const initialQueryPolicy = resolveRagQueryPolicy({
         query: safeText,
-        mode: aiSettings.rag_mode,
+        mode: runtimeAiSettings.rag_mode,
         hasQueryVector: false
       });
       if (!initialQueryPolicy.should_retrieve) {
         messages = buildRagConversationalFallbackMessages({
-          systemInstruction: aiSettings.system_instruction,
+          systemInstruction: runtimeAiSettings.system_instruction,
           userMessage: safeText
         });
         const estimatedInputTokens = dependencies.estimateChatInputTokens(messages);
@@ -662,7 +710,7 @@ async function processInboundAIMessageCore({
             userId,
             sessionId: safeSessionId,
             cleanText: safeText,
-            aiSettings,
+            aiSettings: runtimeAiSettings,
             baseInputTokens,
             databaseClient
           }, dependencies);
@@ -685,9 +733,10 @@ async function processInboundAIMessageCore({
         }
 
         // RAG-0707: Canonical Direct Answer check
-        if (aiSettings?.direct_answer_enabled === 1 && retrieval.ragResult?.results?.length > 0) {
+        if (rollbackMode === null && runtimeAiSettings?.direct_answer_enabled === 1
+          && retrieval.ragResult?.results?.length > 0) {
           const directCandidate = dependencies.resolveDirectAnswerCandidate(retrieval.ragResult, {
-            threshold: aiSettings.direct_answer_threshold
+            threshold: runtimeAiSettings.direct_answer_threshold
           });
           if (directCandidate?.isDirectAnswer) {
             let delivered = false;
@@ -716,7 +765,7 @@ async function processInboundAIMessageCore({
               delivered = true;
             }
 
-            if (aiSettings?.cache_enabled === 1 && dependencies.shouldCacheResult({
+            if (runtimeAiSettings?.cache_enabled === 1 && dependencies.shouldCacheResult({
               status: RAG_RUNTIME_STATUSES.REPLIED,
               reply: directCandidate.directReply,
               finishReason: 'stop',
@@ -727,12 +776,12 @@ async function processInboundAIMessageCore({
                   userId,
                   sessionId: safeSessionId,
                   query: safeText,
-                  promptVersion: aiSettings.prompt_version || 1,
-                  configRevision: aiSettings.config_revision || 1,
+                  promptVersion: runtimeAiSettings.prompt_version || 1,
+                  configRevision: runtimeAiSettings.config_revision || 1,
                   model,
                   temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing'),
                   reply: directCandidate.directReply,
-                  ttlSeconds: aiSettings.cache_ttl_seconds,
+                  ttlSeconds: runtimeAiSettings.cache_ttl_seconds,
                   databaseClient
                 });
               } catch {
@@ -760,7 +809,7 @@ async function processInboundAIMessageCore({
         }
 
         messages = buildRagProductionMessages({
-          systemInstruction: aiSettings.system_instruction,
+          systemInstruction: runtimeAiSettings.system_instruction,
           ragContext: retrieval.ragResult.context,
           userMessage: safeText
         });
@@ -787,9 +836,9 @@ async function processInboundAIMessageCore({
         try {
           const shadowPolicy = resolveRagQueryPolicy({
             query: safeText,
-            mode: aiSettings.rag_mode,
+            mode: runtimeAiSettings.rag_mode,
             hasQueryVector: false,
-            explicitThreshold: aiSettings?.rag_threshold
+            explicitThreshold: runtimeAiSettings?.rag_threshold
           });
           if (!shadowPolicy.should_retrieve) {
             ragMetadata = {
@@ -803,7 +852,7 @@ async function processInboundAIMessageCore({
             };
           } else {
             const shadowBaseMessages = buildRagProductionMessages({
-              systemInstruction: aiSettings.system_instruction,
+              systemInstruction: runtimeAiSettings.system_instruction,
               ragContext: '',
               userMessage: safeText
             });
@@ -811,7 +860,7 @@ async function processInboundAIMessageCore({
               userId,
               sessionId: safeSessionId,
               cleanText: safeText,
-              aiSettings,
+              aiSettings: runtimeAiSettings,
               baseInputTokens: dependencies.estimateChatInputTokens(shadowBaseMessages),
               databaseClient
             }, dependencies);
@@ -836,12 +885,39 @@ async function processInboundAIMessageCore({
           };
         }
       }
-      const knowledgeBase = await dependencies.resolveKnowledgeBase(aiSettings);
-      messages = buildProductionMessages({
-        systemInstruction: aiSettings.system_instruction,
-        knowledgeBase,
-        userMessage: safeText
-      });
+      if (legacyFullKbEnabled !== true) {
+        const retiredPolicy = resolveRagQueryPolicy({
+          query: safeText,
+          mode: 'fts',
+          hasQueryVector: false
+        });
+        if (retiredPolicy.should_retrieve) {
+          return await fallback('legacy_full_kb_retired', {
+            ...ragMetadata,
+            effective_mode: 'cs',
+            query_kind: retiredPolicy.query_kind,
+            ai_call_avoided: true
+          });
+        }
+        messages = buildRagConversationalFallbackMessages({
+          systemInstruction: runtimeAiSettings.system_instruction,
+          userMessage: safeText
+        });
+        ragMetadata = {
+          ...ragMetadata,
+          effective_mode: 'conversation',
+          retrieval_reason: 'legacy_full_kb_retired',
+          conversational_fallback: true,
+          query_kind: retiredPolicy.query_kind
+        };
+      } else {
+        const knowledgeBase = await dependencies.resolveKnowledgeBase(runtimeAiSettings);
+        messages = buildProductionMessages({
+          systemInstruction: runtimeAiSettings.system_instruction,
+          knowledgeBase,
+          userMessage: safeText
+        });
+      }
     }
 
     const safeBaseUrl = await dependencies.assertSafeOutboundUrl(credentials.baseUrl);
@@ -855,7 +931,7 @@ async function processInboundAIMessageCore({
       payload: dependencies.buildChatCompletionPayload({
         model,
         messages,
-        maxOutputTokens: aiSettings.max_output_tokens,
+        maxOutputTokens: runtimeAiSettings.max_output_tokens,
         temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing')
       }),
       requestKind: 'production',
@@ -957,7 +1033,9 @@ async function processInboundAIMessageCore({
     }, databaseClient);
 
     // RAG-0703 / RAG-0705 / RAG-0710: Response Cache Store
-    if (aiSettings?.cache_enabled === 1 && dependencies.shouldCacheResult({
+    if (rollbackMode === null && (ragEnabled || legacyFullKbEnabled === true)
+      && runtimeAiSettings?.cache_enabled === 1
+      && dependencies.shouldCacheResult({
       status: RAG_RUNTIME_STATUSES.REPLIED,
       reply,
       finishReason,
@@ -968,12 +1046,12 @@ async function processInboundAIMessageCore({
           userId,
           sessionId: safeSessionId,
           query: safeText,
-          promptVersion: aiSettings.prompt_version || 1,
-          configRevision: aiSettings.config_revision || 1,
+          promptVersion: runtimeAiSettings.prompt_version || 1,
+          configRevision: runtimeAiSettings.config_revision || 1,
           model,
           temperature: resolveChatTemperature(ragEnabled ? 'grounded' : 'existing'),
           reply,
-          ttlSeconds: aiSettings.cache_ttl_seconds,
+          ttlSeconds: runtimeAiSettings.cache_ttl_seconds,
           databaseClient
         });
       } catch {
