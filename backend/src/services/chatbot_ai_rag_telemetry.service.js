@@ -1,11 +1,12 @@
 import { logger } from '../logger.js';
 
-const MODES = new Set(['off', 'fts', 'hybrid', 'legacy', 'cache', 'direct_answer', 'conversation']);
+const MODES = new Set(['off', 'fts', 'hybrid', 'legacy', 'cache', 'direct_answer', 'conversation', 'cs']);
 const STATUSES = new Set(['REPLIED', 'EMPTY_REPLY', 'CS_FALLBACK', 'ERROR', 'SKIPPED']);
 const REASONS = new Set([
   'ready', 'index_not_ready', 'no_relevant_chunks', 'retrieval_failed',
   'input_budget_exceeded', 'final_input_budget_exceeded',
-  'output_truncated', 'output_rejected', 'runtime_failed', 'conversational_fallback'
+  'output_truncated', 'output_rejected', 'runtime_failed', 'conversational_fallback',
+  'rollback_cs', 'legacy_full_kb_retired'
 ]);
 const THRESHOLD_SOURCES = new Set(['lexical', 'explicit', 'calibrated_hybrid', 'conversational_bypass']);
 const QUERY_KINDS = new Set(['knowledge', 'social']);
@@ -25,6 +26,9 @@ export function buildRagRuntimeEvent({ userId, result, totalLatencyMs }) {
     status: STATUSES.has(result?.status) ? result.status : 'ERROR',
     delivered: result?.delivered === true,
     rag_mode: MODES.has(metadata.rag_mode) ? metadata.rag_mode : null,
+    rollback_mode: metadata.rollback_mode === 'fts' || metadata.rollback_mode === 'cs'
+      ? metadata.rollback_mode : null,
+    legacy_full_kb_enabled: metadata.legacy_full_kb_enabled !== false,
     retrieval_type: MODES.has(metadata.effective_mode) ? metadata.effective_mode : null,
     retrieval_reason: REASONS.has(metadata.retrieval_reason) ? metadata.retrieval_reason : null,
     query_kind: QUERY_KINDS.has(metadata.query_kind) ? metadata.query_kind : null,

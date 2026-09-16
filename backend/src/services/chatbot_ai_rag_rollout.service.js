@@ -10,6 +10,11 @@ const REQUIRED_PILOT_GATES = Object.freeze([
   'sla', 'real_embedding', 'migration_backup', 'governance'
 ]);
 
+const ROLLOUT_TRANSITIONS = Object.freeze({
+  25: 50,
+  50: 100
+});
+
 function rolloutError(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -165,9 +170,98 @@ export function planRagRolloutCohort({
   });
 }
 
+export function evaluateRagRolloutAdvance({
+  currentPercentage,
+  targetPercentage,
+  preflightReady = false,
+  observation = null
+} = {}) {
+  const current = Number(currentPercentage);
+  const target = Number(targetPercentage);
+  const blockers = [];
+  if (ROLLOUT_TRANSITIONS[current] !== target) blockers.push('invalid_transition');
+  if (preflightReady !== true) blockers.push('preflight');
+  if (observation?.ready !== true) blockers.push('observation');
+  if (Array.isArray(observation?.blockers) && observation.blockers.length > 0) {
+    blockers.push('observation_blockers');
+  }
+  return Object.freeze({
+    ready: blockers.length === 0,
+    blockers: Object.freeze(blockers),
+    current_percentage: Number.isFinite(current) ? current : null,
+    target_percentage: Number.isFinite(target) ? target : null,
+    required_target_percentage: ROLLOUT_TRANSITIONS[current] ?? null
+  });
+}
+
+export function planRagRollback({
+  sessionIds,
+  lexicalReadySessionIds = [],
+  reason = 'operator_requested'
+} = {}) {
+  const sessions = normalizeSessionIds(sessionIds, 'sessionIds');
+  const lexicalReady = new Set(normalizeSessionIds(
+    lexicalReadySessionIds,
+    'lexicalReadySessionIds'
+  ));
+  const unknownReady = [...lexicalReady].filter((sessionId) => !sessions.includes(sessionId));
+  if (unknownReady.length > 0) {
+    throw rolloutError(
+      'RAG_ROLLOUT_UNKNOWN_SESSION',
+      'Sesi lexical-ready harus termasuk target rollback.'
+    );
+  }
+  const safeReason = String(reason || '').trim();
+  if (!safeReason) {
+    throw rolloutError('RAG_ROLLOUT_INVALID_INPUT', 'reason rollback wajib diisi.');
+  }
+  const actions = sessions.map((sessionId) => Object.freeze({
+    session_id: sessionId,
+    mode: lexicalReady.has(sessionId) ? 'fts' : 'cs',
+    hybrid_enabled: false,
+    cache_enabled: false,
+    full_kb_enabled: false,
+    delete_data: false
+  }));
+  return Object.freeze({
+    reason: safeReason,
+    target_count: sessions.length,
+    fts_count: actions.filter((action) => action.mode === 'fts').length,
+    cs_count: actions.filter((action) => action.mode === 'cs').length,
+    pause_index_jobs: true,
+    delete_sources: false,
+    delete_sessions: false,
+    actions: Object.freeze(actions)
+  });
+}
+
+export function evaluateLegacyFullKbRetirement({
+  rolloutPercentage,
+  rollbackWindowEnded = false,
+  rollbackValidated = false,
+  stagingReady = false,
+  activeLegacyExemptions = []
+} = {}) {
+  const exemptions = normalizeSessionIds(activeLegacyExemptions, 'activeLegacyExemptions');
+  const blockers = [];
+  if (Number(rolloutPercentage) !== 100) blockers.push('rollout_not_complete');
+  if (rollbackWindowEnded !== true) blockers.push('rollback_window');
+  if (rollbackValidated !== true) blockers.push('rollback_not_validated');
+  if (stagingReady !== true) blockers.push('staging_not_ready');
+  if (exemptions.length > 0) blockers.push('legacy_exemptions');
+  return Object.freeze({
+    ready: blockers.length === 0,
+    blockers: Object.freeze(blockers),
+    rollout_percentage: Number.isFinite(Number(rolloutPercentage))
+      ? Number(rolloutPercentage) : null,
+    active_legacy_exemptions: Object.freeze(exemptions)
+  });
+}
+
 export const RAG_ROLLOUT_REQUIREMENTS = Object.freeze({
   decisions: REQUIRED_DECISIONS,
   pilot_gates: REQUIRED_PILOT_GATES,
   minimum_observation_hours: 48,
-  minimum_evaluable_answers: 30
+  minimum_evaluable_answers: 30,
+  rollout_transitions: ROLLOUT_TRANSITIONS
 });

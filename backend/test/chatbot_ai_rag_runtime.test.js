@@ -22,6 +22,7 @@ const {
   processInboundAIMessage,
   RAG_RUNTIME_STATUSES,
   recheckDeliveryAccess,
+  resolveRagRollbackMode,
   shouldEvaluateFlow,
   shouldProcessAIFallback,
   shouldRunRagShadow,
@@ -843,6 +844,112 @@ test('RAG-1001 shadow melewati retrieval untuk sapaan sosial gabungan', async ()
   assert.equal(result.ragMetadata.shadow_effective_mode, 'conversation');
   assert.equal(result.ragMetadata.shadow_retrieval_reason, 'conversational_bypass');
   assert.equal(result.ragMetadata.shadow_selected_count, 0);
+  assert.equal(calls.provider, 1);
+});
+
+test('RAG-1008 selector rollback fail-closed ke CS saat daftar konfigurasi bertabrakan', () => {
+  assert.equal(resolveRagRollbackMode('session-a', {
+    rollbackFtsSessions: ['session-a'],
+    rollbackCsSessions: ['session-a']
+  }), 'cs');
+  assert.equal(resolveRagRollbackMode('session-a', {
+    rollbackFtsSessions: ['session-a'],
+    rollbackCsSessions: []
+  }), 'fts');
+  assert.equal(resolveRagRollbackMode('session-a', { overrideMode: null }), null);
+});
+
+test('RAG-1008 rollback FTS memaksa lexical retrieval tanpa cache, hybrid, atau full-KB', async () => {
+  const { db, client } = await createRuntimeFixture();
+  try {
+    const { calls, dependencies } = createControlledProvider({
+      reply: 'Biaya pendaftaran Rp150.000.',
+      onPayload(payload) {
+        assert.match(payload.messages[0].content, /Rp150\.000/);
+      }
+    });
+    const result = await processInboundAIMessage(runtimeParams(client, {
+      rag_mode: 'hybrid',
+      cache_enabled: 1,
+      direct_answer_enabled: 1,
+      knowledge_base: 'FULL-KB-DILARANG'
+    }), {
+      ...dependencies,
+      rolloutMode: 'disabled',
+      rollbackMode: 'fts',
+      lookupCachedResponse: async () => assert.fail('rollback tidak boleh membaca cache'),
+      resolveKnowledgeBase: async () => assert.fail('rollback tidak boleh membaca full-KB')
+    });
+    assert.equal(result.status, RAG_RUNTIME_STATUSES.REPLIED);
+    assert.equal(result.ragMetadata.rollback_mode, 'fts');
+    assert.equal(result.ragMetadata.effective_mode, 'fts');
+    assert.equal(calls.provider, 1);
+  } finally {
+    await close(db);
+  }
+});
+
+test('RAG-1008 rollback CS tidak memanggil retrieval, cache, provider, atau full-KB', async () => {
+  const { calls, dependencies } = createControlledProvider({ reply: 'tidak boleh dipakai' });
+  const result = await processInboundAIMessage(runtimeParams(null, {
+    cache_enabled: 1,
+    knowledge_base: 'FULL-KB-DILARANG'
+  }), {
+    ...dependencies,
+    rollbackMode: 'cs',
+    executeRagRetrieval: async () => assert.fail('rollback CS tidak boleh retrieval'),
+    lookupCachedResponse: async () => assert.fail('rollback CS tidak boleh cache'),
+    resolveKnowledgeBase: async () => assert.fail('rollback CS tidak boleh full-KB')
+  });
+  assert.equal(result.status, RAG_RUNTIME_STATUSES.CS_FALLBACK);
+  assert.equal(result.reply, CS_FALLBACK_MESSAGE);
+  assert.equal(result.ragMetadata.rollback_mode, 'cs');
+  assert.equal(result.ragMetadata.retrieval_reason, 'rollback_cs');
+  assert.equal(calls.provider, 0);
+});
+
+test('RAG-1009 full-KB retired mengirim knowledge query ke CS tanpa provider', async () => {
+  const { calls, dependencies } = createControlledProvider({ reply: 'tidak boleh dipakai' });
+  const result = await processInboundAIMessage(runtimeParams(null, {
+    rag_mode: 'fts',
+    cache_enabled: 1,
+    knowledge_base: 'FULL-KB-DILARANG'
+  }), {
+    ...dependencies,
+    rolloutMode: 'disabled',
+    legacyFullKbEnabled: false,
+    lookupCachedResponse: async () => assert.fail('full-KB retired tidak boleh membaca cache lama'),
+    resolveKnowledgeBase: async () => assert.fail('full-KB retired tidak boleh dibaca')
+  });
+  assert.equal(result.status, RAG_RUNTIME_STATUSES.CS_FALLBACK);
+  assert.equal(result.ragMetadata.effective_mode, 'cs');
+  assert.equal(result.ragMetadata.retrieval_reason, 'legacy_full_kb_retired');
+  assert.equal(calls.provider, 0);
+});
+
+test('RAG-1009 full-KB retired mempertahankan persona-only untuk sapaan sosial', async () => {
+  const { calls, dependencies } = createControlledProvider({
+    reply: 'Halo, kabar saya baik.',
+    onPayload(payload) {
+      assert.doesNotMatch(payload.messages[0].content, /FULL-KB-DILARANG/);
+      assert.doesNotMatch(payload.messages[0].content, /Berikut adalah basis pengetahuan/);
+    }
+  });
+  const result = await processInboundAIMessage(runtimeParams(null, {
+    rag_mode: 'fts',
+    cache_enabled: 1,
+    knowledge_base: 'FULL-KB-DILARANG'
+  }, { cleanText: 'Halo admin, apa kabar?' }), {
+    ...dependencies,
+    rolloutMode: 'disabled',
+    legacyFullKbEnabled: false,
+    lookupCachedResponse: async () => assert.fail('persona retired tidak boleh membaca cache lama'),
+    resolveKnowledgeBase: async () => assert.fail('full-KB retired tidak boleh dibaca')
+  });
+  assert.equal(result.status, RAG_RUNTIME_STATUSES.REPLIED);
+  assert.equal(result.reply, 'Halo, kabar saya baik.');
+  assert.equal(result.ragMetadata.effective_mode, 'conversation');
+  assert.equal(result.ragMetadata.retrieval_reason, 'legacy_full_kb_retired');
   assert.equal(calls.provider, 1);
 });
 

@@ -210,6 +210,7 @@ test('RAG-0910 transcript sanitizer dan runtime event allowlist tidak membocorka
         shadow_enabled: true, shadow_effective_mode: 'fts',
         shadow_retrieval_reason: 'ready', shadow_selected_count: 1,
         shadow_retrieval_latency_ms: 3, shadow_session_id: raw,
+        rollback_mode: 'fts', legacy_full_kb_enabled: false,
         prompt: raw, knowledge_base: raw, session_id: raw
       }
     }
@@ -225,8 +226,8 @@ test('RAG-0910 transcript sanitizer dan runtime event allowlist tidak membocorka
   assert.deepEqual(Object.keys(event).sort(), [
     'ai_call_avoided', 'cache_hit', 'chunk_count', 'conversational_fallback',
     'debounced', 'debounced_count', 'delivered', 'direct_answer', 'embedding_fallback',
-    'event', 'provider_latency_ms', 'query_kind', 'rag_mode', 'relevance_threshold',
-    'request_id', 'retrieval_latency_ms', 'retrieval_reason', 'retrieval_type',
+    'event', 'legacy_full_kb_enabled', 'provider_latency_ms', 'query_kind', 'rag_mode', 'relevance_threshold',
+    'request_id', 'retrieval_latency_ms', 'retrieval_reason', 'retrieval_type', 'rollback_mode',
     'shadow_chunk_count', 'shadow_embedding_fallback', 'shadow_enabled',
     'shadow_query_kind', 'shadow_relevance_threshold', 'shadow_retrieval_latency_ms',
     'shadow_retrieval_reason', 'shadow_retrieval_type', 'shadow_threshold_source',

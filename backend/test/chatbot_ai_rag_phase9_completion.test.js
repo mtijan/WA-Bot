@@ -135,6 +135,8 @@ describe('RAG-0914 graceful conversational fallback', () => {
     assert.deepEqual(classifyRagConversationQuery('Halo!'), { kind: 'social', reason: 'social_pattern' });
     assert.deepEqual(classifyRagConversationQuery('Halo kak'), { kind: 'social', reason: 'social_pattern' });
     assert.deepEqual(classifyRagConversationQuery('Halo admin, apa kabar?'), { kind: 'social', reason: 'social_pattern' });
+    assert.deepEqual(classifyRagConversationQuery('Halo admin, semoga harimu menyenangkan.'), { kind: 'social', reason: 'social_pattern' });
+    assert.deepEqual(classifyRagConversationQuery('Selamat pagi admin, apa kabar?'), { kind: 'social', reason: 'social_pattern' });
     assert.deepEqual(classifyRagConversationQuery('Selamat pagi kak'), { kind: 'social', reason: 'social_pattern' });
     assert.deepEqual(classifyRagConversationQuery('Halo, biaya pendaftarannya berapa?'), { kind: 'knowledge', reason: 'business_marker' });
     assert.equal(resolveRagQueryPolicy({ query: 'Makasih ya', mode: 'hybrid', hasQueryVector: true }).should_retrieve, false);

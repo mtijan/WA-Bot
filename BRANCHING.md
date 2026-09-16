@@ -13,7 +13,7 @@ Updated: 2026-09-16
 
 The three branches were published to `origin` on 2026-09-11 after explicit approval. That publication did not merge or deploy them. `origin/main` later moved independently to `c16c379` for README-only updates; no RAG commit was merged. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
 
-Current local milestone on 2026-09-16: RAG-1001–RAG-1005 have completed code/test foundations but remain IN_PROGRESS pending operational acceptance; the checklist is 118/131 DONE, 1 partial, 5 IN_PROGRESS, and 7 TODO. Offline retrieval passed 50/50 and the paid 8-request shadow run preserved the legacy reply path with one provider call per case. Full backend 405/405 passed across 78 suites, frontend lint/build/API guard and QA passed, npm audit reports 0 vulnerabilities, and route/OpenAPI parity remains 123/123. These are LOCAL/GIT candidate facts only; grounded quality remains below target, and real embedding all-in cost, billing reconciliation, runtime migration, WhatsApp delivery, staging/pilot/cohort activation, UAT, and merge to `main` have not occurred.
+Current local milestone on 2026-09-16: RAG-1001–RAG-1009 have local code/test foundations and remain IN_PROGRESS pending operational acceptance; RAG-1010 documentation synchronization is DONE locally. The checklist is 119/131 DONE, 1 partial, 9 IN_PROGRESS, and 2 TODO. Transition gates enforce 25→50→100, rollback routes explicitly to FTS/CS without full-KB or cache, and legacy retirement remains default-off/fail-closed. The final paid rollback probe used 3 provider calls while two CS paths used zero. Full backend 414/414 passed across 78 suites, frontend lint/build/API guard passed, npm audit reports 0 vulnerabilities, and route/OpenAPI parity remains 123/123. These are LOCAL/GIT candidate facts only; quality remains below target, and real embedding all-in cost, billing reconciliation, runtime migration, WhatsApp delivery, staging rollout/rollback, UAT, and merge to `main` have not occurred.
 
 ## Separation rules
 
@@ -28,7 +28,8 @@ RAG-0906–RAG-0910 add reusable answer-quality/token/cost/latency evaluation an
 - `backend/scripts/probe_chatbot_ai_rag_phase9.js`;
 - `backend/scripts/probe_chatbot_ai_rag_phase9_completion.js`;
 - `backend/scripts/probe_chatbot_ai_rag_phase10_shadow.js`;
-- npm scripts `test:ai-provider`, `test:rag-development`, `test:rag-freeform-development`, `test:rag-phase9`, `test:rag-phase9-completion`, or `test:rag-phase10-shadow`;
+- `backend/scripts/probe_chatbot_ai_rag_phase10_rollback.js`;
+- npm scripts `test:ai-provider`, `test:rag-development`, `test:rag-freeform-development`, `test:rag-phase9`, `test:rag-phase9-completion`, `test:rag-phase10-shadow`, or `test:rag-phase10-rollback`;
 - `apiDevelopment.txt`, `ChatBot-Flow (2).json`, or `PersonaChatBot.txt`;
 - raw experiment transcripts, credentials, runtime databases, sessions, uploads, backups, or exports.
 
