@@ -207,6 +207,9 @@ test('RAG-0910 transcript sanitizer dan runtime event allowlist tidak membocorka
       ragMetadata: {
         rag_mode: 'hybrid', effective_mode: 'hybrid', retrieval_reason: 'ready',
         selected_count: 2, retrieval_latency_ms: 4, provider_latency_ms: 20,
+        shadow_enabled: true, shadow_effective_mode: 'fts',
+        shadow_retrieval_reason: 'ready', shadow_selected_count: 1,
+        shadow_retrieval_latency_ms: 3, shadow_session_id: raw,
         prompt: raw, knowledge_base: raw, session_id: raw
       }
     }
@@ -223,7 +226,10 @@ test('RAG-0910 transcript sanitizer dan runtime event allowlist tidak membocorka
     'ai_call_avoided', 'cache_hit', 'chunk_count', 'conversational_fallback',
     'debounced', 'debounced_count', 'delivered', 'direct_answer', 'embedding_fallback',
     'event', 'provider_latency_ms', 'query_kind', 'rag_mode', 'relevance_threshold',
-    'request_id', 'retrieval_latency_ms', 'retrieval_reason', 'retrieval_type', 'status',
-    'threshold_source', 'total_latency_ms', 'user_id'
+    'request_id', 'retrieval_latency_ms', 'retrieval_reason', 'retrieval_type',
+    'shadow_chunk_count', 'shadow_embedding_fallback', 'shadow_enabled',
+    'shadow_query_kind', 'shadow_relevance_threshold', 'shadow_retrieval_latency_ms',
+    'shadow_retrieval_reason', 'shadow_retrieval_type', 'shadow_threshold_source',
+    'status', 'threshold_source', 'total_latency_ms', 'user_id'
   ]);
 });

@@ -43,6 +43,23 @@ export function buildRagRuntimeEvent({ userId, result, totalLatencyMs }) {
     ai_call_avoided: metadata.cache_hit === true || metadata.direct_answer === true || metadata.ai_call_avoided === true,
     chunk_count: Number.isInteger(metadata.selected_count) && metadata.selected_count >= 0
       ? metadata.selected_count : 0,
+    shadow_enabled: metadata.shadow_enabled === true,
+    shadow_retrieval_type: MODES.has(metadata.shadow_effective_mode)
+      ? metadata.shadow_effective_mode : null,
+    shadow_retrieval_reason: REASONS.has(metadata.shadow_retrieval_reason)
+      || metadata.shadow_retrieval_reason === 'conversational_bypass'
+      ? metadata.shadow_retrieval_reason : null,
+    shadow_query_kind: QUERY_KINDS.has(metadata.shadow_query_kind)
+      ? metadata.shadow_query_kind : null,
+    shadow_relevance_threshold: Number.isFinite(metadata.shadow_relevance_threshold)
+      && metadata.shadow_relevance_threshold >= 0 && metadata.shadow_relevance_threshold <= 1
+      ? Number(metadata.shadow_relevance_threshold) : null,
+    shadow_threshold_source: THRESHOLD_SOURCES.has(metadata.shadow_threshold_source)
+      ? metadata.shadow_threshold_source : null,
+    shadow_embedding_fallback: metadata.shadow_embedding_fallback === true,
+    shadow_chunk_count: Number.isInteger(metadata.shadow_selected_count)
+      && metadata.shadow_selected_count >= 0 ? metadata.shadow_selected_count : 0,
+    shadow_retrieval_latency_ms: duration(metadata.shadow_retrieval_latency_ms),
     retrieval_latency_ms: duration(metadata.retrieval_latency_ms),
     provider_latency_ms: duration(metadata.provider_latency_ms),
     total_latency_ms: duration(totalLatencyMs)

@@ -1,19 +1,19 @@
 # WA-Bot Branch Strategy
 
-Updated: 2026-09-14
+Updated: 2026-09-16
 
 ## Branch responsibilities
 
 | Branch | Purpose | Allowed content | Base/key commit |
 |---|---|---|---|
-| `main` | Current shared baseline | Only changes that passed the agreed merge and release gates | `63c93c6` at separation time |
+| `main` | Current shared baseline | Only changes that passed the agreed merge and release gates | `c16c379` current README-only baseline; no RAG merge |
 | `release/rag-merge-ready` | RAG implementation candidate for review and merge into `main` | Runtime code, migrations, configuration examples, UI changes, and automated tests that passed local validation | Core evaluator/tests through RAG-0910; excludes paid provider runner and development-only npm command |
 | `develop/rag-experiments` | Ongoing RAG development and paid/offline experiments | Everything from the release candidate plus provider probes, free-form test runners, development-only commands, and experiment notes | RAG-0901–RAG-0910 plus paid phase-9 runner; use the reviewed branch-tip SHA |
 | `hotfix/urgent-fixes` | Urgent production/staging bug fixes | The smallest isolated fix and its focused regression test; no unfinished RAG or experiment files | Directly from `origin/main` at `63c93c6` |
 
-The three branches were published to `origin` on 2026-09-11 after explicit approval. Publishing the refs did not merge or deploy them, and `origin/main` remained at `63c93c6`. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
+The three branches were published to `origin` on 2026-09-11 after explicit approval. That publication did not merge or deploy them. `origin/main` later moved independently to `c16c379` for README-only updates; no RAG commit was merged. Branch names are not deployment evidence; deploy and rollback must always use a reviewed explicit commit SHA.
 
-Current local milestone on 2026-09-15: RAG-0901–RAG-0915 are complete, so Fase 9 is 15/15 and the overall checklist is 118/131 DONE, 1 partial, 12 TODO. The final 25-request run recorded 10/10 social persona replies without false CS, 10/10 contextual gold-source hits, and 5/5 weak false positives avoided by threshold 0.7571067. Full backend 395/395 passed across 78 suites, frontend lint/build/API guard and QA passed, npm audit reports 0 vulnerabilities, and route/OpenAPI parity remains 123/123. These are LOCAL/GIT candidate facts only; the prior grounded score 32/35 remains below target, and real embedding all-in cost, billing reconciliation, runtime migration, WhatsApp delivery, staging deploy, UAT, and merge to `main` have not occurred.
+Current local milestone on 2026-09-16: RAG-1001–RAG-1005 have completed code/test foundations but remain IN_PROGRESS pending operational acceptance; the checklist is 118/131 DONE, 1 partial, 5 IN_PROGRESS, and 7 TODO. Offline retrieval passed 50/50 and the paid 8-request shadow run preserved the legacy reply path with one provider call per case. Full backend 405/405 passed across 78 suites, frontend lint/build/API guard and QA passed, npm audit reports 0 vulnerabilities, and route/OpenAPI parity remains 123/123. These are LOCAL/GIT candidate facts only; grounded quality remains below target, and real embedding all-in cost, billing reconciliation, runtime migration, WhatsApp delivery, staging/pilot/cohort activation, UAT, and merge to `main` have not occurred.
 
 ## Separation rules
 
@@ -26,7 +26,9 @@ RAG-0906–RAG-0910 add reusable answer-quality/token/cost/latency evaluation an
 - `backend/scripts/probe_chatbot_ai_provider.js`;
 - `backend/scripts/probe_chatbot_ai_rag_development.js`;
 - `backend/scripts/probe_chatbot_ai_rag_phase9.js`;
-- npm scripts `test:ai-provider`, `test:rag-development`, `test:rag-freeform-development`, or `test:rag-phase9`;
+- `backend/scripts/probe_chatbot_ai_rag_phase9_completion.js`;
+- `backend/scripts/probe_chatbot_ai_rag_phase10_shadow.js`;
+- npm scripts `test:ai-provider`, `test:rag-development`, `test:rag-freeform-development`, `test:rag-phase9`, `test:rag-phase9-completion`, or `test:rag-phase10-shadow`;
 - `apiDevelopment.txt`, `ChatBot-Flow (2).json`, or `PersonaChatBot.txt`;
 - raw experiment transcripts, credentials, runtime databases, sessions, uploads, backups, or exports.
 

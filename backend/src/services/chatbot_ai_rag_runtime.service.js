@@ -133,6 +133,24 @@ export function isSessionRagRolloutEnabled(sessionId, {
   return true;
 }
 
+export function isSessionRagShadowEnabled(sessionId, {
+  shadowMode = config?.rag?.shadowMode || 'disabled',
+  shadowSessions = config?.rag?.shadowSessions || [],
+  overrideFlag = null
+} = {}) {
+  if (typeof overrideFlag === 'boolean') return overrideFlag;
+  const mode = String(shadowMode || 'disabled').trim().toLowerCase();
+  if (mode === 'disabled' || mode === 'off') return false;
+  if (mode === 'all' || mode === 'enabled' || mode === 'on') return true;
+  if (mode === 'allowlist' || mode === 'sessions') {
+    if (!sessionId) return false;
+    const safeSessionId = String(sessionId).trim();
+    const allowed = Array.isArray(shadowSessions) ? shadowSessions : [];
+    return allowed.includes(safeSessionId);
+  }
+  return false;
+}
+
 export function shouldUseRag(aiSettings, {
   sessionId = null,
   rolloutMode = null,
@@ -148,6 +166,30 @@ export function shouldUseRag(aiSettings, {
     rolloutMode: rolloutMode ?? config?.rag?.rolloutMode,
     rolloutSessions: rolloutSessions ?? config?.rag?.rolloutSessions,
     overrideFlag
+  });
+}
+
+export function shouldRunRagShadow(aiSettings, {
+  sessionId = null,
+  rolloutMode = null,
+  rolloutSessions = null,
+  ragOverrideFlag = null,
+  shadowMode = null,
+  shadowSessions = null,
+  shadowOverrideFlag = null
+} = {}) {
+  const mode = String(aiSettings?.rag_mode || 'off').trim().toLowerCase();
+  if (mode !== 'fts' && mode !== 'hybrid') return false;
+  if (shouldUseRag(aiSettings, {
+    sessionId,
+    rolloutMode: rolloutMode ?? config?.rag?.rolloutMode,
+    rolloutSessions: rolloutSessions ?? config?.rag?.rolloutSessions,
+    overrideFlag: ragOverrideFlag
+  })) return false;
+  return isSessionRagShadowEnabled(sessionId, {
+    shadowMode: shadowMode ?? config?.rag?.shadowMode,
+    shadowSessions: shadowSessions ?? config?.rag?.shadowSessions,
+    overrideFlag: shadowOverrideFlag
   });
 }
 
@@ -311,6 +353,7 @@ function resolveDependencies(overrides = {}) {
     generateQueryEmbedding,
     getTenantEmbeddingProfile,
     isSessionRagRolloutEnabled,
+    isSessionRagShadowEnabled,
     lookupCachedResponse,
     recheckDeliveryAccess,
     recordUsage: recordChatbotAIUsageSafely,
@@ -320,6 +363,7 @@ function resolveDependencies(overrides = {}) {
     resolveKnowledgeBase,
     retrieveRagContext,
     shouldCacheResult,
+    shouldRunRagShadow,
     shouldUseRag,
     storeCachedResponse,
     ...overrides
@@ -450,6 +494,15 @@ async function processInboundAIMessageCore({
     rolloutSessions: dependencyOverrides?.rolloutSessions,
     overrideFlag: dependencyOverrides?.ragOverrideFlag
   });
+  const shadowEnabled = dependencies.shouldRunRagShadow(aiSettings, {
+    sessionId: safeSessionId,
+    rolloutMode: dependencyOverrides?.rolloutMode,
+    rolloutSessions: dependencyOverrides?.rolloutSessions,
+    ragOverrideFlag: dependencyOverrides?.ragOverrideFlag,
+    shadowMode: dependencyOverrides?.shadowMode,
+    shadowSessions: dependencyOverrides?.shadowSessions,
+    shadowOverrideFlag: dependencyOverrides?.shadowOverrideFlag
+  });
   const model = credentials.model || 'gpt-4o-mini';
   let usageContext = null;
   let providerResponse = null;
@@ -463,7 +516,13 @@ async function processInboundAIMessageCore({
     retrieval_latency_ms: 0,
     provider_latency_ms: null,
     debounced: debounced === true,
-    debounced_count: Number(debouncedCount) || 0
+    debounced_count: Number(debouncedCount) || 0,
+    shadow_enabled: shadowEnabled,
+    shadow_effective_mode: null,
+    shadow_retrieval_reason: null,
+    shadow_selected_count: 0,
+    shadow_retrieval_latency_ms: 0,
+    shadow_embedding_fallback: false
   };
 
   const fallback = async (reason, metadata = ragMetadata) => {
@@ -723,6 +782,60 @@ async function processInboundAIMessageCore({
         };
       }
     } else {
+      if (shadowEnabled) {
+        const shadowStartedAt = performance.now();
+        try {
+          const shadowPolicy = resolveRagQueryPolicy({
+            query: safeText,
+            mode: aiSettings.rag_mode,
+            hasQueryVector: false,
+            explicitThreshold: aiSettings?.rag_threshold
+          });
+          if (!shadowPolicy.should_retrieve) {
+            ragMetadata = {
+              ...ragMetadata,
+              shadow_effective_mode: 'conversation',
+              shadow_retrieval_reason: 'conversational_bypass',
+              shadow_query_kind: shadowPolicy.query_kind,
+              shadow_relevance_threshold: shadowPolicy.relevance_threshold,
+              shadow_threshold_source: shadowPolicy.threshold_source,
+              shadow_retrieval_latency_ms: performance.now() - shadowStartedAt
+            };
+          } else {
+            const shadowBaseMessages = buildRagProductionMessages({
+              systemInstruction: aiSettings.system_instruction,
+              ragContext: '',
+              userMessage: safeText
+            });
+            const shadowRetrieval = await dependencies.executeRagRetrieval({
+              userId,
+              sessionId: safeSessionId,
+              cleanText: safeText,
+              aiSettings,
+              baseInputTokens: dependencies.estimateChatInputTokens(shadowBaseMessages),
+              databaseClient
+            }, dependencies);
+            ragMetadata = {
+              ...ragMetadata,
+              shadow_effective_mode: shadowRetrieval.effectiveMode,
+              shadow_retrieval_reason: shadowRetrieval.reason,
+              shadow_selected_count: shadowRetrieval.ragResult?.selected_count || 0,
+              shadow_embedding_fallback: shadowRetrieval.embeddingFallback === true,
+              shadow_query_kind: shadowRetrieval.queryPolicy?.query_kind || 'knowledge',
+              shadow_relevance_threshold:
+                shadowRetrieval.queryPolicy?.relevance_threshold ?? null,
+              shadow_threshold_source: shadowRetrieval.queryPolicy?.threshold_source ?? null,
+              shadow_retrieval_latency_ms: performance.now() - shadowStartedAt
+            };
+          }
+        } catch {
+          ragMetadata = {
+            ...ragMetadata,
+            shadow_retrieval_reason: 'retrieval_failed',
+            shadow_retrieval_latency_ms: performance.now() - shadowStartedAt
+          };
+        }
+      }
       const knowledgeBase = await dependencies.resolveKnowledgeBase(aiSettings);
       messages = buildProductionMessages({
         systemInstruction: aiSettings.system_instruction,
