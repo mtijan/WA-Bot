@@ -67,6 +67,80 @@ export const createTemplate = async (req, res) => {
   }
 };
 
+export const updateTemplate = async (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    content,
+    type = 'text',
+    category = 'General',
+    attachment_url = null,
+    attachment_name = null,
+    contact_name = null,
+    contact_number = null,
+    poll_question = null,
+    poll_options = null
+  } = req.body;
+
+  try {
+    const existing = await dbGet('SELECT * FROM message_templates WHERE id = ?', [id]);
+    if (!existing) {
+      return sendError(res, 404, 'TEMPLATE_NOT_FOUND', 'Template tidak ditemukan.');
+    }
+
+    if (existing.user_id !== req.auth.userId) {
+      return sendError(res, 403, 'FORBIDDEN_ACCESS', 'Anda tidak memiliki akses ke template ini.');
+    }
+
+    await dbRun(
+      `UPDATE message_templates
+       SET name = ?, content = ?, type = ?, category = ?, attachment_url = ?, attachment_name = ?,
+           contact_name = ?, contact_number = ?, poll_question = ?, poll_options = ?
+       WHERE id = ? AND user_id = ?`,
+      [
+        name,
+        content,
+        type,
+        category,
+        attachment_url,
+        attachment_name,
+        contact_name,
+        contact_number,
+        poll_question,
+        poll_options,
+        id,
+        req.auth.userId
+      ]
+    );
+
+    auditLog(req, 'TEMPLATE_UPDATE', 'template', String(id), 'success', {
+      name,
+      type,
+      category,
+      previous_name: existing.name,
+      previous_type: existing.type
+    });
+
+    return sendSuccess(res, {
+      id: existing.id,
+      name,
+      content,
+      type,
+      category,
+      attachment_url,
+      attachment_name,
+      contact_name,
+      contact_number,
+      poll_question,
+      poll_options,
+      created_at: existing.created_at
+    }, 200, { message: 'Template berhasil diperbarui.' });
+  } catch (error) {
+    logError('updateTemplate', error, { params: req.params, body: req.body });
+    return sendError(res, 500, 'UPDATE_TEMPLATE_ERROR', 'Gagal memperbarui template.');
+  }
+};
+
 export const deleteTemplate = async (req, res) => {
   const { id } = req.params;
   try {

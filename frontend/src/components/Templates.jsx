@@ -5,6 +5,7 @@ import {
   RefreshCw, 
   FileText, 
   Trash2, 
+  Pencil,
   X, 
   Clipboard, 
   Check,
@@ -28,6 +29,8 @@ const Templates = () => {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState(null);
+  const [initialAttachmentUrl, setInitialAttachmentUrl] = useState('');
   const [copiedId, setCopiedId] = useState(null);
 
   // Confirm Dialog State
@@ -83,16 +86,7 @@ const Templates = () => {
     }
   };
 
-  const handleCloseCreateModal = async () => {
-    if (attachmentUrl && attachmentUrl.includes('/api/uploads/media/')) {
-      try {
-        const parts = attachmentUrl.split('/');
-        const filename = parts[parts.length - 1];
-        await apiRequest(`/uploads/media/${filename}`, { method: 'DELETE' });
-      } catch (err) {
-        console.error('Gagal menghapus file saat batal:', err);
-      }
-    }
+  const resetTemplateForm = () => {
     setTemplateName('');
     setMessageContent('');
     setSelectedType('text');
@@ -103,10 +97,50 @@ const Templates = () => {
     setContactNumber('');
     setPollQuestion('');
     setPollOptions('');
+    setEditingTemplateId(null);
+    setInitialAttachmentUrl('');
+  };
+
+  const handleOpenCreateModal = () => {
+    resetTemplateForm();
+    setShowCreateModal(true);
+  };
+
+  const handleOpenEditModal = (template) => {
+    setEditingTemplateId(template.id);
+    setTemplateName(template.name || '');
+    setMessageContent(template.content || '');
+    setSelectedType(template.type || 'text');
+    setCategory(template.category || 'General');
+    setAttachmentUrl(template.attachment_url || '');
+    setInitialAttachmentUrl(template.attachment_url || '');
+    setAttachmentName(template.attachment_name || '');
+    setContactName(template.contact_name || '');
+    setContactNumber(template.contact_number || '');
+    setPollQuestion(template.poll_question || '');
+    setPollOptions(template.poll_options || '');
+    setShowCreateModal(true);
+  };
+
+  const handleCloseCreateModal = async () => {
+    const isNewManagedUpload = attachmentUrl
+      && attachmentUrl !== initialAttachmentUrl
+      && attachmentUrl.includes('/api/uploads/media/');
+
+    if (isNewManagedUpload) {
+      try {
+        const parts = attachmentUrl.split('/');
+        const filename = parts[parts.length - 1];
+        await apiRequest(`/uploads/media/${filename}`, { method: 'DELETE' });
+      } catch (err) {
+        console.error('Gagal menghapus file saat batal:', err);
+      }
+    }
+    resetTemplateForm();
     setShowCreateModal(false);
   };
 
-  const handleCreateTemplate = async (e) => {
+  const handleSubmitTemplate = async (e) => {
     e.preventDefault();
     if (!templateName.trim() || !messageContent.trim()) {
       window.showWarning('Nama template dan konten pesan wajib diisi.');
@@ -131,41 +165,34 @@ const Templates = () => {
 
     try {
       setLoading(true);
-      const json = await apiRequest('/templates', {
-        method: 'POST',
+      const isEditing = editingTemplateId !== null;
+      const json = await apiRequest(isEditing ? `/templates/${editingTemplateId}` : '/templates', {
+        method: isEditing ? 'PUT' : 'POST',
         body: JSON.stringify({
           name: templateName,
           content: messageContent,
           type: selectedType,
           category: category,
-          attachment_url: attachmentUrl || null,
-          attachment_name: attachmentName || null,
-          contact_name: contactName || null,
-          contact_number: contactNumber || null,
-          poll_question: pollQuestion || null,
-          poll_options: pollOptions || null
+          attachment_url: ['image', 'document', 'video', 'audio'].includes(selectedType) ? (attachmentUrl || null) : null,
+          attachment_name: selectedType === 'document' ? (attachmentName || null) : null,
+          contact_name: selectedType === 'contact' ? (contactName || null) : null,
+          contact_number: selectedType === 'contact' ? (contactNumber || null) : null,
+          poll_question: selectedType === 'poll' ? (pollQuestion || null) : null,
+          poll_options: selectedType === 'poll' ? (pollOptions || null) : null
         })
       });
       if (json.status === 'success') {
-        window.showSuccess('Template pesan berhasil disimpan.');
-        // Reset states
-        setTemplateName('');
-        setMessageContent('');
-        setSelectedType('text');
-        setCategory('General');
-        setAttachmentUrl('');
-        setAttachmentName('');
-        setContactName('');
-        setContactNumber('');
-        setPollQuestion('');
-        setPollOptions('');
+        window.showSuccess(isEditing ? 'Template pesan berhasil diperbarui.' : 'Template pesan berhasil disimpan.');
+        resetTemplateForm();
         setShowCreateModal(false);
-        fetchTemplates();
+        await fetchTemplates();
       } else {
-        window.showError(json.message || 'Gagal menyimpan template.');
+        window.showError(json.message || (isEditing ? 'Gagal memperbarui template.' : 'Gagal menyimpan template.'));
       }
     } catch {
-      window.showError('Kesalahan jaringan saat menyimpan template.');
+      window.showError(editingTemplateId !== null
+        ? 'Kesalahan jaringan saat memperbarui template.'
+        : 'Kesalahan jaringan saat menyimpan template.');
     } finally {
       setLoading(false);
     }
@@ -293,7 +320,7 @@ const Templates = () => {
 
         <button 
           className="btn btn-primary"
-          onClick={() => setShowCreateModal(true)}
+          onClick={handleOpenCreateModal}
           style={{
             borderRadius: '8px',
             padding: '10px 20px',
@@ -378,7 +405,7 @@ const Templates = () => {
             </p>
             <button 
               className="btn btn-primary"
-              onClick={() => setShowCreateModal(true)}
+              onClick={handleOpenCreateModal}
               style={{ borderRadius: '8px', padding: '10px 20px', fontWeight: 600 }}
             >
               <Plus size={18} /> Create Template
@@ -423,6 +450,14 @@ const Templates = () => {
                       style={{ padding: '6px', color: 'var(--text-muted)' }}
                     >
                       {copiedId === t.id ? <Check size={15} color="var(--success)" /> : <Clipboard size={15} />}
+                    </button>
+                    <button
+                      title="Edit Template"
+                      onClick={() => handleOpenEditModal(t)}
+                      className="btn-icon"
+                      style={{ padding: '6px', color: 'var(--primary-color)' }}
+                    >
+                      <Pencil size={15} />
                     </button>
                     <button
                       title="Hapus Template"
@@ -558,15 +593,17 @@ const Templates = () => {
                 backgroundColor: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
-                <Plus size={20} />
+                {editingTemplateId !== null ? <Pencil size={20} /> : <Plus size={20} />}
               </div>
-              <h3 style={{ margin: 0 }}>Create Template</h3>
+              <h3 style={{ margin: 0 }}>{editingTemplateId !== null ? 'Edit Template' : 'Create Template'}</h3>
             </div>
             <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginBottom: '20px', paddingLeft: '46px' }}>
-              Define reusable campaign templates with dynamic parameters and custom attachments.
+              {editingTemplateId !== null
+                ? 'Perbarui isi, tipe, kategori, dan detail lampiran template yang dipilih.'
+                : 'Define reusable campaign templates with dynamic parameters and custom attachments.'}
             </p>
 
-            <form onSubmit={handleCreateTemplate} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleSubmitTemplate} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
               {/* Template Type Selection Grid (Image 1/2 style) */}
               <div className="form-group">
@@ -870,7 +907,7 @@ const Templates = () => {
                     fontWeight: 600
                   }}
                 >
-                  {loading ? 'Saving...' : 'Create Template'}
+                  {loading ? 'Saving...' : (editingTemplateId !== null ? 'Save Changes' : 'Create Template')}
                 </button>
               </div>
             </form>

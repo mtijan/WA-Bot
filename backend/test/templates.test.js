@@ -133,6 +133,82 @@ describe('POST /api/templates - Sukses', () => {
   });
 });
 
+describe('PUT /api/templates/:id', () => {
+  it('memperbarui seluruh field template dan mempertahankan ID', async () => {
+    const agent = await getTestAgent();
+    const createRes = await agent
+      .post('/api/templates')
+      .send({ name: 'Template Lama', content: 'Konten lama', type: 'text' });
+    const templateId = createRes.body.data.id;
+
+    const updateRes = await agent
+      .put(`/api/templates/${templateId}`)
+      .send({
+        name: 'Template Poll Diperbarui',
+        content: 'Silakan pilih jawaban.',
+        type: 'poll',
+        category: 'Support',
+        poll_question: 'Apakah masalah sudah selesai?',
+        poll_options: 'Sudah\nBelum'
+      });
+
+    assert.equal(updateRes.status, 200);
+    assert.equal(updateRes.body.status, 'success');
+    assert.equal(updateRes.body.data.id, templateId);
+    assert.equal(updateRes.body.data.name, 'Template Poll Diperbarui');
+    assert.equal(updateRes.body.data.type, 'poll');
+    assert.equal(updateRes.body.data.category, 'Support');
+    assert.equal(updateRes.body.data.poll_question, 'Apakah masalah sudah selesai?');
+    assert.equal(updateRes.body.data.poll_options, 'Sudah\nBelum');
+
+    const listRes = await agent.get('/api/templates');
+    const updated = listRes.body.data.find(t => t.id === templateId);
+    assert.equal(updated.name, 'Template Poll Diperbarui');
+    assert.equal(updated.content, 'Silakan pilih jawaban.');
+  });
+
+  it('mengembalikan HTTP 400 untuk payload yang tidak valid', async () => {
+    const agent = await getTestAgent();
+    const res = await agent
+      .put('/api/templates/1')
+      .send({ name: '', content: '', type: 'invalid-type' });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error_code, 'VALIDATION_ERROR');
+    assert.ok(res.body.details.name);
+    assert.ok(res.body.details.content);
+    assert.ok(res.body.details.type);
+  });
+
+  it('mengembalikan HTTP 404 untuk ID yang tidak ada', async () => {
+    const agent = await getTestAgent();
+    const res = await agent
+      .put('/api/templates/99999')
+      .send({ name: 'Tidak Ada', content: 'Tidak boleh tersimpan', type: 'text' });
+
+    assert.equal(res.status, 404);
+    assert.equal(res.body.error_code, 'TEMPLATE_NOT_FOUND');
+  });
+
+  it('menolak perubahan template milik tenant lain', async () => {
+    const agent = await getTestAgent();
+    const { dbRun } = await import('../src/database.js');
+    await dbRun(
+      "INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role, is_active) VALUES (2, 'tenant-2', 'dummy_hash', 'Tenant 2', 'user', 1)"
+    );
+    const foreignTemplate = await dbRun(
+      "INSERT INTO message_templates (name, content, type, category, user_id) VALUES ('Milik Tenant 2', 'Rahasia', 'text', 'General', 2)"
+    );
+
+    const res = await agent
+      .put(`/api/templates/${foreignTemplate.id}`)
+      .send({ name: 'Diambil Alih', content: 'Tidak boleh', type: 'text' });
+
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error_code, 'FORBIDDEN_ACCESS');
+  });
+});
+
 describe('DELETE /api/templates/:id', () => {
   it('mengembalikan HTTP 404 untuk ID tidak ada', async () => {
     const agent = await getTestAgent();

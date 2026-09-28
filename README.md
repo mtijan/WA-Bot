@@ -3,8 +3,8 @@
 WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
-**Versi Dokumen/Sistem:** 2.9.9
-**Terakhir Diperbarui:** 2026-09-16
+**Versi Dokumen/Sistem:** 2.9.10
+**Terakhir Diperbarui:** 2026-09-28
 
 ---
 
@@ -31,6 +31,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Hybrid RAG (pengembangan lokal):** Retrieval tenant/session-scoped, shadow evaluation, rollout transition gate, dan rollback FTS/CS tersedia di branch pengembangan/release. Fitur ini belum diaktifkan di staging/produksi; full-KB tetap aktif secara default sampai quality, billing, migration, rollback-window, dan OPS/UAT gate ditutup.
 - **Group Grabber:** Ekstraksi anggota grup WhatsApp secara instan ke file CSV 14 kolom dengan resolusi LID (Lid-to-Jid resolution) untuk penargetan campaign yang aman.
 - **Single Message Composer:** Pengiriman pesan individual cepat dengan dukungan lampiran media dan pembuatan jajak pendapat (polls).
+- **Message Templates Lifecycle:** Template pesan tenant dapat dibuat, dicari, disalin, diedit, dan dihapus. Mode edit mendukung seluruh tipe aktif, mempertahankan media lama saat edit dibatalkan, dan mencatat `TEMPLATE_UPDATE`; hotfix ini aktif di staging dari `main` SHA `dae4137`.
 - **Media Upload Manager:** Upload gambar (maksimal 5 MB), video (maksimal 10 MB), audio (maksimal 2 MB), dan dokumen (maksimal 5 MB) dengan mitigasi Stored XSS, metadata kepemilikan tenant di `uploaded_media`, serta download/delete terautentikasi hanya untuk pemilik file.
 - **Consent & Opt-Out Handling:** Sistem filter daftar pencegahan (suppression list) otomatis jika penerima membalas dengan kata kunci seperti STOP, UNSUBSCRIBE, atau BERHENTI.
 - **Session Auto-Repair & Crypt-Key Reset:** Pemantauan dan pemulihan otomatis sesi terputus berdurasi setiap 10 menit ([auto_repair_disconnected.js](file:///d:/Self%20Project/WA-Bot/backend/scripts/auto_repair_disconnected.js)) di staging VPS dengan pembatasan laju 5x/24j dan alert Telegram. Fitur manual Repair pada UI Session Manager juga tersedia untuk membersihkan cache kunci Signal tanpa menghapus kredensial utama.
@@ -153,7 +154,7 @@ Kontrol rollout RAG bersifat default-safe. Shadow dan rollback hanya boleh diakt
 ## Panduan Pengujian (Testing)
 
 ### Pengujian Unit & Integrasi Backend
-Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, isolasi/mapping sesi flow, RAG rollout/rollback, dan exact-release smoke) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite lokal terakhir: 421/421 test pass pada 79 suite (2026-09-16); ini bukan bukti staging atau UAT.
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, isolasi/mapping sesi flow, RAG rollout/rollback, dan exact-release smoke) menggunakan SQLite test database tanpa memerlukan server berjalan. Setelah backport hotfix Message Templates, suite lokal development lulus 425/425 test pada 80 suite (2026-09-28); ini bukan bukti staging RAG atau UAT.
 ```bash
 cd backend
 npm test
