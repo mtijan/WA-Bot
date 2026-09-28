@@ -15,7 +15,6 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - Arsitektur Sistem & Peran Proses
 - Panduan Pengujian (Testing)
 - Panduan Pemeliharaan (Maintenance)
-- Keamanan & Praktik Terbaik
 
 ---
 
@@ -197,15 +196,3 @@ Script pruner akan menghapus log pengiriman lama yang melebihi retensi, log warm
 cd backend
 npm run logs:prune:apply
 ```
-
----
-
-## Keamanan & Praktik Terbaik
-
-- **Jangan Ekspos Port 3001:** Port API backend `3001` tidak boleh dibuka ke internet publik. Gunakan reverse proxy (seperti Caddy atau Nginx) untuk mengamankan lalu lintas data.
-- **Frontend Build Guard:** Frontend memiliki mekanisme proteksi build (`assert-production-api-url.mjs`) yang akan menghentikan build jika aset produksi kedapatan memanggil URL private backend `:3001/api`. Selalu set `VITE_API_URL=/api` saat membangun aset produksi.
-- **Isolasi Database & Kredensial:** Batasi hak akses direktori `backend/sessions/`, `backend/database.sqlite`, dan `.env` menggunakan izin sistem operasi ketat (rekomendasi chmod `640` / `600`).
-- **Secret Wajib:** Konfigurasikan `WA_BOT_ADMIN_SESSION_SECRET` dan `WA_BOT_SECRET_ENCRYPTION_KEY` masing-masing minimal 32 karakter. Backend tidak lagi memakai fallback secret statis; penyimpanan sesi/provider key gagal tertutup bila kunci enkripsi tidak tersedia.
-- **Sesi Legacy Lokal:** Jika sesi dibuat sebelum v2.9.9 tanpa key eksplisit, pertahankan foldernya tetapi lakukan pairing ulang dengan key baru yang stabil; jangan menghapus folder sesi lama tanpa konfirmasi target yang tepat.
-- **Batas Media dan AI:** Lampiran harus berasal dari `/api/uploads/media/*`; path lokal lain dan URL remote ditolak. Base URL provider AI wajib HTTPS publik, tidak boleh menuju localhost/private/reserved IP, dan redirect HTTP ditolak.
-- **Monitoring Mandiri:** Pantau performa melalui endpoint kesiapan `/health/ready` (untuk API publik) dan `/internal/health/ready` (untuk internal workers). Netdata diatur hanya mendengarkan di localhost (`127.0.0.1:19999`) dan diakses aman menggunakan SSH Tunneling.
