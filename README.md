@@ -27,9 +27,10 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Chatbot Flow:** Alur auto-reply interaktif berbasis node dengan perancang visual yang mendukung teks, gambar, video, audio, dokumen, dan template respons.
 - **Chatbot Flow Runtime Scaling:** Assignment flow-ke-sesi dinormalisasi melalui `chatbot_flow_sessions`, sehingga pesan masuk hanya mencari flow aktif untuk sesi terkait lewat index dan tidak melakukan scan semua flow aktif.
 - **Chatbot AI:** Integrasi penyedia AI (seperti OpenAI GPT atau Google Gemini) dengan mode operasional fleksibel per-sesi (off, chatbot flow saja, AI saja, atau kombinasi keduanya).
+- **Hybrid RAG (pengembangan lokal):** Retrieval tenant/session-scoped, shadow evaluation, rollout transition gate, dan rollback FTS/CS tersedia di branch pengembangan/release. Fitur ini belum diaktifkan di staging/produksi; full-KB tetap aktif secara default sampai quality, billing, migration, rollback-window, dan OPS/UAT gate ditutup.
 - **Group Grabber:** Ekstraksi anggota grup WhatsApp secara instan ke file CSV 14 kolom dengan resolusi LID (Lid-to-Jid resolution) untuk penargetan campaign yang aman.
 - **Single Message Composer:** Pengiriman pesan individual cepat dengan dukungan lampiran media dan pembuatan jajak pendapat (polls).
-- **Message Templates Lifecycle:** Template pesan tenant dapat dibuat, dicari, disalin, diedit, dan dihapus. Mode edit mendukung seluruh tipe aktif (teks, gambar, dokumen, kontak, poll, video, dan audio), mempertahankan file media lama saat edit dibatalkan, serta mencatat perubahan ke audit log.
+- **Message Templates Lifecycle:** Template pesan tenant dapat dibuat, dicari, disalin, diedit, dan dihapus. Mode edit mendukung seluruh tipe aktif, mempertahankan media lama saat edit dibatalkan, dan mencatat `TEMPLATE_UPDATE`; hotfix ini aktif di staging dari `main` SHA `dae4137`.
 - **Media Upload Manager:** Upload gambar (maksimal 5 MB), video (maksimal 10 MB), audio (maksimal 2 MB), dan dokumen (maksimal 5 MB) dengan mitigasi Stored XSS, metadata kepemilikan tenant di `uploaded_media`, serta download/delete terautentikasi hanya untuk pemilik file.
 - **Consent & Opt-Out Handling:** Sistem filter daftar pencegahan (suppression list) otomatis jika penerima membalas dengan kata kunci seperti STOP, UNSUBSCRIBE, atau BERHENTI.
 - **Session Auto-Repair & Crypt-Key Reset:** Pemantauan dan pemulihan otomatis sesi terputus berdurasi setiap 10 menit ([auto_repair_disconnected.js](file:///d:/Self%20Project/WA-Bot/backend/scripts/auto_repair_disconnected.js)) di staging VPS dengan pembatasan laju 5x/24j dan alert Telegram. Fitur manual Repair pada UI Session Manager juga tersedia untuk membersihkan cache kunci Signal tanpa menghapus kredensial utama.
@@ -145,22 +146,24 @@ Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan
 - **Warmer Worker Only:** `npm run start:warmer-worker` (Memproses simulasi chat pemanasan reputasi akun)
 - **RAG Index Sekali Jalan:** `npm run rag:index:once` (Memulihkan lease kedaluwarsa lalu memproses satu batch job index RAG yang due; tetap memerlukan migration dan rollout runtime yang disetujui)
 
+Kontrol rollout RAG bersifat default-safe. Shadow dan rollback hanya boleh diaktifkan setelah review menggunakan `WA_BOT_RAG_SHADOW_MODE`, `WA_BOT_RAG_ROLLBACK_FTS_SESSIONS`, dan `WA_BOT_RAG_ROLLBACK_CS_SESSIONS`. Jangan mengubah `WA_BOT_RAG_LEGACY_FULL_KB_ENABLED=false` sebelum rollout 100%, rollback drill, rollback window, staging readiness, dan pengecualian legacy telah diverifikasi.
+
 ---
 
 ## Panduan Pengujian (Testing)
 
 ### Pengujian Unit & Integrasi Backend
-Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, serta isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Hotfix Message Templates 2.9.10 lulus 15/15 tes endpoint template dan 131/131 seluruh tes backend pada 50 suite (2026-09-28). Lint komponen Templates serta frontend production build/API URL guard juga lulus; bukti lokal ini belum menjadi bukti deployment sampai SHA hotfix terpasang dan smoke staging selesai.
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, isolasi/mapping sesi flow, RAG rollout/rollback, dan exact-release smoke) menggunakan SQLite test database tanpa memerlukan server berjalan. Setelah backport hotfix Message Templates, suite lokal development lulus 425/425 test pada 80 suite (2026-09-28); ini bukan bukti staging RAG atau UAT.
 ```bash
 cd backend
 npm test
 ```
 
 ### Smoke Test Peluncuran (Deploy Smoke Test)
-Menjalankan pengujian cepat pasca-deploy untuk memastikan keandalan API publik dan respons delegasi internal:
+Menjalankan pengujian cepat pasca-deploy untuk memastikan frontend, API publik, respons delegasi internal, dan exact release yang sedang berjalan. Set `WA_BOT_RELEASE_ID` pada service ke SHA Git immutable yang dideploy, lalu jalankan smoke dengan `WA_BOT_EXPECTED_RELEASE_ID` yang sama. Smoke gagal jika `/health` atau readiness tidak memuat release ID, status bukan `healthy`/`ready`, atau SHA berbeda:
 ```bash
 cd backend
-npm run test:smoke
+WA_BOT_EXPECTED_RELEASE_ID=<reviewed-git-sha> npm run test:smoke
 ```
 
 ### Pengujian Integrasi Sistem QA
