@@ -3,8 +3,8 @@
 WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi berbasis web untuk mengelola multisesi WhatsApp secara konkuren.
 
 **Status:** Internal baseline, dalam tahap pengerasan (hardening) menuju produksi  
-**Versi Dokumen/Sistem:** 2.9.9
-**Terakhir Diperbarui:** 2026-07-25
+**Versi Dokumen/Sistem:** 2.9.10
+**Terakhir Diperbarui:** 2026-09-28
 
 ---
 
@@ -30,6 +30,7 @@ WhatsApp Multi-Account & Bulk Messaging System - platform otomatisasi komunikasi
 - **Chatbot AI:** Integrasi penyedia AI (seperti OpenAI GPT atau Google Gemini) dengan mode operasional fleksibel per-sesi (off, chatbot flow saja, AI saja, atau kombinasi keduanya).
 - **Group Grabber:** Ekstraksi anggota grup WhatsApp secara instan ke file CSV 14 kolom dengan resolusi LID (Lid-to-Jid resolution) untuk penargetan campaign yang aman.
 - **Single Message Composer:** Pengiriman pesan individual cepat dengan dukungan lampiran media dan pembuatan jajak pendapat (polls).
+- **Message Templates Lifecycle:** Template pesan tenant dapat dibuat, dicari, disalin, diedit, dan dihapus. Mode edit mendukung seluruh tipe aktif (teks, gambar, dokumen, kontak, poll, video, dan audio), mempertahankan file media lama saat edit dibatalkan, serta mencatat perubahan ke audit log.
 - **Media Upload Manager:** Upload gambar (maksimal 5 MB), video (maksimal 10 MB), audio (maksimal 2 MB), dan dokumen (maksimal 5 MB) dengan mitigasi Stored XSS, metadata kepemilikan tenant di `uploaded_media`, serta download/delete terautentikasi hanya untuk pemilik file.
 - **Consent & Opt-Out Handling:** Sistem filter daftar pencegahan (suppression list) otomatis jika penerima membalas dengan kata kunci seperti STOP, UNSUBSCRIBE, atau BERHENTI.
 - **Session Auto-Repair & Crypt-Key Reset:** Pemantauan dan pemulihan otomatis sesi terputus berdurasi setiap 10 menit ([auto_repair_disconnected.js](file:///d:/Self%20Project/WA-Bot/backend/scripts/auto_repair_disconnected.js)) di staging VPS dengan pembatasan laju 5x/24j dan alert Telegram. Fitur manual Repair pada UI Session Manager juga tersedia untuk membersihkan cache kunci Signal tanpa menghapus kredensial utama.
@@ -150,7 +151,7 @@ Untuk deployment di lingkungan server produksi/staging, backend dapat dijalankan
 ## Panduan Pengujian (Testing)
 
 ### Pengujian Unit & Integrasi Backend
-Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, serta isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Suite terakhir: 120 test pass.
+Memvalidasi seluruh logika internal backend (validator input, parser spintax, auth token rotation/revocation dan concurrency, campaign/template/contact tenant isolation, parser Sheet1 Excel/CSV, snapshot variabel kampanye, pruner logs, kuota device plan-based, audit/plan entitlement, uploaded-media root boundary, anti-SSRF AI, ID sesi aman, serta isolasi/mapping sesi flow) menggunakan SQLite test database tanpa memerlukan server berjalan. Hotfix Message Templates 2.9.10 lulus 15/15 tes endpoint template dan 131/131 seluruh tes backend pada 50 suite (2026-09-28). Lint komponen Templates serta frontend production build/API URL guard juga lulus; bukti lokal ini belum menjadi bukti deployment sampai SHA hotfix terpasang dan smoke staging selesai.
 ```bash
 cd backend
 npm test
